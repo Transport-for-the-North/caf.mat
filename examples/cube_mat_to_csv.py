@@ -66,7 +66,8 @@ def parse_args() -> tuple[pathlib.Path, pathlib.Path]:
         Folder containing CUBE matrices for conversion.
     """
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        description="Converts CUBE .mat files to CSVs",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
         "voyager_path", help="Path to CUBE Voyager executable", type=pathlib.Path

@@ -10,6 +10,7 @@ import logging
 import re
 import subprocess
 from pathlib import Path
+import warnings
 
 ##### CONSTANTS #####
 
@@ -40,6 +41,12 @@ class CUBEMatConverter:
         self.voyager_path = voyager_path
         if not self.voyager_path.is_file():
             raise FileNotFoundError(f"cannot find CUBE Voyager: {self.voyager_path}")
+
+        if self.voyager_path.name.lower().strip() != "voyager.exe":
+            warnings.warn(
+                "CUBE Voyager executable is usually named "
+                f"'VOYAGER.exe', is '{self.voyager_path.name}' correct?"
+            )
 
     def csv_to_mat(
         self,
