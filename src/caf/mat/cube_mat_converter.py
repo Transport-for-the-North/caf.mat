@@ -140,7 +140,7 @@ class CUBEMatConverter:
 
         return mat_path
 
-    def mat_2_omx(self, mat_file: Path, out_path: Path, out_file: str):
+    def mat_2_omx(self, mat_file: Path, out_path: Path, out_file: str) -> Path:
         """Convert Cube .MAT to .OMX.
 
         Parameters
@@ -151,12 +151,19 @@ class CUBEMatConverter:
             path to folder where outputs to be saved.
         out_file : str
             name of the output omx file.
+
+        Returns
+        -------
+        Path
+            Path to created OMX file.
         """
         LOG.info("Converting %s to OMX file, outputs writing to %s", mat_file.name, out_path)
         script_path = Path(out_path / "Mat2OMX.s")
 
         if not mat_file.is_file():
             raise FileNotFoundError(f"file doesn't exist: {mat_file}")
+
+        output_path = out_path / f"{out_file}.omx"
 
         with open(script_path, "wt", encoding="utf-8") as file:
             file.write(
@@ -177,6 +184,9 @@ class CUBEMatConverter:
             _stdout_decode(comp_proc.stderr),
         )
 
+        if not output_path.is_file():
+            raise CUBEMatConverterError(f"failed creating {output_path.name}")
+
         # Cleanup files
         script_path.unlink()
         script_path.with_name("TPPL.PRJ").unlink()
@@ -185,6 +195,8 @@ class CUBEMatConverter:
             match = del_pat.match(path.name)
             if match:
                 path.unlink()
+
+        return output_path
 
 
 def _stdout_decode(stdout: bytes) -> str:

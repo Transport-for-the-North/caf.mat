@@ -11,6 +11,7 @@ from pathlib import Path
 
 # Third Party
 import numpy as np
+import pandas as pd
 import tables
 
 ##### CONSTANTS #####
@@ -230,3 +231,20 @@ class OMXFile(tables.File):
         if matrix.shape != self.shape:
             raise ValueError(f"matrix shape should be {self.shape} no {matrix.shape}")
         self.create_array("/data", str(level_name), matrix)
+
+    def get_matrix_level_dataframe(self, level_name: str) -> pd.DataFrame:
+        """Returns a single matrix level as an DataFrame.
+
+        Parameters
+        ----------
+        level_name : str
+            Name of the matrix level to return.
+
+        Returns
+        -------
+        pd.DataFrame
+            2D square matrix for a single level, with
+            zones used for column names and indices.
+        """
+        data = self.get_matrix_level(level_name)
+        return pd.DataFrame(data, index=self.zones, columns=self.zones)
