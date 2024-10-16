@@ -1,4 +1,4 @@
 # pytables on conda-forge
-pytables>=3.10.1
+tables>=3.10.1
 numpy>=2
 pandas>=2.2.3
