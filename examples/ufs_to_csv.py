@@ -96,7 +96,7 @@ def main():
 
     with ctk.LogHelper(_NAME, details, log_file=log_file):
         # Find all .mat files inside given folder and convert each to CSVs separately
-        for path in matrix_folder.glob("*.mat"):
+        for path in matrix_folder.glob("*.ufm"):
             ufm_to_csv(converter, path, output_folder)
 
 
