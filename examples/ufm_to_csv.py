@@ -13,6 +13,7 @@
 import argparse
 import logging
 import pathlib
+import shutil
 
 # Third Party
 import caf.toolkit as ctk
@@ -44,7 +45,8 @@ def ufm_to_csv(
         Folder to save outputs to.
     """
     LOG.info("Converting %s to CSVs", ufm_path.name)
-    omx_path = converter.ufm_to_omx(ufm_path, output_folder, ufm_path.stem)
+    omx_path = converter.ufm_to_omx(ufm_path)
+    omx_path = omx_path.rename(output_folder / omx_path.name)
 
     omx = OMXFile(omx_path)
 
