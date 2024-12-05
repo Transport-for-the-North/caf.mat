@@ -30,33 +30,6 @@ LOG = logging.getLogger(_NAME)
 ##### CLASSES & FUNCTIONS #####
 
 
-def ufm_to_csv(
-    converter: UFMConverter, ufm_path: pathlib.Path, output_folder: pathlib.Path
-) -> None:
-    """Convert SATURN UFM file to multiple CSVs (one per level).
-
-    Parameters
-    ----------
-    converter
-        Instance of SATURN UFM converter.
-    ufm_path
-        Path to existing UFM file.
-    output_folder
-        Folder to save outputs to.
-    """
-    LOG.info("Converting %s to CSVs", ufm_path.name)
-    omx_path = converter.ufm_to_omx(ufm_path)
-    omx_path = omx_path.rename(output_folder / omx_path.name)
-
-    omx = OMXFile(omx_path)
-
-    for level in omx.matrix_levels:
-        data = omx.get_matrix_level_dataframe(level)
-        out_path = output_folder / f"{ufm_path.stem}-{level}.csv"
-        data.to_csv(out_path)
-        LOG.info("Written: %s", out_path.name)
-
-
 def parse_args() -> tuple[pathlib.Path, pathlib.Path]:
     """Parse command-line arguments and return them
 
@@ -99,7 +72,7 @@ def main():
     with ctk.LogHelper(_NAME, details, log_file=log_file):
         # Find all .mat files inside given folder and convert each to CSVs separately
         for path in matrix_folder.glob("*.ufm"):
-            ufm_to_csv(converter, path, output_folder)
+            converter.ufm_to_square_csvs(path, path.stem)
 
 
 if __name__ == "__main__":

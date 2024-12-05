@@ -13,6 +13,9 @@ import os
 import pathlib
 import subprocess
 
+# Third Party
+import pandas as pd
+
 ##### CONSTANTS #####
 LOG = logging.getLogger(__name__)
 
@@ -134,6 +137,119 @@ class UFMConverter:
             LOG.error("Failed to create CSV: %s\n%s\n%s", csv, *msg_data)
             raise FileNotFoundError(f"error creating {csv}")
         return csv
+
+    def ufm_to_square_csvs(
+        self, ufm: pathlib.Path, csv_name: str, overwrite: bool = True
+    ) -> list[pathlib.Path]:
+        """Convert UFM to separate square CSVs for each level.
+
+        Dumps UFM to stacked square CSV and then splits that
+        into separate CSVs for each level.
+
+        Parameters
+        ----------
+        ufm
+            Path to UFM file.
+        csv_name : str
+            Base name for CSV files to output, '-level_N.csv'
+            will be appended to each.
+        overwrite
+            Default True, if the CSV exists already it will be deleted before running.
+            If False an error will be raised.
+
+        Returns
+        -------
+        list[pathlib.Path]
+            Paths to the CSVs which contain each level.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the UFM file doesn't exist or the CSV file isn't
+            exported from SATURN.
+        FileExistsError
+            If the CSV file already exists and overwrite is False.
+        """
+        if not ufm.is_file():
+            raise FileNotFoundError(f"UFM file doesn't exist: {ufm}")
+
+        csv_path = ufm.parent / csv_name
+        csv_path = csv_path.with_suffix(".csv")
+
+        # Remove output if it already exists
+        if csv_path.is_file():
+            if overwrite:
+                LOG.debug("Removed existing CSV file: %s", csv_path)
+                csv_path.unlink()
+            else:
+                raise FileExistsError(
+                    f"CSV file already exists and overwrite is False: {csv_path}"
+                )
+
+        key_data = [
+            13,  # Dump to text file
+            5,  # CSV format
+            csv_path.name,
+            1,  # Change decimal places
+            10,  # Number of decimal places to output
+            # 7,  # Include row numbers
+            8,  # Include zone names
+            0,  # Do it!
+            0,  # Back
+            0,  # Exit
+            "y",
+        ]
+        key_path = ufm.with_suffix(".KEY")
+        with open(key_path, "wt", encoding="utf-8") as file:
+            file.writelines(f"{l}\n" for l in key_data)
+        LOG.debug("Written KEY file: %s", key_path)
+
+        LOG.info("Exporting UFM (%s) to CSV", ufm.name)
+        comp_proc = subprocess.run(
+            ["MX", ufm, "KEY", str(key_path), "VDU", str(key_path.with_suffix(".VDU"))],
+            capture_output=True,
+            env=self.environment,
+            cwd=key_path.parent,
+            check=False,
+            shell=True,
+        )
+        msg_data = (csv_path, cmd_strip(comp_proc.stdout), cmd_strip(comp_proc.stderr))
+        if ufm.exists():
+            LOG.debug("Created CSV: %s\n%s\n%s", *msg_data)
+        else:
+            LOG.error("Failed creating UFM: %s\n%s\n%s", *msg_data)
+            raise FileNotFoundError(f"error creating {ufm}")
+
+        # Load CSV and split it into chunks for each level
+        level_csvs = self._unstack_csv(csv_path)
+
+        return level_csvs
+
+    def _unstack_csv(self, csv_path: pathlib.Path) -> list[pathlib.Path]:
+        """Split CSV in stacked square format into separate CSVs for each level."""
+        data = pd.read_csv(csv_path, header=None, index_col=0)
+        data.insert(0, "level", 0)
+        data["level"] = data.groupby(level=0)["level"].transform(
+            lambda x: range(1, len(x) + 1)
+        )
+        data = data.reset_index(names="origin").set_index(["level", "origin"])
+
+        level_csvs = []
+        level_names = data.index.get_level_values("level").unique()
+        LOG.info("Found %s levels in matrix, writing to separate CSVs", len(level_names))
+        for level_name in level_names:
+            level: pd.DataFrame = data.loc[level_name, :]
+
+            if len(level) != len(level.columns):
+                raise ValueError(f"matrix isn't square for level {level_name}")
+
+            level.columns = level.index
+            out_path = csv_path.with_name(csv_path.stem + f"-level_{level_name}.csv")
+            level.to_csv(out_path)
+            LOG.info("Written: %s", out_path)
+            level_csvs.append(out_path)
+
+        return level_csvs
 
     def square_csv_to_ufm(
         self, csv: pathlib.Path, ufm: pathlib.Path | None = None, title: str | None = None
