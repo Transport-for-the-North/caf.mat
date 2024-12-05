@@ -84,9 +84,9 @@ def main():
                 len(unstacked),
                 output_folder,
             )
-            for i in unstacked:
-                i.rename(output_folder / i.name)
-                LOG.debug("Moved %s to %s", i.name, output_folder)
+            for mat_path in unstacked:
+                mat_path.rename(output_folder / mat_path.name)
+                LOG.debug("Moved %s to %s", mat_path.name, output_folder)
 
             LOG.info("Done %s / %s (%s)", i, len(matrices), f"{i / len(matrices):.0%}")
 
