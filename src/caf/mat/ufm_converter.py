@@ -139,7 +139,11 @@ class UFMConverter:
         return csv
 
     def ufm_to_square_csvs(
-        self, ufm: pathlib.Path, csv_name: str, overwrite: bool = True
+        self,
+        ufm: pathlib.Path,
+        csv_name: str,
+        decimal_places: int = 5,
+        overwrite: bool = True,
     ) -> list[pathlib.Path]:
         """Convert UFM to separate square CSVs for each level.
 
@@ -153,6 +157,10 @@ class UFMConverter:
         csv_name : str
             Base name for CSV files to output, '-level_N.csv'
             will be appended to each.
+        decimal_places
+            Number of decimal places for SATURN to export to CSV,
+            more decimal places can sometimes break SATURN's CSV
+            export functionality. Defaults to 5.
         overwrite
             Default True, if the CSV exists already it will be deleted before running.
             If False an error will be raised.
@@ -191,7 +199,7 @@ class UFMConverter:
             5,  # CSV format
             csv_path.name,
             1,  # Change decimal places
-            10,  # Number of decimal places to output
+            int(decimal_places),  # Number of decimal places to output
             # 7,  # Include row numbers
             8,  # Include zone names
             0,  # Do it!

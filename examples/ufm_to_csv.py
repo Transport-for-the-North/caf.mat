@@ -13,18 +13,16 @@
 import argparse
 import logging
 import pathlib
-import shutil
 
 # Third Party
 import caf.toolkit as ctk
 
 # Local Imports
-from caf.mat.omx_file import OMXFile
 from caf.mat.ufm_converter import UFMConverter
 
 ##### CONSTANTS #####
 
-_NAME = "ufm_to_csv"
+_NAME = "caf.mat.ufm_to_csv"
 LOG = logging.getLogger(_NAME)
 
 ##### CLASSES & FUNCTIONS #####
@@ -69,10 +67,10 @@ def main():
     log_file = output_folder / f"{_NAME}.log"
     details = ctk.ToolDetails(_NAME, "0.1.0")
 
-    with ctk.LogHelper(_NAME, details, log_file=log_file):
+    with ctk.LogHelper("caf.mat", details, log_file=log_file):
         # Find all .mat files inside given folder and convert each to CSVs separately
         for path in matrix_folder.glob("*.ufm"):
-            converter.ufm_to_square_csvs(path, path.stem)
+            converter.ufm_to_square_csvs(path, path.stem, decimal_places=8)
 
 
 if __name__ == "__main__":
