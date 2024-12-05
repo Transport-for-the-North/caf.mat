@@ -144,7 +144,7 @@ class UFMConverter:
         csv_name: str,
         decimal_places: int = 5,
         overwrite: bool = True,
-    ) -> list[pathlib.Path]:
+    ) -> tuple[pathlib.Path, list[pathlib.Path]]:
         """Convert UFM to separate square CSVs for each level.
 
         Dumps UFM to stacked square CSV and then splits that
@@ -167,6 +167,8 @@ class UFMConverter:
 
         Returns
         -------
+        pathlib.Path
+            Path to CSV containing full stacked matrices.
         list[pathlib.Path]
             Paths to the CSVs which contain each level.
 
@@ -231,7 +233,7 @@ class UFMConverter:
         # Load CSV and split it into chunks for each level
         level_csvs = self._unstack_csv(csv_path)
 
-        return level_csvs
+        return csv_path, level_csvs
 
     def _unstack_csv(self, csv_path: pathlib.Path) -> list[pathlib.Path]:
         """Split CSV in stacked square format into separate CSVs for each level."""

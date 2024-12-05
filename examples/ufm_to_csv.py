@@ -70,7 +70,13 @@ def main():
     with ctk.LogHelper("caf.mat", details, log_file=log_file):
         # Find all .mat files inside given folder and convert each to CSVs separately
         for path in matrix_folder.glob("*.ufm"):
-            converter.ufm_to_square_csvs(path, path.stem, decimal_places=8)
+            stacked, unstacked = converter.ufm_to_square_csvs(
+                path, path.stem, decimal_places=8
+            )
+
+            for i in [stacked] + unstacked:
+                i.rename(output_folder)
+                LOG.debug("Moved %s to %s", i.name, output_folder)
 
 
 if __name__ == "__main__":
