@@ -84,7 +84,7 @@ def main():
                 len(unstacked),
                 output_folder,
             )
-            for i in [stacked] + unstacked:
+            for i in unstacked:
                 i.rename(output_folder / i.name)
                 LOG.debug("Moved %s to %s", i.name, output_folder)
 
