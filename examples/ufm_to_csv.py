@@ -74,8 +74,13 @@ def main():
                 path, path.stem, decimal_places=8
             )
 
+            LOG.info(
+                "Moving stacked (1) and unstacked (%s) files to %s",
+                len(unstacked),
+                output_folder,
+            )
             for i in [stacked] + unstacked:
-                i.rename(output_folder)
+                i.rename(output_folder / i.name)
                 LOG.debug("Moved %s to %s", i.name, output_folder)
 
 
