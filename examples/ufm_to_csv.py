@@ -68,20 +68,27 @@ def main():
     details = ctk.ToolDetails(_NAME, "0.1.0")
 
     with ctk.LogHelper("caf.mat", details, log_file=log_file):
-        # Find all .mat files inside given folder and convert each to CSVs separately
-        for path in matrix_folder.glob("*.ufm"):
+        # Find all .UFM files inside given folder and convert each to CSVs separately
+        matrices = list(matrix_folder.glob("*.ufm"))
+
+        for i, path in enumerate(matrices):
             stacked, unstacked = converter.ufm_to_square_csvs(
                 path, path.stem, decimal_places=8
             )
 
+            stacked.unlink()
+            LOG.info("Deleted stacked matrix: %s", stacked.name)
+
             LOG.info(
-                "Moving stacked (1) and unstacked (%s) files to %s",
+                "Moving unstacked (%s) files to %s",
                 len(unstacked),
                 output_folder,
             )
             for i in [stacked] + unstacked:
                 i.rename(output_folder / i.name)
                 LOG.debug("Moved %s to %s", i.name, output_folder)
+
+            LOG.info("Done %s / %s (%s)", i, len(matrices), f"{i / len(matrices):.0%}")
 
 
 if __name__ == "__main__":
