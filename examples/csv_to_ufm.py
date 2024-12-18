@@ -78,7 +78,7 @@ def main():
 
             # Write CSV in format expected by converter
             csv_path = output_folder / f"{path.stem}-square.csv"
-            matrix.to_csv(csv_path, index=True, header=False, float_format="%.10%")
+            matrix.to_csv(csv_path, index=True, header=False, float_format="%.10f")
             LOG.debug("Written CSV in SATURNs square format to: %s", csv_path)
 
             ufm_path = converter.square_csv_to_ufm(csv_path)
