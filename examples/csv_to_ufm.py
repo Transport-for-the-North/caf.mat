@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-    SATURN .UFM Files to CSVs
+    CSVs to SATURN .UFM Files
     =========================
 
-    Example code showing how to use caf.mat for converting SATURN
-    .UFM files to CSVs.
+    Example code showing how to use caf.mat for converting CSVs
+    to SATURN .UFM files.
 """
 
 ##### IMPORTS #####
@@ -36,16 +36,16 @@ def parse_args() -> tuple[pathlib.Path, pathlib.Path]:
     pathlib.Path
         Path to SATURN folder containing batch files.
     pathlib.Path
-        Folder containing UFM matrices for conversion.
+        Folder containing CSV matrices for conversion.
     """
     parser = argparse.ArgumentParser(
-        description="Converts SATURN UFM files to CSVs",
+        description="Converts CSVs to SATURN UFM files.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("saturn_path", help="Path to SATURN folder", type=pathlib.Path)
     parser.add_argument(
         "matrix_folder",
-        help="Folder containing UFMs for conversion",
+        help="Folder containing CSVs for conversion",
         type=pathlib.Path,
     )
     args = parser.parse_args()
@@ -54,39 +54,35 @@ def parse_args() -> tuple[pathlib.Path, pathlib.Path]:
 
 
 def main():
-    """Main function for running converting SATURN UFMs to CSVs."""
+    """Main function for running converting CSVs to SATURN UFMs."""
     saturn_path, matrix_folder = parse_args()
-    converter = UFMConverter(saturn_path)
 
     if not matrix_folder.is_dir():
         raise NotADirectoryError(matrix_folder)
 
-    output_folder = matrix_folder / "CSVs"
+    output_folder = matrix_folder / "UFMs"
     output_folder.mkdir(exist_ok=True)
 
     log_file = output_folder / f"{_NAME}.log"
     details = ctk.ToolDetails(_NAME, "0.1.0")
 
     with ctk.LogHelper("caf.mat", details, log_file=log_file):
-        # Find all .UFM files inside given folder and convert each to CSVs separately
-        matrices = list(matrix_folder.glob("*.ufm"))
+        converter = UFMConverter(saturn_path)
 
-        for i, path in enumerate(matrices):
-            stacked, unstacked = converter.ufm_to_square_csvs(
-                path, path.stem, decimal_places=8
-            )
+        # Find all CSV files inside given folder and convert each to UFMs separately
+        matrices = list(matrix_folder.glob("*.csv"))
 
-            stacked.unlink()
-            LOG.info("Deleted stacked matrix: %s", stacked.name)
+        for i, path in enumerate(matrices, start=1):
+            LOG.info("Converting CSV %s: %s", i, path)
+            matrix = ctk.io.read_csv_matrix(path, format_="square")
 
-            LOG.info(
-                "Moving unstacked (%s) files to %s",
-                len(unstacked),
-                output_folder,
-            )
-            for mat_path in unstacked:
-                mat_path.rename(output_folder / mat_path.name)
-                LOG.debug("Moved %s to %s", mat_path.name, output_folder)
+            # Write CSV in format expected by converter
+            csv_path = output_folder / f"{path.stem}-square.csv"
+            matrix.to_csv(csv_path, index=True, header=False, float_format="%.10%")
+            LOG.debug("Written CSV in SATURNs square format to: %s", csv_path)
+
+            ufm_path = converter.square_csv_to_ufm(csv_path)
+            LOG.info("Written UFM: %s", ufm_path)
 
             LOG.info("Done %s / %s (%s)", i, len(matrices), f"{i / len(matrices):.0%}")
 
