@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "caf.mat"
-dynamic = ["version"]
+dynamic = ["version", "dependencies", "optional-dependencies"]
 description = "Conversion tool for matrix formats"
 readme = "README.md"
 license = { "file" = "LICENSE" }
@@ -16,30 +16,18 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
 ]
-dependencies = []
-
-[project.optional-dependencies]
-lint = [
-    "black>=22.6.0",
-    "mypy>=1.0.0",
-    "mypy_extensions>=1.0.0",
-    "pydocstyle[toml]>=6.1.1",
-    "pylint>=2.14.5",
-    "isort>=5.13",
-]
-
-test = [
-    "pytest>=7.4.0",
-    "pytest-cov>=4.1.0",
-    "pytest-xdist>=3.3.1",
-]
-
-edit_install = ["versioningit>=2.2.0"]
 
 [project.urls]
 "Bug Tracker" = "https://github.com/transport-for-the-north/caf.mat/issues"
 Homepage = "https://github.com/transport-for-the-north/caf.mat"
 Source = "https://github.com/transport-for-the-north/caf.mat"
+
+[tool.setuptools.dynamic]
+dependencies = { "file" = "requirements.txt" }
+
+[tool.setuptools.dynamic.optional-dependencies]
+dev = { "file" = "requirements_dev.txt" }
+docs = { "file" = "docs/requirements.txt" }
 
 # Packaging options
 [tool.setuptools.packages.find]
