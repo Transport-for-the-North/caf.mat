@@ -16,7 +16,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
-dependencies = ["tables>=3.10.1", "numpy>=2.1.2"]
+dependencies = ["tables>=3.10.1", "numpy>=2.0.2"]
 
 [project.optional-dependencies]
 lint = [
