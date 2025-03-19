@@ -14,7 +14,7 @@ import caf.mat as mat
 
 
 _LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-_TRACEBACK = ctk.arguments.getenv_bool("mat_TRACEBACK", False)
+_TRACEBACK = ctk.arguments.getenv_bool("MAT_TRACEBACK", False)
 
 
 def _create_arg_parser() -> argparse.ArgumentParser:

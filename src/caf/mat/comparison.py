@@ -1,12 +1,14 @@
 import dataclasses
 import pathlib
 import re
+import logging
 
 import pandas as pd
 import caf.toolkit as ctk
 
 from caf.mat import ufm_converter, omx_file
 
+LOG = logging.getLogger(__name__)
 
 
 class CompareMatrices(ctk.BaseConfig):
@@ -16,40 +18,57 @@ class CompareMatrices(ctk.BaseConfig):
     matrix_b_path: pathlib.Path
     matrix_b_name: str
     matrix_sector_system_path: ctk.translation.ZoneCorrespondencePath
-    cost_matrix_path: pathlib.Path
+    cost_matrix_path: pathlib.Path | None = None
     tld_sector_system_path: ctk.translation.ZoneCorrespondencePath | None = None
     bins: list[int] | None = None
 
-    def run(self, saturn_folder: pathlib.Path) -> None:
+    def run(self, saturn_folder: pathlib.Path, output_path: pathlib.Path) -> None:
+        LOG.info("Comparing matrices %s and %s", self.matrix_a_path, self.matrix_b_path)
+
+        LOG.info("Reading %s", self.matrix_a_path)
         stacked_matrix_a = read_ufm(self.matrix_a_path, saturn_folder)
+        LOG.info("Reading %s", self.matrix_b_path)
         stacked_matrix_b = read_ufm(self.matrix_b_path, saturn_folder)
 
         if stacked_matrix_a.keys() != stacked_matrix_b.keys():
             raise ValueError("Read in matrices do not contain the same keys")
 
-        matrix_sector_system = self.matrix_sector_system_path.read()
+        matrix_sector_system = self.matrix_sector_system_path.read(
+            factors_mandatory=True, generic_column_names=True
+        )
 
         tld_sector_system = None
         cost_matrix = None
 
         if self.cost_matrix_path is not None:
+            LOG.info("Reading %s", self.cost_matrix_path)
             cost_matrix = read_ufm(self.cost_matrix_path, saturn_folder)
 
             if cost_matrix.keys() != stacked_matrix_a.keys():
-                raise ValueError("Cost matrix does not contain the same keys as the other matrices")
+                raise ValueError(
+                    "Cost matrix does not contain the same keys as the other matrices"
+                )
 
         if self.tld_sector_system_path is not None:
-            tld_sector_system = self.tld_sector_system_path.read()
+            tld_sector_system = self.tld_sector_system_path.read(
+                factors_mandatory=True, generic_column_names=True
+            )
 
         for key in stacked_matrix_a.keys():
+            LOG.info("Comparing %s-%s", self.output_name, key)
 
-            with pd.ExcelWriter(self.out_path) as writer:
+            with pd.ExcelWriter(
+                output_path / f"{self.output_name}_comparison.xlsx",
+                if_sheet_exists="replace",
+            ) as writer:
+
                 compare_matrix(
                     writer=writer,
                     matrix_a=stacked_matrix_a[key],
-                    matrix_a_name=f"{self.matrix_a_name} - {key}",
+                    matrix_a_name=self.matrix_a_name,
                     matrix_b=stacked_matrix_b[key],
-                    matrix_b_name=f"{self.matrix_a_name} - {key}",
+                    matrix_b_name=self.matrix_b_name,
+                    level=str(key),
                     matrix_sector_system=matrix_sector_system,
                     cost_matrix=cost_matrix[key] if cost_matrix is not None else None,
                     bins=self.bins,
@@ -64,6 +83,7 @@ def compare_matrix(
     matrix_a_name: str,
     matrix_b: pd.DataFrame,
     matrix_b_name: str,
+    level: str,
     matrix_sector_system: pd.DataFrame,
     cost_matrix: pd.DataFrame | None,
     bins: list[int] | None,
@@ -105,7 +125,12 @@ def compare_matrix(
         raise ValueError("Both cost_matrix and bins must be provided")
 
     ctk.pandas_utils.compare_matrices_and_output(
-        writer, matrix_report_b, matrix_report_b, matrix_a_name, matrix_b_name
+        writer,
+        matrix_report_a,
+        matrix_report_b,
+        name_a=matrix_a_name,
+        name_b=matrix_b_name,
+        label=level,
     )
 
 
@@ -127,14 +152,17 @@ def read_ufm(
 
     return output
 
+
 class UFMComparison(ctk.BaseConfig):
     runs: list[CompareMatrices]
     out_path: pathlib.Path
     saturn_folder: pathlib.Path
 
     def run(self) -> None:
+        self.out_path.mkdir(parents=True, exist_ok=True)
         for run in self.runs:
-            run.run(self.saturn_folder)
+            run.run(self.saturn_folder, self.out_path)
 
     def log_file_path(self) -> pathlib.Path:
+        self.out_path.mkdir(parents=True, exist_ok=True)
         return self.out_path / "comparison.log"
