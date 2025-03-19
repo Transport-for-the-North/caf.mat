@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-    Module containing functionality to convert CSV matrices into
-    SATURN's UFM files.
+Module containing functionality to convert CSV matrices into
+SATURN's UFM files.
 """
 
 ##### IMPORTS #####

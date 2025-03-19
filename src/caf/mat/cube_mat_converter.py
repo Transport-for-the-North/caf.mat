@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-    Module for converting matrices to/from CUBE's .mat format.
+Module for converting matrices to/from CUBE's .mat format.
 """
 
 ##### IMPORTS #####
@@ -9,8 +9,8 @@
 import logging
 import re
 import subprocess
-from pathlib import Path
 import warnings
+from pathlib import Path
 
 ##### CONSTANTS #####
 

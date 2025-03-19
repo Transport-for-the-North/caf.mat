@@ -1,12 +1,15 @@
+# Built-Ins
 import dataclasses
+import logging
 import pathlib
 import re
-import logging
 
-import pandas as pd
+# Third Party
 import caf.toolkit as ctk
+import pandas as pd
 
-from caf.mat import ufm_converter, omx_file
+# Local Imports
+from caf.mat import omx_file, ufm_converter
 
 LOG = logging.getLogger(__name__)
 

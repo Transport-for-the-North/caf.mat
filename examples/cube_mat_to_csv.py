@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-    CUBE .mat to CSV
-    ================
+CUBE .mat to CSV
+================
 
-    Example code showing how to use caf.mat for converting CUBE
-    .mat files to CSVs.
+Example code showing how to use caf.mat for converting CUBE
+.mat files to CSVs.
 """
 
 ##### IMPORTS #####

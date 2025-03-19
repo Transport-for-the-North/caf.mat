@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-    CSVs to SATURN .UFM Files
-    =========================
+CSVs to SATURN .UFM Files
+=========================
 
-    Example code showing how to use caf.mat for converting CSVs
-    to SATURN .UFM files.
+Example code showing how to use caf.mat for converting CSVs
+to SATURN .UFM files.
 """
 
 ##### IMPORTS #####

@@ -1,17 +1,17 @@
-
-
-import os
+# Built-Ins
 import argparse
+import logging
+import os
 import pathlib
 import sys
-import tqdm.contrib.logging as tqdm_log
-import logging
 
+# Third Party
 import caf.toolkit as ctk
 import pydantic
+import tqdm.contrib.logging as tqdm_log
 
+# Local Imports
 import caf.mat as mat
-
 
 _LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 _TRACEBACK = ctk.arguments.getenv_bool("MAT_TRACEBACK", False)
@@ -47,7 +47,9 @@ def _create_arg_parser() -> argparse.ArgumentParser:
         type=pathlib.Path,
         help="path to YAML config file containing run parameters",
     )
-    nrtp_parser.set_defaults(dataclass_parse_func=_config_parse, model=mat.comparison.UFMComparison)
+    nrtp_parser.set_defaults(
+        dataclass_parse_func=_config_parse, model=mat.comparison.UFMComparison
+    )
 
     return parser
 
