@@ -1,3 +1,5 @@
 """Conversion tool for matrix formats"""
 
 from ._version import __version__
+from caf.mat import comparison
+
