@@ -36,43 +36,24 @@ def _create_arg_parser() -> argparse.ArgumentParser:
         description="List of all available sub-commands",
     )
 
-    nrtp_parser = subparsers.add_parser(
+    comparison_parser = subparsers.add_parser(
         "ufm-comparison",
         help="Compare 2 UFM matrices",
         description="Compare 2 UFM matrices using specified parameters from a config file",
         formatter_class=ctk.arguments.TidyUsageArgumentDefaultsHelpFormatter,
     )
-    nrtp_parser.add_argument(
-        "config_path",
-        type=pathlib.Path,
-        help="path to YAML config file containing run parameters",
-    )
-    nrtp_parser.set_defaults(
-        dataclass_parse_func=_config_parse, model=mat.comparison.UFMComparison
-    )
-
+    ufm_arguments = ctk.arguments.ModelArguments(mat.comparison.UFMComparison)
+    ufm_arguments.add_config_arguments(comparison_parser) 
+    
     return parser
 
-
-def _config_parse(
-    model: type[mat.comparison.UFMComparison], args: argparse.Namespace
-) -> ctk.BaseConfig:
-    """Load parameters from config file.
-
-    Parameters
-    ----------
-    args : argparse.Namespace
-        Parsed command-line arguments with a `config_path` attribute.
-    """
-    assert issubclass(model, ctk.BaseConfig)
-    return model.load_yaml(args.config_path)
 
 
 def _parse_args() -> mat.comparison.UFMComparison:
     parser = _create_arg_parser()
     args = parser.parse_args(None if len(sys.argv[1:]) > 0 else ["-h"])
     try:
-        return args.dataclass_parse_func(args.model, args)
+        return args.dataclass_parse_func(args)
     except (pydantic.ValidationError, FileNotFoundError) as exc:
         if _TRACEBACK:
             raise

@@ -1,4 +1,5 @@
 # Built-Ins
+import abc
 import dataclasses
 import logging
 import pathlib
@@ -14,27 +15,37 @@ from caf.mat import omx_file, ufm_converter
 LOG = logging.getLogger(__name__)
 
 
-class CompareMatrices(ctk.BaseConfig):
+@dataclasses.dataclass
+class UFMInput:
+    matrix_path: pathlib.Path
+    tp_factor: float
+
+
+@dataclasses.dataclass
+class Comparison(abc.ABC):
     output_name: pathlib.Path
-    matrix_a_path: pathlib.Path
     matrix_a_name: str
-    matrix_b_path: pathlib.Path
     matrix_b_name: str
     matrix_sector_system_path: ctk.translation.ZoneCorrespondencePath
     cost_matrix_path: pathlib.Path | None = None
     tld_sector_system_path: ctk.translation.ZoneCorrespondencePath | None = None
     bins: list[int] | None = None
 
+    @abc.abstractmethod
+    def extract_matrix(
+        self, saturn_folder: pathlib.Path, matrix_path: pathlib.Path | list[UFMInput]
+    ) -> dict[int, pd.DataFrame]:
+        pass
+
+    @abc.abstractmethod
+    def process_demand_matrices(
+        self, saturn_folder: pathlib.Path
+    ) -> tuple[dict[int, pd.DataFrame], dict[int, pd.DataFrame]]:
+        pass
+
     def run(self, saturn_folder: pathlib.Path, output_path: pathlib.Path) -> None:
-        LOG.info("Comparing matrices %s and %s", self.matrix_a_path, self.matrix_b_path)
 
-        LOG.info("Reading %s", self.matrix_a_path)
-        stacked_matrix_a = read_ufm(self.matrix_a_path, saturn_folder)
-        LOG.info("Reading %s", self.matrix_b_path)
-        stacked_matrix_b = read_ufm(self.matrix_b_path, saturn_folder)
-
-        if stacked_matrix_a.keys() != stacked_matrix_b.keys():
-            raise ValueError("Read in matrices do not contain the same keys")
+        stacked_matrix_a, stacked_matrix_b = self.process_demand_matrices(saturn_folder)
 
         matrix_sector_system = self.matrix_sector_system_path.read(
             factors_mandatory=True, generic_column_names=True
@@ -57,14 +68,11 @@ class CompareMatrices(ctk.BaseConfig):
                 factors_mandatory=True, generic_column_names=True
             )
 
-        for key in stacked_matrix_a.keys():
-            LOG.info("Comparing %s-%s", self.output_name, key)
+        with pd.ExcelWriter(output_path / f"{self.output_name}_comparison.xlsx") as writer:
 
-            with pd.ExcelWriter(
-                output_path / f"{self.output_name}_comparison.xlsx",
-                if_sheet_exists="replace",
-            ) as writer:
+            for key in stacked_matrix_a.keys():
 
+                LOG.info("Comparing %s-%s", self.output_name, key)
                 compare_matrix(
                     writer=writer,
                     matrix_a=stacked_matrix_a[key],
@@ -77,6 +85,64 @@ class CompareMatrices(ctk.BaseConfig):
                     bins=self.bins,
                     tld_sector_system=tld_sector_system,
                 )
+
+
+@dataclasses.dataclass(kw_only=True)
+class CompareMatrices(Comparison):
+    matrix_a_path: pathlib.Path
+    matrix_b_path: pathlib.Path
+
+    def process_demand_matrices(
+        self, saturn_folder: pathlib.Path
+    ) -> tuple[dict[int, pd.DataFrame], dict[int, pd.DataFrame]]:
+        LOG.info("Comparing matrices %s and %s", self.matrix_a_path, self.matrix_b_path)
+        matrix_a = self.extract_matrix(saturn_folder, self.matrix_a_path)
+        matrix_b = self.extract_matrix(saturn_folder, self.matrix_b_path)
+
+        if matrix_a.keys() != matrix_b.keys():
+            raise ValueError("Read in matrices do not contain the same keys")
+
+        return matrix_a, matrix_b
+
+    def extract_matrix(
+        self, saturn_path: pathlib.Path, matrix_path: pathlib.Path
+    ) -> dict[int, pd.DataFrame]:
+        LOG.info("Reading %s", matrix_path)
+        return read_ufm(matrix_path, saturn_path)
+
+
+@dataclasses.dataclass(kw_only=True)
+class CompareDays(Comparison):
+    matrix_a_paths: list[UFMInput]
+    matrix_b_paths: list[UFMInput]
+
+    def extract_matrix(
+        self, saturn_folder: pathlib.Path, matrix_paths: list[UFMInput]
+    ) -> dict[int, pd.DataFrame]:
+        matrices: dict[int, pd.DataFrame] = {}
+        for ufm in matrix_paths:
+            LOG.info("Reading %s", ufm.matrix_path)
+            for uc, matrix in read_ufm(ufm.matrix_path, saturn_folder).items():
+        
+                matrices[uc] = matrix * ufm.tp_factor + matrices.get(uc, 0)
+                LOG.debug(
+                    "adding to %s with tp factor %s: new total trips %s",
+                    uc,
+                    ufm.tp_factor,
+                    matrices[uc].sum().sum(),
+                )
+
+        return matrices
+
+    def process_demand_matrices(
+        self, saturn_folder: pathlib.Path
+    ) -> tuple[dict[int, pd.DataFrame], dict[int, pd.DataFrame]]:
+        matrix_a = self.extract_matrix(saturn_folder, self.matrix_a_paths)
+        matrix_b = self.extract_matrix(saturn_folder, self.matrix_b_paths)
+        if matrix_a.keys() != matrix_b.keys():
+            raise ValueError("Read in matrices do not contain the same keys")
+
+        return matrix_a, matrix_b
 
 
 def compare_matrix(
@@ -157,14 +223,20 @@ def read_ufm(
 
 
 class UFMComparison(ctk.BaseConfig):
-    runs: list[CompareMatrices]
     out_path: pathlib.Path
     saturn_folder: pathlib.Path
+    ufm_comparisons: list[CompareMatrices] | None = None
+    day_comparisons: list[CompareDays] | None = None
 
     def run(self) -> None:
         self.out_path.mkdir(parents=True, exist_ok=True)
-        for run in self.runs:
-            run.run(self.saturn_folder, self.out_path)
+        runs: list[Comparison] = []
+        if self.ufm_comparisons is not None:
+            runs.extend(self.ufm_comparisons)
+        if self.day_comparisons is not None:
+            runs.extend(self.day_comparisons)
+        for r in runs:
+            r.run(self.saturn_folder, self.out_path)
 
     def log_file_path(self) -> pathlib.Path:
         self.out_path.mkdir(parents=True, exist_ok=True)
