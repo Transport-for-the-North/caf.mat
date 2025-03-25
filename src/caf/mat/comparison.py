@@ -22,30 +22,48 @@ class UFMInput:
 
 
 @dataclasses.dataclass
-class Comparison(abc.ABC):
-    output_name: pathlib.Path
+class BaseComparison(abc.ABC):
+    """base class for comparing UFM matrices"""
+
+    output_name: str
+    """Name to label the output file."""
     matrix_a_name: str
+    """Name to label the first matrix in the comparison."""
     matrix_b_name: str
+    """Name to label the second matrix in the comparison."""
     matrix_sector_system_path: ctk.translation.ZoneCorrespondencePath
+    """Path to the matrix sector system."""
     cost_matrix_path: pathlib.Path | None = None
+    """Path to the cost matrix."""
     tld_sector_system_path: ctk.translation.ZoneCorrespondencePath | None = None
+    """Path to the TLD sector system."""
     bins: list[int] | None = None
+    """Bins for the trip length distribution."""
 
     @abc.abstractmethod
-    def extract_matrix(
+    def _extract_matrix(
         self, saturn_folder: pathlib.Path, matrix_path: pathlib.Path | list[UFMInput]
     ) -> dict[int, pd.DataFrame]:
         pass
 
     @abc.abstractmethod
-    def process_demand_matrices(
+    def _process_demand_matrices(
         self, saturn_folder: pathlib.Path
     ) -> tuple[dict[int, pd.DataFrame], dict[int, pd.DataFrame]]:
         pass
 
     def run(self, saturn_folder: pathlib.Path, output_path: pathlib.Path) -> None:
+        """Run the comparison between matrices a and b.
 
-        stacked_matrix_a, stacked_matrix_b = self.process_demand_matrices(saturn_folder)
+        Parameters
+        ----------
+        saturn_folder : pathlib.Path
+            Path to the saturn folder that will be used to convert the UFMs to OMX before reading in.
+        output_path : pathlib.Path
+            Path to the output directory.
+        """
+
+        stacked_matrix_a, stacked_matrix_b = self._process_demand_matrices(saturn_folder)
 
         matrix_sector_system = self.matrix_sector_system_path.read(
             factors_mandatory=True, generic_column_names=True
@@ -88,23 +106,25 @@ class Comparison(abc.ABC):
 
 
 @dataclasses.dataclass(kw_only=True)
-class CompareMatrices(Comparison):
+class CompareMatrices(BaseComparison):
     matrix_a_path: pathlib.Path
+    """Path to the first matrix in the comparison."""
     matrix_b_path: pathlib.Path
+    """Path to the second matrix in the comparison."""
 
-    def process_demand_matrices(
+    def _process_demand_matrices(
         self, saturn_folder: pathlib.Path
     ) -> tuple[dict[int, pd.DataFrame], dict[int, pd.DataFrame]]:
         LOG.info("Comparing matrices %s and %s", self.matrix_a_path, self.matrix_b_path)
-        matrix_a = self.extract_matrix(saturn_folder, self.matrix_a_path)
-        matrix_b = self.extract_matrix(saturn_folder, self.matrix_b_path)
+        matrix_a = self._extract_matrix(saturn_folder, self.matrix_a_path)
+        matrix_b = self._extract_matrix(saturn_folder, self.matrix_b_path)
 
         if matrix_a.keys() != matrix_b.keys():
             raise ValueError("Read in matrices do not contain the same keys")
 
         return matrix_a, matrix_b
 
-    def extract_matrix(
+    def _extract_matrix(
         self, saturn_path: pathlib.Path, matrix_path: pathlib.Path
     ) -> dict[int, pd.DataFrame]:
         LOG.info("Reading %s", matrix_path)
@@ -112,18 +132,20 @@ class CompareMatrices(Comparison):
 
 
 @dataclasses.dataclass(kw_only=True)
-class CompareDays(Comparison):
+class CompareDays(BaseComparison):
     matrix_a_paths: list[UFMInput]
+    """Matrices and factors to build the first day matrix in the comparison."""
     matrix_b_paths: list[UFMInput]
+    """Matrices and factors to build the second day matrix in the comparison."""
 
-    def extract_matrix(
+    def _extract_matrix(
         self, saturn_folder: pathlib.Path, matrix_paths: list[UFMInput]
     ) -> dict[int, pd.DataFrame]:
         matrices: dict[int, pd.DataFrame] = {}
         for ufm in matrix_paths:
             LOG.info("Reading %s", ufm.matrix_path)
             for uc, matrix in read_ufm(ufm.matrix_path, saturn_folder).items():
-        
+
                 matrices[uc] = matrix * ufm.tp_factor + matrices.get(uc, 0)
                 LOG.debug(
                     "adding to %s with tp factor %s: new total trips %s",
@@ -134,11 +156,11 @@ class CompareDays(Comparison):
 
         return matrices
 
-    def process_demand_matrices(
+    def _process_demand_matrices(
         self, saturn_folder: pathlib.Path
     ) -> tuple[dict[int, pd.DataFrame], dict[int, pd.DataFrame]]:
-        matrix_a = self.extract_matrix(saturn_folder, self.matrix_a_paths)
-        matrix_b = self.extract_matrix(saturn_folder, self.matrix_b_paths)
+        matrix_a = self._extract_matrix(saturn_folder, self.matrix_a_paths)
+        matrix_b = self._extract_matrix(saturn_folder, self.matrix_b_paths)
         if matrix_a.keys() != matrix_b.keys():
             raise ValueError("Read in matrices do not contain the same keys")
 
@@ -158,6 +180,31 @@ def compare_matrix(
     bins: list[int] | None,
     tld_sector_system: pd.DataFrame | None,
 ) -> None:
+    """Compare two square matrices and output the results to an Excel file.
+
+    Parameters
+    ----------
+    writer : pd.ExcelWriter
+        Excel writer object to write the output to.
+    matrix_a : pd.DataFrame
+        first matrix to compare.
+    matrix_a_name : str
+        Name to label the first matrix in the comparison.
+    matrix_b : pd.DataFrame
+        second matrix to compare.
+    matrix_b_name : str
+        Name to label the second matrix in the comparison.
+    level : str
+        Level (usually user-class) of the matrices being compared.
+    matrix_sector_system : pd.DataFrame
+        Matrix sector system to translate the matrices.
+    cost_matrix : pd.DataFrame | None
+        Cost matrix to calculate trip length distribution.
+    bins : list[int] | None
+        Bins for the trip length distribution.
+    tld_sector_system : pd.DataFrame | None
+        TLD sector system to translate the matrices.
+    """
     matrix_report_a = ctk.pandas_utils.MatrixReport(
         matrix=matrix_a,
         translation_factors=matrix_sector_system,
@@ -206,6 +253,24 @@ def compare_matrix(
 def read_ufm(
     matrix_path: pathlib.Path, saturn_folder: pathlib.Path
 ) -> dict[int, pd.DataFrame]:
+    """Read in a UFM matrix.
+
+    Converts the UFM matrix to OMX in the same directory using SATURN as the UFM
+    and reads in all matrix levels. The UFM levels names must contain
+    l01, l02, l03, etc. where the two digit number is the userclass/level.
+    Parameters
+    ----------
+    matrix_path : pathlib.Path
+        Path to the UFM matrix.
+    saturn_folder : pathlib.Path
+        Path to the saturn folder to use.
+
+    Returns
+    -------
+    dict[int, pd.DataFrame]
+        Stacked matrices, where the key is the userclass/level
+        and the value is the matrix.
+    """
     converter = ufm_converter.UFMConverter(saturn_folder)
     omx_path = converter.ufm_to_omx(matrix_path)
 
@@ -223,14 +288,21 @@ def read_ufm(
 
 
 class UFMComparison(ctk.BaseConfig):
+    """Configuration for comparing UFM matrices."""
+
     out_path: pathlib.Path
+    """Path to the output directory."""
     saturn_folder: pathlib.Path
+    """Path to the saturn folder. Be mindful of the version of SATURN being used."""
     ufm_comparisons: list[CompareMatrices] | None = None
+    """Comparisons between two UFM matrices."""
     day_comparisons: list[CompareDays] | None = None
+    """Comparison between two 24hr matrices, built from time period split UFMs."""
 
     def run(self) -> None:
+        """Run the UFM comparison functionaliy."""
         self.out_path.mkdir(parents=True, exist_ok=True)
-        runs: list[Comparison] = []
+        runs: list[BaseComparison] = []
         if self.ufm_comparisons is not None:
             runs.extend(self.ufm_comparisons)
         if self.day_comparisons is not None:
@@ -239,5 +311,6 @@ class UFMComparison(ctk.BaseConfig):
             r.run(self.saturn_folder, self.out_path)
 
     def log_file_path(self) -> pathlib.Path:
+        """Path to the log file for the comparison."""
         self.out_path.mkdir(parents=True, exist_ok=True)
         return self.out_path / "comparison.log"
