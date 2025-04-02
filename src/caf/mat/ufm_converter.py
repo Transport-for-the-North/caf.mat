@@ -11,11 +11,13 @@ import enum
 import logging
 import os
 import pathlib
-import subprocess
 import re
+import subprocess
+
 # Third Party
 import pandas as pd
 
+# Local Imports
 from caf.mat import omx_file
 
 ##### CONSTANTS #####
@@ -496,9 +498,8 @@ def cmd_strip(stdout: bytes) -> str:
     return stdout.decode().strip().replace("\r\n", "\n")
 
 
-
 def read_ufm(
-    matrix_path: pathlib.Path, saturn_folder: pathlib.Path, levels: list[int]|None = None
+    matrix_path: pathlib.Path, saturn_folder: pathlib.Path, levels: list[int] | None = None
 ) -> dict[int, pd.DataFrame]:
     """Read in a UFM matrix.
 
@@ -536,8 +537,8 @@ def read_ufm(
                 continue
         else:
             output[matrix_level] = omx_reader.get_matrix_level_dataframe(level_name)
-    
-    if len(output)==0:
+
+    if len(output) == 0:
         if levels is not None:
             raise ValueError("No levels returned. (Hint are the levels inputted in the UFM)")
         raise ValueError("No levels found.")

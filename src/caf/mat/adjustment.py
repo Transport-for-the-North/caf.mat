@@ -1,13 +1,17 @@
+# Built-Ins
 import dataclasses
 import logging
 import pathlib
+
+# Third Party
+import caf.toolkit as ctk
 import pandas as pd
 
-import caf.toolkit as ctk
-
+# Local Imports
 from caf.mat import ufm_converter
 
 LOG = logging.getLogger(__name__)
+
 
 @dataclasses.dataclass
 class MatrixSectorScaling:
@@ -17,10 +21,12 @@ class MatrixSectorScaling:
     sector_system_path: ctk.translation.ZoneCorrespondencePath
     levels: list[int] | None = None
 
-    def run(self, saturn_path: pathlib.Path, out_path: pathlib.Path, output_working: bool = False):
+    def run(
+        self, saturn_path: pathlib.Path, out_path: pathlib.Path, output_working: bool = False
+    ):
         LOG.debug("Controling matrix - %s to - %s", self.adjustment_ufm, self.control_ufm)
 
-        working_dir = out_path /"working"
+        working_dir = out_path / "working"
         if output_working:
             working_dir.mkdir(exist_ok=True)
         LOG.debug("reading in UFMS: adj - %s", self.adjustment_ufm)
@@ -28,13 +34,17 @@ class MatrixSectorScaling:
             self.adjustment_ufm, saturn_path, self.levels
         )
         LOG.debug("reading in UFMS: cntrl - %s", self.control_ufm)
-        control_matrices: dict[int, pd.DataFrame] = ufm_converter.read_ufm(self.control_ufm, saturn_path, self.levels)
+        control_matrices: dict[int, pd.DataFrame] = ufm_converter.read_ufm(
+            self.control_ufm, saturn_path, self.levels
+        )
 
         if adjustment_matrices.keys() != control_matrices.keys():
             raise KeyError("Adjustment matrix and control matrix do not have matching levels.")
 
-        LOG.debug("reading in sector system: %s",self.sector_system_path)
-        sector_system = self.sector_system_path.read(generic_column_names=True,factors_mandatory=False)
+        LOG.debug("reading in sector system: %s", self.sector_system_path)
+        sector_system = self.sector_system_path.read(
+            generic_column_names=True, factors_mandatory=False
+        )
 
         for level, adj_matrix in adjustment_matrices.items():
             LOG.info("Adjusting level: %s", level)
@@ -54,16 +64,22 @@ class MatrixSectorScaling:
             sector_factors = control_sector_matrix / adj_sector_matrix
             sector_factors.name = "factors"
             ctk.pandas_utils.long_to_wide_infill(sector_factors).to_csv(
-                    out_path / f"{self.name}_{level}_sector_factors.csv"
+                out_path / f"{self.name}_{level}_sector_factors.csv"
             )
 
             if output_working:
                 LOG.debug("outputting intermediary outputs")
 
-                adj_sector_matrix.to_csv(working_dir/f"{self.name}_{level}_var_sector_matrix.csv")
-                adj_matrix.to_csv(working_dir/f"{self.name}_{level}_var_matrix.csv")
-                control_sector_matrix.to_csv(working_dir/f"{self.name}_{level}_cntrl_sector_matrix.csv")
-                control_matrices[level].to_csv(working_dir/f"{self.name}_{level}_cntrl_matrix.csv")
+                adj_sector_matrix.to_csv(
+                    working_dir / f"{self.name}_{level}_var_sector_matrix.csv"
+                )
+                adj_matrix.to_csv(working_dir / f"{self.name}_{level}_var_matrix.csv")
+                control_sector_matrix.to_csv(
+                    working_dir / f"{self.name}_{level}_cntrl_sector_matrix.csv"
+                )
+                control_matrices[level].to_csv(
+                    working_dir / f"{self.name}_{level}_cntrl_matrix.csv"
+                )
 
             LOG.debug("adjusting matrix")
             adj_matrix_sectors_labelled = adj_matrix_sectors_labelled.merge(
@@ -76,7 +92,7 @@ class MatrixSectorScaling:
                 adj_matrix_sectors_labelled.set_index(["origin", "destination"])["demand"]
             )
             LOG.debug("writing out matrix")
-            adjusted_matrix.to_csv(out_path/f"{self.name}_{level}_adjusted_matrix.csv")
+            adjusted_matrix.to_csv(out_path / f"{self.name}_{level}_adjusted_matrix.csv")
 
 
 def _label_sectors_matrix(

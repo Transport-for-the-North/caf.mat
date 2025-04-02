@@ -75,8 +75,8 @@ class BaseComparison(abc.ABC):
         if self.cost_matrix_path is not None:
             LOG.info("Reading %s", self.cost_matrix_path)
             cost_matrix = pd.read_csv(self.cost_matrix_path, index_col=0)
-            #TODO(kf): change this to handle UFM too.
-            #if cost_matrix.keys() != stacked_matrix_a.keys():
+            # TODO(kf): change this to handle UFM too.
+            # if cost_matrix.keys() != stacked_matrix_a.keys():
             #    raise ValueError(
             #        "Cost matrix does not contain the same keys as the other matrices"
             #    )
@@ -248,8 +248,6 @@ def compare_matrix(
         name_b=matrix_b_name,
         label=level,
     )
-
-
 
 
 class UFMComparison(ctk.BaseConfig):
