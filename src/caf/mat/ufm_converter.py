@@ -12,9 +12,11 @@ import logging
 import os
 import pathlib
 import subprocess
-
+import re
 # Third Party
 import pandas as pd
+
+from caf.mat import omx_file
 
 ##### CONSTANTS #####
 LOG = logging.getLogger(__name__)
@@ -492,3 +494,41 @@ def update_env(
 def cmd_strip(stdout: bytes) -> str:
     """Convert to str and strip newlines from subprocess `stdout` or `stderr`."""
     return stdout.decode().strip().replace("\r\n", "\n")
+
+
+
+def read_ufm(
+    matrix_path: pathlib.Path, saturn_folder: pathlib.Path
+) -> dict[int, pd.DataFrame]:
+    """Read in a UFM matrix.
+
+    Converts the UFM matrix to OMX in the same directory using SATURN as the UFM
+    and reads in all matrix levels. The UFM levels names must contain
+    l01, l02, l03, etc. where the two digit number is the userclass/level.
+    Parameters
+    ----------
+    matrix_path : pathlib.Path
+        Path to the UFM matrix.
+    saturn_folder : pathlib.Path
+        Path to the saturn folder to use.
+
+    Returns
+    -------
+    dict[int, pd.DataFrame]
+        Stacked matrices, where the key is the userclass/level
+        and the value is the matrix.
+    """
+    converter = UFMConverter(saturn_folder)
+    omx_path = converter.ufm_to_omx(matrix_path)
+
+    omx_reader = omx_file.OMXFile(omx_path)
+    output = {}
+    for level_name in omx_reader.matrix_levels:
+        matched = re.match(r"^l(\d{2})", level_name, flags=re.IGNORECASE)
+        if matched is None:
+            continue
+        level = int(matched.group(1))
+
+        output[level] = omx_reader.get_matrix_level_dataframe(level_name)
+
+    return output

@@ -74,12 +74,12 @@ class BaseComparison(abc.ABC):
 
         if self.cost_matrix_path is not None:
             LOG.info("Reading %s", self.cost_matrix_path)
-            cost_matrix = read_ufm(self.cost_matrix_path, saturn_folder)
-
-            if cost_matrix.keys() != stacked_matrix_a.keys():
-                raise ValueError(
-                    "Cost matrix does not contain the same keys as the other matrices"
-                )
+            cost_matrix = pd.read_csv(self.cost_matrix_path, index_col=0)
+            #TODO(kf): change this to handle UFM too.
+            #if cost_matrix.keys() != stacked_matrix_a.keys():
+            #    raise ValueError(
+            #        "Cost matrix does not contain the same keys as the other matrices"
+            #    )
 
         if self.tld_sector_system_path is not None:
             tld_sector_system = self.tld_sector_system_path.read(
@@ -99,7 +99,7 @@ class BaseComparison(abc.ABC):
                     matrix_b_name=self.matrix_b_name,
                     level=str(key),
                     matrix_sector_system=matrix_sector_system,
-                    cost_matrix=cost_matrix[key] if cost_matrix is not None else None,
+                    cost_matrix=cost_matrix if cost_matrix is not None else None,
                     bins=self.bins,
                     tld_sector_system=tld_sector_system,
                 )
@@ -128,7 +128,7 @@ class CompareMatrices(BaseComparison):
         self, saturn_path: pathlib.Path, matrix_path: pathlib.Path
     ) -> dict[int, pd.DataFrame]:
         LOG.info("Reading %s", matrix_path)
-        return read_ufm(matrix_path, saturn_path)
+        return ufm_converter.read_ufm(matrix_path, saturn_path)
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -144,7 +144,7 @@ class CompareDays(BaseComparison):
         matrices: dict[int, pd.DataFrame] = {}
         for ufm in matrix_paths:
             LOG.info("Reading %s", ufm.matrix_path)
-            for uc, matrix in read_ufm(ufm.matrix_path, saturn_folder).items():
+            for uc, matrix in ufm_converter.read_ufm(ufm.matrix_path, saturn_folder).items():
 
                 matrices[uc] = matrix * ufm.tp_factor + matrices.get(uc, 0)
                 LOG.debug(
@@ -250,41 +250,6 @@ def compare_matrix(
     )
 
 
-def read_ufm(
-    matrix_path: pathlib.Path, saturn_folder: pathlib.Path
-) -> dict[int, pd.DataFrame]:
-    """Read in a UFM matrix.
-
-    Converts the UFM matrix to OMX in the same directory using SATURN as the UFM
-    and reads in all matrix levels. The UFM levels names must contain
-    l01, l02, l03, etc. where the two digit number is the userclass/level.
-    Parameters
-    ----------
-    matrix_path : pathlib.Path
-        Path to the UFM matrix.
-    saturn_folder : pathlib.Path
-        Path to the saturn folder to use.
-
-    Returns
-    -------
-    dict[int, pd.DataFrame]
-        Stacked matrices, where the key is the userclass/level
-        and the value is the matrix.
-    """
-    converter = ufm_converter.UFMConverter(saturn_folder)
-    omx_path = converter.ufm_to_omx(matrix_path)
-
-    omx_reader = omx_file.OMXFile(omx_path)
-    output = {}
-    for level_name in omx_reader.matrix_levels:
-        matched = re.match(r"^l(\d{2})", level_name, flags=re.IGNORECASE)
-        if matched is None:
-            continue
-        level = int(matched.group(1))
-
-        output[level] = omx_reader.get_matrix_level_dataframe(level_name)
-
-    return output
 
 
 class UFMComparison(ctk.BaseConfig):
