@@ -42,14 +42,23 @@ def _create_arg_parser() -> argparse.ArgumentParser:
         description="Compare 2 UFM matrices using specified parameters from a config file",
         formatter_class=ctk.arguments.TidyUsageArgumentDefaultsHelpFormatter,
     )
-    ufm_arguments = ctk.arguments.ModelArguments(mat.comparison.UFMComparison)
-    ufm_arguments.add_config_arguments(comparison_parser) 
+    comparsion_arguments = ctk.arguments.ModelArguments(mat.comparison.UFMComparison)
+    comparsion_arguments.add_config_arguments(comparison_parser)
+    
+    adjustment_parser = subparsers.add_parser(
+        "adjust",
+        help="Adjust 1 UFM using to match sectoral sums of another.",
+        description="Adjust 1 UFM using to match sectoral sums of another. Outputs in CSV format.",
+        formatter_class=ctk.arguments.TidyUsageArgumentDefaultsHelpFormatter,
+    )
+    adjustment_arguments = ctk.arguments.ModelArguments(mat.adjustment.MatrixAdjustmentConfig)
+    adjustment_arguments.add_config_arguments(adjustment_parser) 
     
     return parser
 
 
 
-def _parse_args() -> mat.comparison.UFMComparison:
+def _parse_args() -> mat.comparison.UFMComparison|mat.adjustment.MatrixAdjustmentConfig:
     parser = _create_arg_parser()
     args = parser.parse_args(None if len(sys.argv[1:]) > 0 else ["-h"])
     try:

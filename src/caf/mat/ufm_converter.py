@@ -498,7 +498,7 @@ def cmd_strip(stdout: bytes) -> str:
 
 
 def read_ufm(
-    matrix_path: pathlib.Path, saturn_folder: pathlib.Path
+    matrix_path: pathlib.Path, saturn_folder: pathlib.Path, levels: list[int]|None = None
 ) -> dict[int, pd.DataFrame]:
     """Read in a UFM matrix.
 
@@ -525,10 +525,21 @@ def read_ufm(
     output = {}
     for level_name in omx_reader.matrix_levels:
         matched = re.match(r"^l(\d{2})", level_name, flags=re.IGNORECASE)
+
         if matched is None:
             continue
-        level = int(matched.group(1))
+        matrix_level = int(matched.group(1))
 
-        output[level] = omx_reader.get_matrix_level_dataframe(level_name)
+        if levels is not None:
+            if matrix_level in levels:
+                output[matrix_level] = omx_reader.get_matrix_level_dataframe(level_name)
+                continue
+        else:
+            output[matrix_level] = omx_reader.get_matrix_level_dataframe(level_name)
+    
+    if len(output)==0:
+        if levels is not None:
+            raise ValueError("No levels returned. (Hint are the levels inputted in the UFM)")
+        raise ValueError("No levels found.")
 
     return output
