@@ -12,6 +12,8 @@ from caf.mat import ufm_converter
 
 LOG = logging.getLogger(__name__)
 
+CHECK_DP_RESOLUTION = 6
+
 
 @dataclasses.dataclass
 class MatrixSectorScaling:
@@ -93,6 +95,17 @@ class MatrixSectorScaling:
             )
             LOG.debug("writing out matrix")
             adjusted_matrix.to_csv(out_path / f"{self.name}_{level}_adjusted_matrix.csv")
+
+            adj_sector_check = adj_matrix_sectors_labelled.groupby(
+                ["origin_sector", "destination_sector"]
+            )["demand"].sum()
+
+            if not adj_sector_check.round(CHECK_DP_RESOLUTION).equals(
+                control_sector_matrix.round(CHECK_DP_RESOLUTION)
+            ):
+                raise ValueError(
+                    "Sector values of the adjusted matrix and control matrix do not match"
+                )
 
 
 def _label_sectors_matrix(

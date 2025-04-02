@@ -13,6 +13,7 @@ import os
 import pathlib
 import re
 import subprocess
+import warnings
 
 # Third Party
 import pandas as pd
@@ -528,7 +529,12 @@ def read_ufm(
         matched = re.match(r"^l(\d{2})", level_name, flags=re.IGNORECASE)
 
         if matched is None:
+            warnings.warn(
+                f"Found level name that did not match expected format (two digits describing uc) {level_name}",
+                RuntimeWarning,
+            )
             continue
+
         matrix_level = int(matched.group(1))
 
         if levels is not None:
