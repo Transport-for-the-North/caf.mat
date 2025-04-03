@@ -136,6 +136,7 @@ def od_to_pa(
     th_mats = dict()
     nhb_mats = dict()
     nhb_24 = 0
+    nhb_props = None
     for tp in tp_needed:
         th_path = th_name.format(tp)
         th_mats[tp] = pd.read_csv(od_dir / th_path, index_col=0)
@@ -162,7 +163,10 @@ def od_to_pa(
                 nhb_mats[tp] *= tp_factors[tp]
         if nhb is not None:
             nhb_24 += nhb_mats[tp]
-    return nhb_24
+    if nhb:
+        nhb_tp = pd.concat(nhb_mats)
+        nhb_props = nhb_tp / nhb_24
+    return nhb_24, nhb_props
 
     # Make sure all matrices have the same OD pairs
     n_rows, n_cols = fh_mats[list(fh_mats.keys())[0]].shape
@@ -207,7 +211,7 @@ def od_to_pa(
 
     adj = (th_orig + fh_orig) / (th_check + fh_check)
 
-    return tour_props, fh, adj, nhb_24
+    return tour_props, fh, adj, nhb_24, nhb_props
 
 def decomp_by_mats(synth_fr: pd.DataFrame,
                    synth_to: pd.DataFrame,
@@ -284,7 +288,8 @@ if __name__ == "__main__":
             nhb_name = None
         else:
             nhb_name = f"noham_m3_ts{'{}'}_uc{uc}nhb.csv"
-        tour_props, pa, adj_factors, nhb_24 = od_to_pa(od_dir,
+        #tour_props, pa, adj_factors,
+            nhb_24, nhb_props = od_to_pa(od_dir,
                  f"noham_m3_ts{'{}'}_uc{uc}to.csv",
                  f"noham_m3_ts{'{}'}_uc{uc}fr.csv",
                  phi.loc[uc].unstack().squeeze().values,
@@ -294,10 +299,11 @@ if __name__ == "__main__":
                           nhb_name)
 
 
-        tour_props.to_hdf(rf"E:\noham\rebase\bronze\post-me\pa\tour_props_uc{uc}.h5", key='data')
-        adj_factors.to_hdf(rf"E:\noham\rebase\bronze\post-me\pa\adj_factors_uc{uc}.h5", key='data')
-        pa.to_hdf(rf"E:\noham\rebase\bronze\post-me\pa\pa_uc{uc}.h5",
-                           key='data')
-        pa.sum(axis=1).to_csv(rf"E:\noham\rebase\bronze\post-me\24hrpa_{uc}.csv")
+        # tour_props.to_hdf(rf"E:\noham\rebase\bronze\post-me\pa\tour_props_uc{uc}.h5", key='data')
+        # adj_factors.to_hdf(rf"E:\noham\rebase\bronze\post-me\pa\adj_factors_uc{uc}.h5", key='data')
+        # pa.to_hdf(rf"E:\noham\rebase\bronze\post-me\pa\pa_uc{uc}.h5",
+        #                    key='data')
+        # pa.sum(axis=1).to_csv(rf"E:\noham\rebase\bronze\post-me\24hrpa_{uc}.csv")
         if isinstance(nhb_24, pd.DataFrame):
             nhb_24.to_csv(rf"E:\temp\ntem\inputs\PA\24hrpa_uc{uc}_nhb.csv")
+            nhb_props.to_hdf(rf"E:\temp\ntem\inputs\PA\nhb_props_uc{uc}.h5", key='data')
