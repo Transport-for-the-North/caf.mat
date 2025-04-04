@@ -6,6 +6,7 @@
 # Built-Ins
 import logging
 from pathlib import Path
+from typing import Literal
 
 # Third Party
 import pandas as pd
@@ -121,6 +122,22 @@ def balance_fh_th_by_op(fh, th, tps, seed_val):
     th.loc[th[tps[-1]] < 0, tps[-1]] *= -seed_val
     return fh, th
 
+def balance_fh_th_conserve_24hr(fh, th):
+    fh_24 = fh.sum(axis=1)#.replace(0,1)
+    th_24 = th.sum(axis=1)#.replace(0,1)
+    fh.loc[(fh_24 == 0) & (th_24 > 0)] = th.loc[(fh_24 == 0) & (th_24 > 0)] / 2
+    th.loc[(fh_24 == 0) & (th_24 > 0)] = th.loc[(fh_24 == 0) & (th_24 > 0)] / 2
+    th.loc[(th_24 == 0) & (fh_24 > 0)] = fh.loc[(th_24 == 0) & (fh_24 > 0)] / 2
+    fh.loc[(th_24 == 0) & (fh_24 > 0)] = fh.loc[(th_24 == 0) & (fh_24 > 0)] / 2
+    fh_24 = fh.sum(axis=1).replace(0,1)
+    th_24 = th.sum(axis=1).replace(0,1)
+    ave = (fh_24 + th_24) / 2
+    fh_factor = ave / fh_24
+    th_factor = ave / th_24
+    fh_bal = fh.mul(fh_factor, axis=0)
+    th_bal = th.mul(th_factor, axis=0)
+
+    return fh_bal, th_bal
 
 def od_to_pa(
         od_dir: Path,
@@ -128,6 +145,7 @@ def od_to_pa(
         fh_name: str,
         phi_factors,
         tp_needed: list,
+        method: Literal['op', '24'],
         occ_factors: pd.Series | None = None,
         tp_factors: dict[int: float] | None = None,
         nhb: str | None = None
@@ -166,7 +184,6 @@ def od_to_pa(
     if nhb:
         nhb_tp = pd.concat(nhb_mats)
         nhb_props = nhb_tp / nhb_24
-    return nhb_24, nhb_props
 
     # Make sure all matrices have the same OD pairs
     n_rows, n_cols = fh_mats[list(fh_mats.keys())[0]].shape
@@ -190,17 +207,26 @@ def od_to_pa(
     th = th.unstack(level='to')
     th_orig = th.copy()
 
-    fh, th = balance_fh_th_by_op(fh, th, tp_needed, phi_factors[-1][-1])
+    if method == '24':
+        fh, th = balance_fh_th_conserve_24hr(fh, th)
+    elif method == 'op':
+        fh, th = balance_fh_th_by_op(fh, th, tp_needed, 0)
 
     phi = pd.DataFrame(phi_factors, index=tp_needed, columns=tp_needed).stack()
     seed_index = pd.MultiIndex.from_product([tp_needed, tp_needed, orig_vals, dest_vals],
                                             names=['from', 'to', 'o', 'd'])
     phi = phi.reindex(seed_index)
-    fhx = fh.div(fh.sum(axis=1), axis=0).fillna(0.25).stack().to_xarray()
-    thx = th.div(th.sum(axis=1), axis=0).fillna(0.25).stack().to_xarray()
+    fh_sum = fh.sum(axis=1)
+    # fh = fh.div(fh_sum.replace(0,1), axis=0)
+    fh.loc[fh_sum == 0] = (0.25, 0.25, 0.25, 0.25)
+    fhx = fh.stack().to_xarray()
+    th_sum = th.sum(axis=1)
+    # th = th.div(th_sum.replace(0, 1), axis=0)
+    th.loc[th_sum == 0] = (0.25, 0.25, 0.25, 0.25)
+    thx = th.stack().to_xarray()
 
     # ## CALL INNER FUNCTION ## #
-    furness_return_vals = furness.numpy_ndim_furness(phi.to_xarray(), [fhx, thx], len(tp_needed) * len(orig_vals) * len(dest_vals))
+    furness_return_vals = furness.pandas_ndim_furness(phi.to_xarray(), [fh, th], len(tp_needed) * len(orig_vals) * len(dest_vals))
 
     pa_24 = fh.sum(axis=1)
     tour_props = furness_return_vals.to_dataframe(name='trips')
@@ -234,12 +260,12 @@ def decomp_by_mats(synth_fr: pd.DataFrame,
 
 
 if __name__ == "__main__":
-    # hb_to_nhb = {1:4, 3:5}
-    # uc_to_name = {1: 'business',
-    #               2: 'commute',
-    #               3: 'other'}
+    hb_to_nhb = {1:4, 3:5}
+    uc_to_name = {1: 'business',
+                  2: 'commute',
+                  3: 'other'}
     # for uc in [1,2,3]:
-    #     for tp in [1,2,3]:
+    #     for tp in [1,2,3,4]:
     #         synth_fr = pd.read_csv(rf"I:\NorMITs Distribution\voa_gb_2023_uni\mat\vdm\synthetic\noham_m3_ts{tp}_uc{uc}fr.csv.bz2", index_col=[0, 1], names=['o','d','trips']).squeeze().unstack()
     #         synth_to = pd.read_csv(
     #             rf"I:\NorMITs Distribution\voa_gb_2023_uni\mat\vdm\synthetic\noham_m3_ts{tp}_uc{uc}to.csv.bz2", index_col=[0, 1], names=['o','d','trips']).squeeze().unstack()
@@ -288,22 +314,23 @@ if __name__ == "__main__":
             nhb_name = None
         else:
             nhb_name = f"noham_m3_ts{'{}'}_uc{uc}nhb.csv"
-        #tour_props, pa, adj_factors,
-            nhb_24, nhb_props = od_to_pa(od_dir,
+        (tour_props, pa, adj_factors,
+            nhb_24, nhb_props) = od_to_pa(od_dir,
                  f"noham_m3_ts{'{}'}_uc{uc}to.csv",
                  f"noham_m3_ts{'{}'}_uc{uc}fr.csv",
                  phi.loc[uc].unstack().squeeze().values,
                  [1,2,3,4],
+                                          '24',
                                                occ_factors.loc[uc],
                                                tp_factors,
                           nhb_name)
 
 
-        # tour_props.to_hdf(rf"E:\noham\rebase\bronze\post-me\pa\tour_props_uc{uc}.h5", key='data')
-        # adj_factors.to_hdf(rf"E:\noham\rebase\bronze\post-me\pa\adj_factors_uc{uc}.h5", key='data')
-        # pa.to_hdf(rf"E:\noham\rebase\bronze\post-me\pa\pa_uc{uc}.h5",
-        #                    key='data')
-        # pa.sum(axis=1).to_csv(rf"E:\noham\rebase\bronze\post-me\24hrpa_{uc}.csv")
+        tour_props.to_hdf(rf"E:\noham\rebase\bronze\post-me\pa\24_hr\tour_props_uc{uc}.h5", key='data')
+        adj_factors.to_hdf(rf"E:\noham\rebase\bronze\post-me\pa\24_hr\adj_factors_uc{uc}.h5", key='data')
+        pa.to_hdf(rf"E:\noham\rebase\bronze\post-me\pa\24_hr\pa_uc{uc}.h5",
+                           key='data')
+        pa.sum(axis=1).to_csv(rf"E:\noham\rebase\bronze\post-me\24hrpa_{uc}.csv")
         if isinstance(nhb_24, pd.DataFrame):
             nhb_24.to_csv(rf"E:\temp\ntem\inputs\PA\24hrpa_uc{uc}_nhb.csv")
             nhb_props.to_hdf(rf"E:\temp\ntem\inputs\PA\nhb_props_uc{uc}.h5", key='data')
