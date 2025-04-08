@@ -6,8 +6,9 @@
 # Built-Ins
 import logging
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Sequence
 
+import numpy as np
 # Third Party
 import pandas as pd
 from caf.distribute import furness
@@ -22,7 +23,7 @@ LOG = logging.getLogger(__name__)
 
 ##### CLASSES & FUNCTIONS #####
 
-
+### THESE ARE COMMENTED OUT TO AVOID IMPORT ERRORS ETC. ###
 # def tp_hb_pa_to_od(
 #     matrices_: matrices.HomePA,
 #     fth_factors: factors.FromToHome,
@@ -33,8 +34,8 @@ LOG = logging.getLogger(__name__)
 #
 #     raise NotImplementedError("WIP!")
 #     matrices_ = _combine_time_periods(matrices_, missing_tp_factor)
-
-
+#
+#
 # def _combine_time_periods(
 #     matrices_: matrices._Base,
 #     missing_tp_factor: factors.MissingTP | None = None,
@@ -44,7 +45,7 @@ LOG = logging.getLogger(__name__)
 #
 #     raise NotImplementedError
 #     return _BaseMatrices()
-
+#
 #
 # def _check_factors(matrix: pd.DataFrame, factors_: pd.DataFrame, description: str = "") -> None:
 #     msg = []
@@ -111,7 +112,30 @@ LOG = logging.getLogger(__name__)
 #     return od_matrices
 
 
-def balance_fh_th_by_op(fh, th, tps, seed_val):
+def balance_fh_th_by_op(fh: pd.DataFrame,
+                        th: pd.DataFrame,
+                        tps: Sequence[int],
+                        seed_val: float):
+    """
+    Balance fh and th, conserving all but the final time period.
+
+    fh and th are balanced to match each other at the 24hr level. Only the final time
+    period is altered in either fh or th, so the others remain identical. In this
+    method the returned values for fh and th sum to greater than the input overall.
+
+    Parameters
+    ----------
+    fh: From home matrices by time period. The index should be a multiindex of o
+    and d, and the columns should be the time periods
+    th: To home matrices, same format as fh
+    tps: Sequence of ints. These must match fh and th column names.
+    seed_val: float
+        This is a scaler for ho much op will be increased by in balancing.
+
+    Returns
+    -------
+    fh and th balanced to one another
+    """
     ave = (fh.sum(axis=1) + th.sum(axis=1)) / 2
     fh_1_to_3 = fh[tps[:-1]].sum(axis=1)
     th_1_to_3 = th[tps[:-1]].sum(axis=1)
@@ -124,74 +148,140 @@ def balance_fh_th_by_op(fh, th, tps, seed_val):
     return fh, th
 
 
-def balance_fh_th_conserve_24hr(fh, th):
-    fh_24 = fh.sum(axis=1)  # .replace(0,1)
-    th_24 = th.sum(axis=1)  # .replace(0,1)
+def balance_fh_th_conserve_24hr(fh: pd.DataFrame, th: pd.DataFrame):
+    """
+    Balance fh and th to each other, conserving the 24hr total.
+
+    This method calculates the average total value for fh and th, then factors both
+    to match this across all time periods. This means the sum of the returned
+    values for fh and th matches the sum for the inputs.
+
+    Parameters
+    ----------
+    fh: From home matrices by time period. The index should be a multiindex of o
+    and d, and the columns should be the time periods
+    th: To home matrices, same format as fh
+
+    Returns
+    -------
+    fh and th balanced
+    """
+    fh_24 = fh.sum(axis=1)
+    th_24 = th.sum(axis=1)
+    # Fix od pairs with zero in fh and non-zero in th and vice versa
     fh.loc[(fh_24 == 0) & (th_24 > 0)] = th.loc[(fh_24 == 0) & (th_24 > 0)] / 2
     th.loc[(fh_24 == 0) & (th_24 > 0)] = th.loc[(fh_24 == 0) & (th_24 > 0)] / 2
     th.loc[(th_24 == 0) & (fh_24 > 0)] = fh.loc[(th_24 == 0) & (fh_24 > 0)] / 2
     fh.loc[(th_24 == 0) & (fh_24 > 0)] = fh.loc[(th_24 == 0) & (fh_24 > 0)] / 2
+    # Sum over time periods and infill zeros
     fh_24 = fh.sum(axis=1).replace(0, 1)
     th_24 = th.sum(axis=1).replace(0, 1)
     ave = (fh_24 + th_24) / 2
+    # Produce factors to get both to match average
     fh_factor = ave / fh_24
     th_factor = ave / th_24
+    # Balance and return
     fh_bal = fh.mul(fh_factor, axis=0)
     th_bal = th.mul(th_factor, axis=0)
 
     return fh_bal, th_bal
+
+def nhb_props(dir: Path,
+              name: str,
+              tps: Sequence[int],
+              occ_factors: pd.Series | None = None,
+              tp_factors: dict[int, float] | None = None
+              ):
+    tp_mats = dict()
+    nhb_24 = 0
+    for tp in tps:
+        nhb_path = name.format(tp)
+        nhb = pd.read_csv(dir / nhb_path, index_col=0)
+        nhb.columns = nhb.columns.astype(int)
+        nhb.index = nhb.index.astype(int)
+        if occ_factors is not None:
+            nhb *= occ_factors.loc["nhb", tp]
+        if tp_factors is not None:
+            nhb *= tp_factors[tp]
+        nhb_24 += nhb
+        tp_mats[tp] = nhb
+    nhb_tp = pd.concat(tp_mats).stack().unstack(level=0)
+    nhb_tp.index.names = ["o", "d"]
+    nhb_tp.columns.name = "tp"
+    nhb_24 = nhb_24.stack()
+    nhb_24.index.names = ["o", "d"]
+    nhb_props = nhb_tp.div(nhb_24, axis=0).fillna(1 / len(tps))
+    return nhb_props, nhb_24, nhb_tp
+
+
 
 
 def od_to_pa(
     od_dir: Path,
     th_name: str,
     fh_name: str,
-    phi_factors,
-    tp_needed: list,
+    phi_factors: np.array,
+    tp_needed: Sequence[int],
     method: Literal["op", "24"],
     occ_factors: pd.Series | None = None,
-    tp_factors: dict[int:float] | None = None,
-    nhb: str | None = None,
+    tp_factors: dict[int, float] | None = None,
+    nhb_name: str | None = None,
 ):
+    """
+    Convert od matrices by direction to PA matrices, producing tour proportions.
+
+    Read in fh and th od matrices, balance them and produce tour proportions via
+    furnessing. If nhb is provided this will also produce 24hr nhb and return
+    nhb tp props.
+
+    Parameters
+    ----------
+    od_dir: Path
+        The directory od matrices are saved in
+    th_name: str
+        The name of th matrices in od_dir. Must contain curly brackets where
+        time period ints will be formatted in.
+    fh_name: str
+        As for th_name.
+    phi_factors: np.array
+        Seed values for tour_proportion furnessing. These must be a square array
+        of shape (len(tps), len(tps))
+    tp_needed: Sequence[int]
+        Time periods used here. These will be used to generate th and fh file names.
+    method: Literal["op", "24"]
+        Which balancing method to use. "op" uses 'balance_fh_th_by_op' and "24hr"
+        uses 'balance_fh_th_conserve_24hr'.
+    occ_factors: pd.Series | None = None
+        Provide if input matrices need converting from pcu to people.
+    tp_factors: dict[int:float] | None = None
+        Provide if input matrices need converting from peak/average hour to total
+        time period.
+    nhb_name: str | None = None
+        Name of nhb matrices if provided.
+    """
     fh_mats = dict()
     th_mats = dict()
-    nhb_mats = dict()
-    nhb_24 = 0
-    nhb_props = None
-    nhb_tp = None
+    # If provided, read in nhb and produce tp_props, 24hr_matrix and tp matrices
+    if nhb_name is not None:
+        nhb, nhb_24, nhb_tp = nhb_props(od_dir, nhb_name, tp_needed, occ_factors, tp_factors)
+    # Read in fh and th matrices and apply occ/tp factors if needed
     for tp in tp_needed:
         th_path = th_name.format(tp)
-        th_mats[tp] = pd.read_csv(od_dir / th_path, index_col=0)
-        th_mats[tp].columns = th_mats[tp].columns.astype(int)
-        th_mats[tp].index = th_mats[tp].index.astype(int)
+        th = pd.read_csv(od_dir / th_path, index_col=0)
+        th.columns = th.columns.astype(int)
+        th.index = th.index.astype(int)
         fh_path = fh_name.format(tp)
-        fh_mats[tp] = pd.read_csv(od_dir / fh_path, index_col=0)
-        fh_mats[tp].columns = fh_mats[tp].columns.astype(int)
-        fh_mats[tp].index = fh_mats[tp].index.astype(int)
-        if nhb is not None:
-            nhb_name = nhb.format(tp)
-            nhb_mats[tp] = pd.read_csv(od_dir / nhb_name, index_col=0)
-            nhb_mats[tp].columns = nhb_mats[tp].columns.astype(int)
-            nhb_mats[tp].index = nhb_mats[tp].index.astype(int)
+        fh = pd.read_csv(od_dir / fh_path, index_col=0)
+        fh.columns = fh.columns.astype(int)
+        fh.index = fh.index.astype(int)
         if occ_factors is not None:
-            th_mats[tp] *= occ_factors.loc["hb_to", tp]
-            fh_mats[tp] *= occ_factors.loc["hb_fr", tp]
-            if nhb is not None:
-                nhb_mats[tp] *= occ_factors.loc["nhb", tp]
+            th *= occ_factors.loc["hb_to", tp]
+            fh *= occ_factors.loc["hb_fr", tp]
         if tp_factors is not None:
-            th_mats[tp] *= tp_factors[tp]
-            fh_mats[tp] *= tp_factors[tp]
-            if nhb is not None:
-                nhb_mats[tp] *= tp_factors[tp]
-        if nhb is not None:
-            nhb_24 += nhb_mats[tp]
-    if nhb:
-        nhb_tp = pd.concat(nhb_mats).stack().unstack(level=0)
-        nhb_tp.index.names = ["o", "d"]
-        nhb_tp.columns.name = "tp"
-        nhb_24 = nhb_24.stack()
-        nhb_24.index.names = ["o", "d"]
-        nhb_props = nhb_tp.div(nhb_24, axis=0)
+            th *= tp_factors[tp]
+            fh *= tp_factors[tp]
+        th_mats[tp] = th
+        fh_mats[tp] = fh
 
     # Make sure all matrices have the same OD pairs
     n_rows, n_cols = fh_mats[list(fh_mats.keys())[0]].shape
@@ -203,10 +293,7 @@ def od_to_pa(
                     "others. Expected a matrix of shape (%d, %d), got %s for tp%d."
                     % (n_rows, n_cols, str(mat.shape), tp)
                 )
-
-    orig_vals = fh_mats[tp_needed[0]].index
-    dest_vals = fh_mats[tp_needed[0]].columns
-
+    # Produce compiled original matrices to compare against balanced for adj factors
     fh = pd.concat(fh_mats).stack()
     fh.index.names = ["from", "o", "d"]
     fh = fh.unstack(level="from")
@@ -217,17 +304,20 @@ def od_to_pa(
     if nhb_tp is not None:
         orig += nhb_tp
 
+    orig_vals = fh.index.get_level_values('o')
+    dest_vals = fh.columns
+    # Balance fh and th by chosen method
     if method == "24":
         fh, th = balance_fh_th_conserve_24hr(fh, th)
     elif method == "op":
         fh, th = balance_fh_th_by_op(fh, th, tp_needed, phi_factors[-1,-1])
-
+    # Compare original to balanced to produce adjustment factors
     balanced = fh + th
     if nhb_tp is not None:
         balanced += nhb_tp
     adj = orig / balanced
     pa = fh.copy()
-
+    # Refhape/reformat inputs to tour_prop furnessing
     phi = pd.DataFrame(phi_factors, index=tp_needed, columns=tp_needed).stack()
     seed_index = pd.MultiIndex.from_product(
         [tp_needed, tp_needed, orig_vals, dest_vals], names=["from", "to", "o", "d"]
@@ -258,6 +348,21 @@ def decomp_by_mats(
     post_me: pd.DataFrame,
     synth_nhb: pd.DataFrame | None = None,
 ):
+    """
+    Use synthetic matrices by direction to split post-me matrices.
+
+    Parameters
+    ----------
+    synth_fr: pd.DataFrame
+        From home synthetic matrix
+    synth_to: pd.DataFrame
+        To home synthetic matrix
+    post_me: pd.DataFrame
+        post_me matrix to be split
+    synth_nhb: pd.DataFrame | None = None
+        Nhb synthetic matrix if relevant.
+
+    """
     summed = synth_fr + synth_to
     if synth_nhb is not None:
         summed += synth_nhb
@@ -331,7 +436,7 @@ if __name__ == "__main__":
     occ_factors = occ_factors["total"] / occ_factors["driver"]
 
     tp_factors = {1: 3, 2: 6, 3: 3, 4: 12}
-    for uc in [2,3]:
+    for uc in [1,2,3]:
         if uc == 2:
             nhb_name = None
         else:
