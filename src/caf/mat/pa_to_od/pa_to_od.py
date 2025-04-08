@@ -265,8 +265,8 @@ def decomp_by_mats(
         nhb_postme = post_me * nhb_props
     else:
         nhb_postme = None
-    fr_props = synth_fr / summed
-    to_props = synth_to / summed
+    fr_props = (synth_fr / summed).fillna(0)
+    to_props = (synth_to / summed).fillna(0)
     fr_postme = post_me * fr_props
     to_postme = post_me * to_props
     return fr_postme, to_postme, nhb_postme
@@ -275,25 +275,25 @@ def decomp_by_mats(
 if __name__ == "__main__":
     hb_to_nhb = {1: 4, 3: 5}
     uc_to_name = {1: "business", 2: "commute", 3: "other"}
-    # for uc in [1,2,3]:
-    #     for tp in [1,2,3,4]:
-    #         synth_fr = pd.read_csv(rf"I:\NorMITs Distribution\voa_gb_2023_uni\mat\vdm\synthetic\noham_m3_ts{tp}_uc{uc}fr.csv.bz2", index_col=[0, 1], names=['o','d','trips']).squeeze().unstack()
-    #         synth_to = pd.read_csv(
-    #             rf"I:\NorMITs Distribution\voa_gb_2023_uni\mat\vdm\synthetic\noham_m3_ts{tp}_uc{uc}to.csv.bz2", index_col=[0, 1], names=['o','d','trips']).squeeze().unstack()
-    #         if uc != 2:
-    #             nhb = pd.read_csv(
-    #                 rf"I:\NorMITs Distribution\voa_gb_2023_uni\mat\vdm\synthetic\noham_m3_ts{tp}_uc{hb_to_nhb[uc]}.csv.bz2", index_col=[0, 1], names=['o','d','trips']).squeeze().unstack()
-    #         else:
-    #             nhb=None
-    #         postme = pd.read_csv(fr"E:\noham\rebase\bronze\post-me\CSVs\od_m3_{uc_to_name[uc]}_tp{tp}.csv", index_col=0)
-    #         postme.columns = postme.columns.astype(int)
-    #         fr_post, to_post, nhb_post = decomp_by_mats(synth_fr, synth_to, postme, nhb)
-    #         fr_post.to_csv(rf"E:\noham\rebase\bronze\post-me\CSVs\by_direction\noham_m3_ts{tp}_uc{uc}fr.csv")
-    #         to_post.to_csv(
-    #             rf"E:\noham\rebase\bronze\post-me\CSVs\by_direction\noham_m3_ts{tp}_uc{uc}to.csv")
-    #         if nhb_post is not None:
-    #             nhb_post.to_csv(
-    #                 rf"E:\noham\rebase\bronze\post-me\CSVs\by_direction\noham_m3_ts{tp}_uc{uc}nhb.csv")
+    for uc in [1,2,3]:
+        for tp in [1,2,3,4]:
+            synth_fr = pd.read_csv(rf"I:\NorMITs Distribution\voa_gb_2023_uni\mat\vdm\synthetic\noham_m3_ts{tp}_uc{uc}fr.csv.bz2", index_col=[0, 1], names=['o','d','trips']).squeeze().unstack()
+            synth_to = pd.read_csv(
+                rf"I:\NorMITs Distribution\voa_gb_2023_uni\mat\vdm\synthetic\noham_m3_ts{tp}_uc{uc}to.csv.bz2", index_col=[0, 1], names=['o','d','trips']).squeeze().unstack()
+            if uc != 2:
+                nhb = pd.read_csv(
+                    rf"I:\NorMITs Distribution\voa_gb_2023_uni\mat\vdm\synthetic\noham_m3_ts{tp}_uc{hb_to_nhb[uc]}.csv.bz2", index_col=[0, 1], names=['o','d','trips']).squeeze().unstack()
+            else:
+                nhb=None
+            postme = pd.read_csv(fr"E:\noham\rebase\bronze\post-me\CSVs\od_m3_{uc_to_name[uc]}_tp{tp}.csv", index_col=0)
+            postme.columns = postme.columns.astype(int)
+            fr_post, to_post, nhb_post = decomp_by_mats(synth_fr, synth_to, postme, nhb)
+            fr_post.to_csv(rf"E:\noham\rebase\bronze\post-me\CSVs\by_direction\noham_m3_ts{tp}_uc{uc}fr.csv")
+            to_post.to_csv(
+                rf"E:\noham\rebase\bronze\post-me\CSVs\by_direction\noham_m3_ts{tp}_uc{uc}to.csv")
+            if nhb_post is not None:
+                nhb_post.to_csv(
+                    rf"E:\noham\rebase\bronze\post-me\CSVs\by_direction\noham_m3_ts{tp}_uc{uc}nhb.csv")
 
     od_dir = Path(r"E:\noham\rebase\bronze\post-me\CSVs\by_direction")
     # phi_factors = pd.read_csv(r"I:\NorMITs Demand\import\phi_factors\v3.0\phi_factors_m3.csv", index_col=0)
@@ -331,7 +331,7 @@ if __name__ == "__main__":
     occ_factors = occ_factors["total"] / occ_factors["driver"]
 
     tp_factors = {1: 3, 2: 6, 3: 3, 4: 12}
-    for uc in [1, 2, 3]:
+    for uc in [1]:
         if uc == 2:
             nhb_name = None
         else:
