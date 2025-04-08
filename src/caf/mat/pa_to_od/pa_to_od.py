@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Literal, Sequence
 
 import numpy as np
+
 # Third Party
 import pandas as pd
 from caf.distribute import furness
@@ -112,10 +113,9 @@ LOG = logging.getLogger(__name__)
 #     return od_matrices
 
 
-def balance_fh_th_by_op(fh: pd.DataFrame,
-                        th: pd.DataFrame,
-                        tps: Sequence[int],
-                        seed_val: float):
+def balance_fh_th_by_op(
+    fh: pd.DataFrame, th: pd.DataFrame, tps: Sequence[int], seed_val: float
+):
     """
     Balance fh and th, conserving all but the final time period.
 
@@ -186,12 +186,14 @@ def balance_fh_th_conserve_24hr(fh: pd.DataFrame, th: pd.DataFrame):
 
     return fh_bal, th_bal
 
-def nhb_props(dir: Path,
-              name: str,
-              tps: Sequence[int],
-              occ_factors: pd.Series | None = None,
-              tp_factors: dict[int, float] | None = None
-              ):
+
+def nhb_props(
+    dir: Path,
+    name: str,
+    tps: Sequence[int],
+    occ_factors: pd.Series | None = None,
+    tp_factors: dict[int, float] | None = None,
+):
     tp_mats = dict()
     nhb_24 = 0
     for tp in tps:
@@ -212,8 +214,6 @@ def nhb_props(dir: Path,
     nhb_24.index.names = ["o", "d"]
     nhb_props = nhb_tp.div(nhb_24, axis=0).fillna(1 / len(tps))
     return nhb_props, nhb_24, nhb_tp
-
-
 
 
 def od_to_pa(
@@ -304,13 +304,13 @@ def od_to_pa(
     if nhb_tp is not None:
         orig += nhb_tp
 
-    orig_vals = fh.index.get_level_values('o')
+    orig_vals = fh.index.get_level_values("o")
     dest_vals = fh.columns
     # Balance fh and th by chosen method
     if method == "24":
         fh, th = balance_fh_th_conserve_24hr(fh, th)
     elif method == "op":
-        fh, th = balance_fh_th_by_op(fh, th, tp_needed, phi_factors[-1,-1])
+        fh, th = balance_fh_th_by_op(fh, th, tp_needed, phi_factors[-1, -1])
     # Compare original to balanced to produce adjustment factors
     balanced = fh + th
     if nhb_tp is not None:
@@ -436,7 +436,7 @@ if __name__ == "__main__":
     occ_factors = occ_factors["total"] / occ_factors["driver"]
 
     tp_factors = {1: 3, 2: 6, 3: 3, 4: 12}
-    for uc in [1,2,3]:
+    for uc in [1, 2, 3]:
         if uc == 2:
             nhb_name = None
         else:
