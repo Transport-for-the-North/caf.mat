@@ -322,6 +322,7 @@ def od_to_pa(
     seed_index = pd.MultiIndex.from_product(
         [tp_needed, tp_needed, orig_vals, dest_vals], names=["from", "to", "o", "d"]
     )
+    # FH and TH are both normalised so that the furness returns props rather than trips
     phi = phi.reindex(seed_index)
     fh_sum = fh.sum(axis=1)
     fh = fh.div(fh_sum.replace(0, 1), axis=0)
@@ -332,13 +333,13 @@ def od_to_pa(
     th.loc[th_sum == 0] = (0.25, 0.25, 0.25, 0.25)
     thx = th.stack().to_xarray()
 
-    # ## CALL INNER FUNCTION ## #
+    # Call tour_prop furness
     furness_return_vals, rmse, iter = furness.numpy_ndim_furness(
         phi.to_xarray(), [fhx, thx], len(tp_needed) * len(orig_vals) * len(dest_vals)
     )
-
+    # Put back into dataframe to return
     tour_props = furness_return_vals.to_dataframe(name="trips")
-
+    #Return tour_props, pa matrices by tp, adjustment factors, nhb_24hr and nhb tp props
     return tour_props, pa, adj, nhb_24, nhb_props
 
 
@@ -378,6 +379,7 @@ def decomp_by_mats(
 
 
 if __name__ == "__main__":
+    # run script ignore
     hb_to_nhb = {1: 4, 3: 5}
     uc_to_name = {1: "business", 2: "commute", 3: "other"}
     # for uc in [1,2,3]:
