@@ -339,7 +339,7 @@ def od_to_pa(
     )
     # Put back into dataframe to return
     tour_props = furness_return_vals.to_dataframe(name="trips")
-    #Return tour_props, pa matrices by tp, adjustment factors, nhb_24hr and nhb tp props
+    # Return tour_props, pa matrices by tp, adjustment factors, nhb_24hr and nhb tp props
     return tour_props, pa, adj, nhb_24, nhb_props
 
 
