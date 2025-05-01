@@ -40,8 +40,9 @@ class Matrix:
 
 class _Base(abc.ABC):
 
-    def __init__(self, segmentation_: bs.Segmentation):
+    def __init__(self, segmentation_: bs.Segmentation, zoning: bs.ZoningSystem):
         self._segmentation = segmentation_
+        self._zoning = zoning
 
     def __iter__(self) -> Iterator[Matrix]:
         """Iterate through all segments and provide the matrix.
@@ -58,12 +59,16 @@ class _Base(abc.ABC):
     def segmentation(self) -> bs.Segmentation:
         return self._segmentation.copy()
 
+    @property
+    def zoning(self) -> bs.ZoningSystem:
+        return self._zoning.copy()
+
     @abc.abstractmethod
-    def get_matrix(self, segment: dict[str, int]) -> Matrix:
+    def get_matrix(self, slice_: dict[str, int]) -> Matrix:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def save_matrix(self, matrix: pd.DataFrame, segment: dict[str, int]) -> None:
+    def save_matrix(self, matrix: pd.DataFrame, slice_: dict[str, int]) -> None:
         raise NotImplementedError()
 
     @property
@@ -115,6 +120,15 @@ def _purpose_subsets() -> tuple[bs.segments.SegmentsSuper, dict[str, list[int]]]
         subsets[hb].append(value)
 
     return segment, subsets
+
+
+class MockMatrices(_Base):
+
+    def get_matrix(self, slice_):
+        raise NotImplementedError("WIP!")
+
+    def save_matrix(self, matrix, slice_):
+        raise NotImplementedError("WIP!")
 
 
 class _BasePA(_Base):
