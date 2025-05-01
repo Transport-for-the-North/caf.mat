@@ -379,6 +379,9 @@ def decomp_by_mats(
 
 
 if __name__ == "__main__":
+    # OUTPUTS saved to I:\NorMITs Forecast\
+    # Isaac's VM - DP24
+
     # run script ignore
     hb_to_nhb = {1: 4, 3: 5}
     uc_to_name = {1: "business", 2: "commute", 3: "other"}
