@@ -14,7 +14,7 @@ import pandas as pd
 from caf.base import segments
 
 # Local Imports
-from caf.mat.pa_to_od import matrices
+from caf.mat import matrices
 
 ##### CONSTANTS #####
 

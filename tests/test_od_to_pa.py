@@ -10,7 +10,8 @@ import logging
 import caf.base as base
 
 # Local Imports
-from caf.mat.pa_to_od import matrices, od_to_pa
+from caf.mat import matrices
+from caf.mat.pa_to_od import od_to_pa
 
 ##### CONSTANTS #####
 
@@ -40,8 +41,12 @@ class TestDecompileOD:
         )
         zoning = base.ZoningSystem.get_zoning("normits")
 
-        compiled_matrices = matrices.MockMatrices(from_segmentation, zoning)
-        decompiled_matrices = matrices.MockMatrices(to_segmentation, zoning)
+        compiled_matrices = matrices.MockMatrices(
+            from_segmentation, zoning, type_=matrices.MatrixType.OD
+        )
+        decompiled_matrices = matrices.MockMatrices(
+            to_segmentation, zoning, type_=matrices.MatrixType.OD
+        )
 
         od_to_pa.decompile_od(
             compiled_matrices,

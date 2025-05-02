@@ -8,10 +8,11 @@ import abc
 import logging
 from typing import Iterator
 
-# Local Imports
-from caf.mat.pa_to_od import matrices
-
+# Third Party
 from caf.base import segments
+
+# Local Imports
+from caf.mat import matrices
 
 ##### CONSTANTS #####
 
@@ -23,16 +24,16 @@ LOG = logging.getLogger(__name__)
 
 class TimePeriod(abc.ABC):
 
-    def get(self, segment: matrices.Segment) -> list[matrices.Matrix]:
+    def get(self, _slice: dict[str, int]) -> list[matrices.Matrix]:
         """Get matrix of TP factors for given segment."""
 
 
 class FromToHome(abc.ABC):
 
-    def get_from(self, segment: matrices.Segment) -> matrices.Matrix:
+    def get_from(self, _slice: dict[str, int]) -> matrices.Matrix:
         """Get matrix of from home factors for each output time period."""
 
-    def get_to(self, segment: matrices.Segment) -> matrices.Matrix: ...
+    def get_to(self, _slice: dict[str, int]) -> matrices.Matrix: ...
 
 
 class MissingTP(abc.ABC):
