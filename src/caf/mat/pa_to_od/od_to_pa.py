@@ -52,11 +52,14 @@ def _get_segmentation_translation(
 
 
 def decompile_od(
-    compiled_matrices: matrices._BaseOD,
-    decompiled_matrices: matrices._Base,
+    compiled_matrices: matrices.MatricesBase,
+    decompiled_matrices: matrices.MatricesBase,
     from_segment: base.Segment,
     to_segment: base.Segment,
 ):
+    if compiled_matrices.type != matrices.MatrixType.OD:
+        raise ValueError(f"compiled_matrices should be OD type not {compiled_matrices.type}")
+
     to_segmentation, lookup = _get_segmentation_translation(
         compiled_matrices.segmentation, from_segment, to_segment
     )
