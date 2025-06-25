@@ -9,6 +9,7 @@ import dataclasses
 import enum
 import logging
 import pathlib
+import warnings
 from typing import Iterator, Self
 
 # Third Party
@@ -31,6 +32,10 @@ LOG = logging.getLogger(__name__)
 
 class PAError(_mat.MatrixError):
     """Error with PA matrices or PA to OD conversion."""
+
+
+class MatricesWarning(Warning):
+    """Warning for matrix functionality."""
 
 
 class MatrixType(enum.Enum):
@@ -67,10 +72,11 @@ class MatricesBase(abc.ABC):
         self._zoning = zoning
         self._type = type_
 
-        if type_.direction_segment not in segmentation_.segments:
-            raise ValueError(
-                f"matrices with type={type_.name} should"
-                f" contain {type_.direction_segment.name} segment"
+        if type_.direction_segment.name not in (i.name for i in segmentation_.segments):
+            warnings.warn(
+                "matrices doesn't contain direction segment "
+                f"({type_.direction_segment.name}) some functionality won't be possible",
+                MatricesWarning,
             )
 
     def __iter__(self) -> Iterator[Matrix]:
@@ -193,14 +199,18 @@ class MatricesBase(abc.ABC):
         if not matrix.index.equals(matrix.columns):
             raise ValueError(f"{name} must be square, with the same index and columns.")
 
-        missing = self.zoning.zone_ids[np.isin(self.zoning.zone_ids, matrix.index)]
+        missing = self.zoning.zone_ids[~np.isin(self.zoning.zone_ids, matrix.index)]
         if len(missing) > 0:
-            if len(missing) > 20:
-                msg = ", ".join(map(str, missing[:20])) + "..."
-            else:
-                msg = ", ".join(map(str, missing))
+            raise ValueError(
+                f"{name} is missing {len(missing):,} zones: {_short_list(missing)}"
+            )
 
-            raise ValueError(f"{name} is missing {len(missing):,} zones: {msg}.")
+        extra = matrix.index[~matrix.index.isin(self.zoning.zone_ids)].tolist()
+        if len(extra) > 0:
+            raise ValueError(
+                f"{name} has {len(extra):,} zones not found in"
+                f" zone system ({self.zoning.name}): {_short_list(extra)}"
+            )
 
     def __repr__(self) -> str:
         """Return a string representation of the matrices."""
@@ -210,11 +220,53 @@ class MatricesBase(abc.ABC):
             f"zoning={self.zoning.name})"
         )
 
+    def aggregate(
+        self,
+        segmentation_: "segmentation.Segmentation",
+        output_name: str = "{name}-aggregated",
+    ) -> Self:
+        """Aggregate matrices to target segmentation.
+
+        Outputs aggregated to a new matrices class.
+
+        Parameters
+        ----------
+        segmentation_ : segmentation.Segmentation
+            Segmentation to aggregate to, must be a subset of
+            current segmentation.
+        output_name : str
+            Name for the output matrices, default "{name}-aggregated",
+            where name is `self.name`.
+
+        Returns
+        -------
+        Self
+            Aggregated matrices class.
+
+        Raises
+        ------
+        ValueError
+            If `segmentation_` isn't a subset of `self.segmentation`.
+        """
+        if not segmentation_.is_subset(self.segmentation):
+            raise ValueError("cannot aggregate to segmentation which isn't a subset")
+
+        output = self.new(output_name.format(name=self.name), segmentation_=segmentation_)
+        for to_slice in segmentation_.iter_slices():
+            total = 0
+            for from_slice in self.segmentation.iter_slices(to_slice.data):
+                total += self.get_matrix(from_slice).data
+
+            output.save_matrix(total, to_slice)
+
+        return output
+
     def disaggregate(
         self,
         targets: "MatricesBase",
         from_segment: segments.Segment | None = None,
         to_segment: segments.Segment | None = None,
+        output_name: str = "{name}-disaggregated",
     ) -> Self:
         """Disaggregate matrices to a target segmentation.
 
@@ -232,6 +284,9 @@ class MatricesBase(abc.ABC):
         to_segment : segments.Segment | None, optional
             Optional segment to replace the `from_segment`,
             mandatory if `from_segment` is given.
+        output_name : str, default "{name}-disaggregated"
+            Name of disaggregated matrices, will replace
+            "{name}" with the name of this instance.
 
         Returns
         -------
@@ -280,7 +335,9 @@ class MatricesBase(abc.ABC):
                 self.segmentation, targets.segmentation
             )
 
-        output = self.new(self.name + "_decompiled", segmentation_=targets.segmentation)
+        output = self.new(
+            output_name.format(name=self.name), segmentation_=targets.segmentation
+        )
 
         for from_slice, to_slices in disaggregations.items():
             disagg_matrices: list[Matrix] = []
@@ -305,6 +362,14 @@ class MatricesBase(abc.ABC):
             )
 
         return output
+
+
+def _short_list(values: collections.abc.Sequence, length: int = 10) -> str:
+    if len(values) <= length:
+        return ", ".join(map(str, values))
+
+    half = length // 2
+    return ", ".join(map(str, values[:half])) + "..." + ", ".join(map(str, values[-half:]))
 
 
 def _get_disaggregation_translation(
@@ -444,13 +509,13 @@ class MatrixFiles(MatricesBase):
         type_: MatrixType,
         folder: pathlib.Path,
         *,
-        filename_template: str = "{type}_{segment_name}",
+        filename_template: str = "{type}_{slice_name}",
         check_files: bool = True,
     ):
         super().__init__(segmentation_, zoning, type_)
 
         self._filename_template = filename_template.format(
-            type=self.type.name, segment_name="{segment_name}"
+            type=self.type.name, slice_name="{slice_name}"
         )
         self._folder = folder.resolve()
 
@@ -462,40 +527,53 @@ class MatrixFiles(MatricesBase):
             self._folder.mkdir()
 
         if check_files:
-            self._segmentation.find_files(
+            paths = self._segmentation.find_files(
                 self._folder, self._filename_template, self._file_suffixes
             )
+            self._filenames = {
+                i: j.name.removesuffix("".join(j.suffixes)) for i, j in paths.items()
+            }
+        else:
+            self._filenames = {}
 
     @property
     def name(self) -> str:
         """Name of the matrices."""
         return self._folder.name
 
+    @property
+    def folder(self) -> pathlib.Path:
+        """Path to folder containing the matrices."""
+        return self._folder
+
+    def _get_filename(self, slice_: segmentation.SegmentationSlice) -> str:
+        """Get filename for given slice, generates it if not already present."""
+        if slice_ not in self._filenames:
+            slice_name = self._segmentation.generate_slice_name(slice_)
+            self._filenames[slice_] = self._filename_template.format(slice_name=slice_name)
+
+        return self._filenames[slice_]
+
     def save_matrix(
         self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice
     ) -> None:
         """Save the matrix to a CSV, with a filename based on the slice parameters."""
-        slice_name = self._segmentation.generate_slice_name(slice_)
+        filename = self._get_filename(slice_)
+        self.validate_matrix(matrix, filename)
 
-        self.validate_matrix(matrix, slice_name)
-
-        filename = self._filename_template.format(segment_name=slice_name)
         path = self._folder / (filename + self._file_suffixes[0])
-
         matrix.to_csv(path)
         LOG.info("Written: %s", path)
 
     def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
         """Load the matrix from a CSV."""
-        name = self.segmentation.generate_slice_name(slice_)
-        filename = self._filename_template.format(segment_name=name)
-
+        filename = self._get_filename(slice_)
         path = ctk.io.find_file_with_name(self._folder, filename, self._file_suffixes)
+
         LOG.info("Loading matrix file: %s", path)
-        data = ctk.io.read_csv_matrix(path, format_="square")
+        data = ctk.io.read_csv_matrix(path)
 
-        self.validate_matrix(data, name)
-
+        self.validate_matrix(data, filename)
         return Matrix(data, slice_)
 
     def new(
@@ -506,11 +584,13 @@ class MatrixFiles(MatricesBase):
         zoning: bs.ZoningSystem | None = None,
         type_: MatrixType | None = None,
     ) -> Self:
+        folder = self._folder.with_name(name)
+        folder.mkdir(exist_ok=True)
         return MatrixFiles(
             segmentation_=self._segmentation if segmentation_ is None else segmentation_,
             zoning=self._zoning if zoning is None else zoning,
             type_=self._type if type_ is None else type_,
-            folder=self._folder.with_name(name),
+            folder=folder,
             filename_template=self._filename_template,
             check_files=False,
         )

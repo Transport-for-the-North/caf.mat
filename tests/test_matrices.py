@@ -4,6 +4,7 @@
 ##### IMPORTS #####
 
 # Built-Ins
+import itertools
 from typing import Generator
 
 # Third Party
@@ -19,7 +20,7 @@ from caf.mat import matrices
 ##### CONSTANTS #####
 
 
-##### Tests & Fixtures for `MatricesBase.disaggregate` #####
+##### Tests & Fixtures for `MemoryMatrices` #####
 
 
 @pytest.fixture(name="zone_system")
@@ -46,8 +47,12 @@ def random_matrices(
         )
 
 
-class TestDisaggregate:
-    """Tests for the `MatricesBase.disaggregate` method."""
+class TestMemoryMatrices:
+    """Tests for the `MemoryMatrices` class.
+
+    Using the `MemoryMatrices` sub-class to test the
+    functionality implemented on the ABC.
+    """
 
     def test_disaggregate(self, zone_system: base.ZoningSystem) -> None:
         """Test disaggregating to one new segment, with no replacements."""
@@ -274,4 +279,68 @@ class TestDisaggregate:
                 output.get_matrix(slice_).data,
                 expected_matrices[slice_],
                 obj=f"{slice_} DataFrame",
+            )
+
+    def test_aggregate(self, zone_system: base.ZoningSystem) -> None:
+        """Test basic case for the `aggregate` method."""
+        subsets = {"direction": [1], "p": list(range(1, 9)), "tp": [1, 2, 3]}
+
+        input_seg = segmentation.Segmentation(
+            segmentation.SegmentationInput(
+                enum_segments=list(subsets), naming_order=list(subsets), subsets=subsets
+            )
+        )
+        agg_seg = segmentation.Segmentation(
+            segmentation.SegmentationInput(
+                enum_segments=["direction", "p"],
+                naming_order=["direction", "p"],
+                subsets={i: j for i, j in subsets.items() if i != "tp"},
+            )
+        )
+
+        input_matrices = []
+        expected_matrices = []
+        rng_matrices = random_matrices(zone_system)
+
+        for dir_, p in itertools.product(subsets["direction"], subsets["p"]):
+            params = {"direction": dir_, "p": p}
+            total = 0
+
+            for tp in subsets["tp"]:
+                data = next(rng_matrices)
+                total += data
+                input_matrices.append(
+                    matrices.Matrix(
+                        data,
+                        segmentation.SegmentationSlice(
+                            params | {"tp": tp}, input_seg.naming_order
+                        ),
+                    )
+                )
+
+            expected_matrices.append(
+                matrices.Matrix(
+                    total,
+                    segmentation.SegmentationSlice(params, agg_seg.naming_order),
+                )
+            )
+
+        expected = matrices.MemoryMatrices(
+            segmentation_=agg_seg,
+            zoning=zone_system,
+            type_=matrices.MatrixType.PA,
+            matrices=expected_matrices,
+        )
+        disaggregated = matrices.MemoryMatrices(
+            segmentation_=input_seg,
+            zoning=zone_system,
+            type_=matrices.MatrixType.PA,
+            matrices=input_matrices,
+        )
+
+        aggregated = disaggregated.aggregate(agg_seg)
+
+        for slice_ in agg_seg.iter_slices():
+            pd.testing.assert_frame_equal(
+                expected.get_matrix(slice_).data, aggregated.get_matrix(slice_).data
             )
