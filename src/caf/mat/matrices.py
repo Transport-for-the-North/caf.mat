@@ -5,6 +5,7 @@
 # Built-Ins
 import abc
 import collections
+import collections.abc
 import dataclasses
 import enum
 import logging
@@ -63,7 +64,17 @@ class Matrix:
 
 
 class MatricesBase(abc.ABC):
-    """Abstract base class for handling matrices split by segmentation."""
+    """Abstract base class for handling matrices split by segmentation.
+
+    Parameters
+    ----------
+    segmentation_
+        Segmentation for the matrices.
+    zoning
+        ZoningSystem for all the matrices.
+    type_ : MatrixType
+        Type of the matrices.
+    """
 
     def __init__(
         self, segmentation_: bs.Segmentation, zoning: bs.ZoningSystem, type_: MatrixType
@@ -114,7 +125,7 @@ class MatricesBase(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def save_matrix(
+    def set_matrix(
         self, matrix: pd.DataFrame, slice_: "segmentation.SegmentationSlice"
     ) -> None:
         """Save the data for a single matrix."""
@@ -181,6 +192,21 @@ class MatricesBase(abc.ABC):
                 + ", ".join(self.segmentation.names)
             )
 
+    def _validate_zones(self, zones: np.ndarray, name: str) -> None:
+        """Raise ValueError if zones doesn't contain only all zone IDs."""
+        missing = self.zoning.zone_ids[~np.isin(self.zoning.zone_ids, zones)]
+        if len(missing) > 0:
+            raise ValueError(
+                f"{name} is missing {len(missing):,} zones: {_short_list(missing)}"
+            )
+
+        extra = zones[~np.isin(zones, self.zoning.zone_ids)]
+        if len(extra) > 0:
+            raise ValueError(
+                f"{name} has {len(extra):,} zones not found in"
+                f" zone system ({self.zoning.name}): {_short_list(extra)}"
+            )
+
     def validate_matrix(self, matrix: pd.DataFrame, name: str | None = None) -> None:
         """Validate the matrix zoning is correct.
 
@@ -199,18 +225,7 @@ class MatricesBase(abc.ABC):
         if not matrix.index.equals(matrix.columns):
             raise ValueError(f"{name} must be square, with the same index and columns.")
 
-        missing = self.zoning.zone_ids[~np.isin(self.zoning.zone_ids, matrix.index)]
-        if len(missing) > 0:
-            raise ValueError(
-                f"{name} is missing {len(missing):,} zones: {_short_list(missing)}"
-            )
-
-        extra = matrix.index[~matrix.index.isin(self.zoning.zone_ids)].tolist()
-        if len(extra) > 0:
-            raise ValueError(
-                f"{name} has {len(extra):,} zones not found in"
-                f" zone system ({self.zoning.name}): {_short_list(extra)}"
-            )
+        self._validate_zones(matrix.index.to_numpy(), name)
 
     def __repr__(self) -> str:
         """Return a string representation of the matrices."""
@@ -257,7 +272,7 @@ class MatricesBase(abc.ABC):
             for from_slice in self.segmentation.iter_slices(to_slice.data):
                 total += self.get_matrix(from_slice).data
 
-            output.save_matrix(total, to_slice)
+            output.set_matrix(total, to_slice)
 
         return output
 
@@ -444,13 +459,26 @@ def _disaggregate_matrix(
     total = sum(i.data for i in targets)
     for matrix in targets:
         disaggregated = aggregate.data * matrix.data / total
-        output.save_matrix(disaggregated, matrix.slice)
+        output.set_matrix(disaggregated, matrix.slice)
 
 
 class MemoryMatrices(MatricesBase):
     """Stores matrices in-memory, in a dictionary.
 
     Intended primarily for use with few smaller matrices.
+
+    Parameters
+    ----------
+    segmentation_
+        Segmentation for the matrices.
+    zoning
+        ZoningSystem for all the matrices.
+    type_ : MatrixType
+        Type of the matrices.
+    matrices
+        Optional list of any existing matrices already loaded,
+        :meth:`get_matrix` will raise a KeyError when attempting to access
+        a matrix which isn't given here or with :meth:`save_matrix`.
     """
 
     def __init__(
@@ -465,7 +493,7 @@ class MemoryMatrices(MatricesBase):
 
         if matrices is not None:
             for matrix in matrices:
-                self.save_matrix(matrix.data, matrix.slice)
+                self.set_matrix(matrix.data, matrix.slice)
 
     @property
     def name(self) -> str:
@@ -487,7 +515,7 @@ class MemoryMatrices(MatricesBase):
             raise KeyError(f"no matrix found for {slice_}")
         return Matrix(self._matrices[slice_], slice_)
 
-    def save_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice):
+    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice):
         """Store matrix in class (in-memory)."""
         self.validate_slice(slice_)
         self._matrices[slice_] = matrix
@@ -495,6 +523,26 @@ class MemoryMatrices(MatricesBase):
 
 class MatrixFiles(MatricesBase):
     """Handle matrices stored as CSVs in a single folder.
+
+    Parameters
+    ----------
+    segmentation_
+        Segmentation for the matrices.
+    zoning
+        ZoningSystem for all the matrices.
+    type_
+        Type of the matrices.
+    folder
+        Path to folder for storing matrices in.
+    filename_template
+        Template for the filenames of individual matrix CSVs, default
+        "{type}_{slice_name}". Template will be infilled with the following:
+        - {type} - name of the matrix `type_` e.g. "OD";
+        - {slice_name} - the name of the individual slice e.g. "p1_m3_nhb"
+          from :class:`SegmentationSlice`.
+    check_files
+        If True (default) raises an error if CSV files don't already
+        exist for all slices in segmentation.
 
     .. todo::
         Add support for zipped folders.
@@ -554,9 +602,7 @@ class MatrixFiles(MatricesBase):
 
         return self._filenames[slice_]
 
-    def save_matrix(
-        self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice
-    ) -> None:
+    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:
         """Save the matrix to a CSV, with a filename based on the slice parameters."""
         filename = self._get_filename(slice_)
         self.validate_matrix(matrix, filename)
@@ -594,3 +640,176 @@ class MatrixFiles(MatricesBase):
             filename_template=self._filename_template,
             check_files=False,
         )
+
+
+class LongMatrices(MatricesBase):
+    """Store multiple matrices in a single long DataFrame.
+
+    Intended only for use with smaller matrices or segmentations.
+    Allows for multiple columns of data for the matrices.
+
+    Parameters
+    ----------
+    segmentation_
+        Segmentation for the matrices.
+    zoning
+        ZoningSystem for all the matrices.
+    type_
+        Type of the matrices.
+    data
+        Data for all matrices in a single DataFrame,
+        requires index (or columns) defining the segmentation
+        and origin / destination zones.
+    name
+        Optional name for matrices, default "LongMatrix"
+    columns
+        Optional list of data columns, if not given all
+        columns not required for the index are used.
+    """
+
+    _origin_column: str = "origin"
+    _dest_column: str = "destination"
+
+    def __init__(
+        self,
+        segmentation_: bs.Segmentation,
+        zoning: bs.ZoningSystem,
+        type_: MatrixType,
+        data: pd.DataFrame,
+        *,
+        name: str = "LongMatrix",
+        columns: list[str] | None = None,
+    ):
+        super().__init__(segmentation_, zoning, type_)
+        self._name = name
+        self._index = self._get_index_names(segmentation_)
+        self._columns = columns
+        self._data = self._validate_data(data)
+
+    @classmethod
+    def _get_index_names(cls, segmentation_: segmentation.Segmentation) -> list[str]:
+        return [*segmentation_.naming_order, cls._origin_column, cls._dest_column]
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def _validate_data(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Validate the data has correct indices and columns."""
+        index = set(self._index)
+        if set(data.index.names) != index:
+            # If single index assume segmentation indices are columns
+            if not (isinstance(data.index, pd.Index) and index <= set(data.columns.to_list())):
+                raise ValueError(
+                    f"expected indices {self._index} not index "
+                    f"({data.index.names}) or columns ({data.columns.to_list()})"
+                )
+
+            data = data.set_index(self._index)
+
+        assert isinstance(data.index, pd.MultiIndex)
+
+        if not data.index.dtypes.apply(pd.api.types.is_integer_dtype).all():
+            try:
+                data.index = pd.MultiIndex.from_arrays(
+                    [data.index.get_level_values(i).astype(int) for i in data.index.names]
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    f"indices should be integers not {data.index.dtype.name}"
+                ) from exc
+
+        try:
+            data = data.astype(float)
+        except ValueError as exc:
+            raise ValueError(
+                f"matrix data should be numeric not {data.dtypes.to_list()}"
+            ) from exc
+
+        if data.index.has_duplicates:
+            raise ValueError(f"duplicate indices found in {self.name}")
+
+        seg_data = data.reset_index()[self.segmentation.naming_order].drop_duplicates(
+            keep="first"
+        )
+        self.segmentation.validate_segmentation(seg_data, self.segmentation)
+
+        for i in (self._origin_column, self._dest_column):
+            self._validate_zones(
+                data.index.get_level_values(i).unique().to_numpy(), f"{self.name} - {i}"
+            )
+
+        return data
+
+    def to_frame(self, deep: bool = False) -> pd.DataFrame:
+        """Return a copy of the underlying DataFrame."""
+        return self._data.copy(deep)
+
+    def get_matrix(self, slice_: segmentation.SegmentationSlice) -> pd.DataFrame:
+        self.validate_slice(slice_)
+
+        return self._data.loc[slice_.as_tuple()].copy()
+
+    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice):
+        self.validate_slice(slice_)
+
+        if matrix.index.names != [self._origin_column, self._dest_column]:
+            raise ValueError(
+                f"invalid index in matrice ({matrix.index.names}) should"
+                f" be {self._origin_column}, {self._dest_column}"
+            )
+
+        if set(matrix.columns) != set(self._columns):
+            raise ValueError(
+                f"invalid columns in matrix ({matrix.columns}) should be {self._columns}"
+            )
+
+        matrix = matrix.copy()
+        matrix.index = pd.MultiIndex.from_tuples(
+            [slice_.as_tuple() + (i, j) for i, j in matrix.index]
+        )
+
+        # Cannot set multiple rows with index directly, so instead concat new columns and update
+        matrix.columns = [f"{i}_set" for i in matrix.columns]
+        updated = pd.concat([self._data, matrix], axis=1)
+        updated.index.names = self._data.index.names
+        for col in self._data.columns:
+            updated[col] = np.where(
+                updated[f"{col}_set"].isna(), updated[col], updated[f"{col}_set"]
+            )
+
+        self._data = updated[self._data.columns]
+
+    def new(self, name: str, *, segmentation_=None, zoning=None, type_=None) -> "LongMatrices":
+        return LongMatrices(
+            segmentation_=self.segmentation if segmentation_ is None else segmentation_,
+            zoning=self.zoning if zoning is None else zoning,
+            type_=self.type if type_ is None else type_,
+            data=self._data,
+            name=name,
+            columns=self._columns,
+        )
+
+    @classmethod
+    def from_csv(
+        cls,
+        segmentation_: bs.Segmentation,
+        zoning: bs.ZoningSystem,
+        type_: MatrixType,
+        path: pathlib.Path,
+        *,
+        name: str = "LongMatrix",
+        columns: list[str] | None = None,
+    ) -> "LongMatrices":
+        """Load matrices from a single CSV."""
+        if columns is None:
+            data = pd.read_csv(path)
+        else:
+            usecols = cls._get_index_names(segmentation_) + columns
+            data = pd.read_csv(path, usecols=usecols)
+
+        return LongMatrices(segmentation_, zoning, type_, data, name=name, columns=columns)
+
+    def save_csv(self, path: pathlib.Path) -> None:
+        """Save matrices to a single CSV."""
+        self._data.to_csv(path)

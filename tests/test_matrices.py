@@ -4,7 +4,9 @@
 ##### IMPORTS #####
 
 # Built-Ins
+import dataclasses
 import itertools
+import pathlib
 from typing import Generator
 
 # Third Party
@@ -344,3 +346,165 @@ class TestMemoryMatrices:
             pd.testing.assert_frame_equal(
                 expected.get_matrix(slice_).data, aggregated.get_matrix(slice_).data
             )
+
+
+##### Tests & Fixtures for `LongMatrices` #####
+
+
+@pytest.fixture(name="long_segmentation")
+def fix_long_segmentation() -> segmentation.Segmentation:
+    """Segmentation for LongMatrices tests."""
+    config = segmentation.SegmentationInput(
+        enum_segments=["p", "tp", "m"],
+        naming_order=["p", "tp", "m"],
+        subsets={"p": [1, 2], "m": [3], "tp": [1, 3]},
+    )
+    return segmentation.Segmentation(config)
+
+
+@dataclasses.dataclass
+class MatricesResult:
+    """Result dataclass for LongMatrices tests."""
+
+    data: pd.DataFrame
+    segmentation: segmentation.Segmentation
+    zone_system: zoning.ZoningSystem
+
+
+@pytest.fixture(name="long_data")
+def fix_long_data(
+    zone_system: base.ZoningSystem, long_segmentation: base.Segmentation
+) -> MatricesResult:
+    """Single column of data for LongMatrices tests."""
+    zones = pd.DataFrame(
+        {
+            "origin": np.repeat(
+                np.repeat(zone_system.zone_ids, len(zone_system)), len(long_segmentation)
+            ),
+            "destination": np.repeat(
+                np.tile(zone_system.zone_ids, len(zone_system)), len(long_segmentation)
+            ),
+        }
+    )
+    zones = pd.DataFrame(
+        {
+            "origin": np.tile(
+                np.repeat(zone_system.zone_ids, len(zone_system)), len(long_segmentation)
+            ),
+            "destination": np.tile(
+                np.tile(zone_system.zone_ids, len(zone_system)), len(long_segmentation)
+            ),
+        }
+    )
+
+    indices = long_segmentation.ind()
+    seg_data = pd.DataFrame(
+        {
+            i: np.repeat(indices.get_level_values(i), len(zone_system) ** 2)
+            for i in indices.names
+        }
+    )
+
+    index_data = pd.concat([seg_data, zones], axis=1)
+
+    rng = np.random.default_rng(1)
+    data = {"trips": rng.random(len(index_data)) * 100}
+
+    return MatricesResult(
+        pd.DataFrame(data, index=pd.MultiIndex.from_frame(index_data)),
+        long_segmentation,
+        zone_system,
+    )
+
+
+@pytest.fixture(name="long_data_csv")
+def fix_long_data_csv(
+    tmp_path: pathlib.Path, long_data: MatricesResult
+) -> tuple[pathlib.Path, MatricesResult]:
+    """CSV containing data for LongMatrices tests."""
+    path = tmp_path / "test.csv"
+    long_data.data.to_csv(path)
+    return path, long_data
+
+
+@pytest.fixture(name="long_matrices")
+def fix_long_matrices(
+    long_data: MatricesResult,
+) -> tuple[matrices.LongMatrices, MatricesResult]:
+    """Instance of LongMatrices with single column for testing."""
+    long = matrices.LongMatrices(
+        long_data.segmentation,
+        long_data.zone_system,
+        matrices.MatrixType.PA,
+        long_data.data.reset_index(),
+        columns=long_data.data.columns.to_list(),
+    )
+
+    return long, long_data
+
+
+class TestLongMatrices:
+    """Tests for LongMatrices class."""
+
+    def test_init(self, long_data: MatricesResult):
+        """Test initialising LongMatrices class with a dataframe."""
+        answer = matrices.LongMatrices(
+            long_data.segmentation,
+            long_data.zone_system,
+            matrices.MatrixType.PA,
+            long_data.data.reset_index(),
+            columns=long_data.data.columns.to_list(),
+        )
+
+        pd.testing.assert_frame_equal(long_data.data, answer._data)
+
+    def test_from_csv(self, long_data_csv: tuple[pathlib.Path, MatricesResult]) -> None:
+        """Test loading data from a CSV with `from_csv`."""
+        path, long_matrices = long_data_csv
+        answer = matrices.LongMatrices.from_csv(
+            long_matrices.segmentation,
+            long_matrices.zone_system,
+            matrices.MatrixType.PA,
+            path,
+            columns=long_matrices.data.columns.to_list(),
+        )
+
+        pd.testing.assert_frame_equal(long_matrices.data, answer._data)
+
+    def test_get_matrix(
+        self, long_matrices: tuple[matrices.LongMatrices, MatricesResult]
+    ) -> None:
+        """Test `get_matrix` returns a single matrix from a slice."""
+        matrices_, result = long_matrices
+
+        slice_ = segmentation.SegmentationSlice(
+            {"p": 2, "m": 3, "tp": 1}, result.segmentation.naming_order
+        )
+
+        expected = result.data.loc[2, 1, 3]
+        answer = matrices_.get_matrix(slice_)
+
+        pd.testing.assert_frame_equal(expected, answer)
+
+    def test_set_matrix(
+        self, long_matrices: tuple[matrices.LongMatrices, MatricesResult]
+    ) -> None:
+        """Test `set_matrix` works with a single column of data."""
+        matrices_, result = long_matrices
+
+        slice_ = segmentation.SegmentationSlice(
+            {"p": 2, "m": 3, "tp": 1}, result.segmentation.naming_order
+        )
+
+        rng = np.random.default_rng(10)
+        expected = pd.DataFrame(
+            rng.random(len(result.zone_system) ** 2) * 10,
+            index=pd.MultiIndex.from_product(
+                [result.zone_system.zone_ids] * 2, names=["origin", "destination"]
+            ),
+            columns=["trips"],
+        )
+
+        matrices_.set_matrix(expected, slice_)
+        answer = matrices_.get_matrix(slice_)
+        pd.testing.assert_frame_equal(expected, answer)
