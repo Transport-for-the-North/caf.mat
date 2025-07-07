@@ -487,6 +487,7 @@ class MemoryMatrices(MatricesBase):
         zoning: bs.ZoningSystem,
         type_: MatrixType,
         matrices: list[Matrix] | None = None,
+        name: str | None = None,
     ):
         super().__init__(segmentation_, zoning, type_)
         self._matrices: dict[segmentation.SegmentationSlice, pd.DataFrame] = {}
@@ -495,16 +496,21 @@ class MemoryMatrices(MatricesBase):
             for matrix in matrices:
                 self.set_matrix(matrix.data, matrix.slice)
 
+        if name is None:
+            name = "In-memory matrices"
+        self._name = name
+
     @property
     def name(self) -> str:
         """Name of the matrices."""
-        return "In-memory matrices"
+        return self._name
 
     def new(self, name, *, segmentation_=None, zoning=None, type_=None) -> "MemoryMatrices":
         return MemoryMatrices(
             segmentation_=self._segmentation if segmentation_ is None else segmentation_,
             zoning=self._zoning if zoning is None else zoning,
             type_=self._type if type_ is None else type_,
+            name=name,
         )
 
     def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
@@ -745,10 +751,10 @@ class LongMatrices(MatricesBase):
         """Return a copy of the underlying DataFrame."""
         return self._data.copy(deep)
 
-    def get_matrix(self, slice_: segmentation.SegmentationSlice) -> pd.DataFrame:
+    def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
         self.validate_slice(slice_)
 
-        return self._data.loc[slice_.as_tuple()].copy()
+        return Matrix(self._data.loc[slice_.as_tuple()].copy(), slice_)
 
     def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice):
         self.validate_slice(slice_)
@@ -785,7 +791,7 @@ class LongMatrices(MatricesBase):
             segmentation_=self.segmentation if segmentation_ is None else segmentation_,
             zoning=self.zoning if zoning is None else zoning,
             type_=self.type if type_ is None else type_,
-            data=self._data,
+            data=self._data.copy(),
             name=name,
             columns=self._columns,
         )
