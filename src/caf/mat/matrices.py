@@ -663,7 +663,7 @@ class LongMatrices(MatricesBase):
     type_
         Type of the matrices.
     data
-        Data for all matrices in a single DataFrame,
+        Optional data for all matrices in a single DataFrame,
         requires index (or columns) defining the segmentation
         and origin / destination zones.
     name
@@ -671,6 +671,10 @@ class LongMatrices(MatricesBase):
     columns
         Optional list of data columns, if not given all
         columns not required for the index are used.
+
+    .. todo::
+        Override the aggregate and disaggregate methods in this
+        class using DataFrame.groupby.
     """
 
     _origin_column: str = "origin"
@@ -681,8 +685,8 @@ class LongMatrices(MatricesBase):
         segmentation_: bs.Segmentation,
         zoning: bs.ZoningSystem,
         type_: MatrixType,
-        data: pd.DataFrame,
         *,
+        data: pd.DataFrame | None = None,
         name: str = "LongMatrix",
         columns: list[str] | None = None,
     ):
@@ -690,7 +694,23 @@ class LongMatrices(MatricesBase):
         self._name = name
         self._index = self._get_index_names(segmentation_)
         self._columns = columns
-        self._data = self._validate_data(data)
+
+        if data is None:
+            self._data = pd.DataFrame(
+                -1,
+                index=self._segmentation.ind(),
+                columns=pd.MultiIndex.from_product(
+                    [self._zoning.zone_ids] * 2, names=[self._origin_column, self._dest_column]
+                ),
+            )
+            self._data = (
+                self._data.stack(self._origin_column)
+                .stack(self._dest_column)
+                .to_frame(name="trips")
+            )
+            self._data.loc[:] = np.nan
+        else:
+            self._data = self._validate_data(data)
 
     @classmethod
     def _get_index_names(cls, segmentation_: segmentation.Segmentation) -> list[str]:
@@ -812,7 +832,6 @@ class LongMatrices(MatricesBase):
             segmentation_=self.segmentation if segmentation_ is None else segmentation_,
             zoning=self.zoning if zoning is None else zoning,
             type_=self.type if type_ is None else type_,
-            data=self._data.copy(),
             name=name,
             columns=self._columns,
         )
@@ -835,7 +854,14 @@ class LongMatrices(MatricesBase):
             usecols = cls._get_index_names(segmentation_) + columns
             data = pd.read_csv(path, usecols=usecols)
 
-        return LongMatrices(segmentation_, zoning, type_, data, name=name, columns=columns)
+        return LongMatrices(
+            segmentation_,
+            zoning,
+            type_,
+            data=data,
+            name=name,
+            columns=columns,
+        )
 
     def save_csv(self, path: pathlib.Path) -> None:
         """Save matrices to a single CSV."""

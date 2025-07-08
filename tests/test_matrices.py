@@ -134,7 +134,7 @@ def fix_long_matrices(
         long_data.segmentation,
         long_data.zone_system,
         matrices.MatrixType.PA,
-        long_data.data.reset_index(),
+        data=long_data.data.reset_index(),
         columns=long_data.data.columns.to_list(),
     )
 
@@ -156,7 +156,7 @@ class TestLongMatrices:
             long_data.segmentation,
             long_data.zone_system,
             matrices.MatrixType.PA,
-            long_data.data.reset_index(),
+            data=long_data.data.reset_index(),
             columns=long_data.data.columns.to_list(),
         )
 
@@ -272,7 +272,7 @@ def _produce_long_matrices(
     if isinstance(long, pd.Series):
         long = long.to_frame()
 
-    matrices_ = matrices.LongMatrices(segmentation_, zone_system, type_, long)
+    matrices_ = matrices.LongMatrices(segmentation_, zone_system, type_, data=long)
     return data, matrices_
 
 
