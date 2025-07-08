@@ -247,6 +247,35 @@ def _produce_matrices_files(
     return data, matrices_
 
 
+def _produce_long_matrices(
+    zone_system: zoning.ZoningSystem,
+    segmentation_: segmentation.Segmentation,
+    type_: matrices.MatrixType,
+    data: dict[segmentation.SegmentationSlice, pd.DataFrame] | None = None,
+) -> tuple[dict[segmentation.SegmentationSlice, pd.DataFrame], matrices.LongMatrices]:
+    """Produce instance of LongMatrices for testing."""
+    if data is None:
+        data = random_matrices_data(zone_system, segmentation_, seed=2466)
+
+    datasets = []
+    for slice_, df in data.items():
+        df = df.stack()
+        df.index = pd.MultiIndex.from_arrays(
+            [[i] * len(df) for i in slice_.as_tuple()]
+            + [df.index.get_level_values(i) for i in (0, 1)],
+            names=slice_.naming_order + ("origin", "destination"),
+        )
+        df.name = "trips"
+        datasets.append(df)
+
+    long = pd.concat(datasets, axis=0)
+    if isinstance(long, pd.Series):
+        long = long.to_frame()
+
+    matrices_ = matrices.LongMatrices(segmentation_, zone_system, type_, long)
+    return data, matrices_
+
+
 @pytest.fixture(name="tp_segmentation")
 def fix_tp_segmentation() -> tuple[segmentation.Segmentation, matrices.MatrixType]:
     """Simple PA segmentation containing time period for testing."""
@@ -283,6 +312,23 @@ def fix_tp_matrices_files(
 ) -> MatricesResults:
     """Simple PA MatricesFile containing time period for testing."""
     data, matrices_ = _produce_matrices_files(tmp_path, zone_system, *tp_segmentation)
+
+    return MatricesResults(
+        test=matrices_,
+        segmentation_=tp_segmentation[0],
+        zoning_=zone_system,
+        type_=tp_segmentation[1],
+        data=data,
+    )
+
+
+@pytest.fixture(name="tp_long_matrices")
+def fix_tp_long_matrices(
+    zone_system: base.ZoningSystem,
+    tp_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
+) -> MatricesResults:
+    """Simple PA LongMatrices containing time period for testing."""
+    data, matrices_ = _produce_long_matrices(zone_system, *tp_segmentation)
 
     return MatricesResults(
         test=matrices_,
@@ -339,6 +385,23 @@ def fix_hb_matrices_files(
     )
 
 
+@pytest.fixture(name="hb_long_matrices")
+def fix_hb_long_matrices(
+    zone_system: base.ZoningSystem,
+    hb_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
+) -> MatricesResults:
+    """Simple PA HB LongMatrices without time period for testing."""
+    data, matrices_ = _produce_long_matrices(zone_system, *hb_segmentation)
+
+    return MatricesResults(
+        test=matrices_,
+        segmentation_=hb_segmentation[0],
+        zoning_=zone_system,
+        type_=hb_segmentation[1],
+        data=data,
+    )
+
+
 @pytest.fixture(name="nhb_segmentation")
 def fix_nhb_segmentation() -> tuple[segmentation.Segmentation, matrices.MatrixType]:
     """Simple PA NHB segmentation without time period for testing."""
@@ -375,6 +438,23 @@ def fix_nhb_matrices_files(
 ) -> MatricesResults:
     """Simple PA NHB MatricesFiles without time period for testing."""
     data, matrices_ = _produce_matrices_files(tmp_path, zone_system, *nhb_segmentation)
+
+    return MatricesResults(
+        test=matrices_,
+        segmentation_=nhb_segmentation[0],
+        zoning_=zone_system,
+        type_=nhb_segmentation[1],
+        data=data,
+    )
+
+
+@pytest.fixture(name="nhb_long_matrices")
+def fix_nhb_long_matrices(
+    zone_system: base.ZoningSystem,
+    nhb_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
+) -> MatricesResults:
+    """Simple PA NHB LongMatrices without time period for testing."""
+    data, matrices_ = _produce_long_matrices(zone_system, *nhb_segmentation)
 
     return MatricesResults(
         test=matrices_,
@@ -518,6 +598,34 @@ def fix_disaggregate_matrices_files(
     )
 
 
+@pytest.fixture(name="disaggregate_long_matrices")
+def fix_disaggregate_long_matrices(
+    disaggregate_dataset: DisaggregateDatasets,
+) -> DisaggregateMatrices:
+    """LongMatrices for testing disaggregate method without replace."""
+    input_matrices = _produce_long_matrices(
+        disaggregate_dataset.zone_system,
+        disaggregate_dataset.from_segmentation,
+        disaggregate_dataset.type_,
+        data=disaggregate_dataset.input_,
+    )
+    target_matrices = _produce_long_matrices(
+        disaggregate_dataset.zone_system,
+        disaggregate_dataset.to_segmentation,
+        disaggregate_dataset.type_,
+        data=disaggregate_dataset.targets,
+    )
+    return DisaggregateMatrices(
+        disaggregate_dataset.zone_system,
+        disaggregate_dataset.type_,
+        disaggregate_dataset.from_segmentation,
+        disaggregate_dataset.to_segmentation,
+        input_matrices[1],
+        target_matrices[1],
+        disaggregate_dataset.expected,
+    )
+
+
 @dataclasses.dataclass
 class AggregateMatrices:
     """Store matrices and expected for aggregate method tests."""
@@ -564,6 +672,27 @@ def fix_aggregate_matrices_files(
         disaggregate_dataset.to_segmentation,
         disaggregate_dataset.type_,
         name="input matrices",
+        data=disaggregate_dataset.expected,
+    )
+    return AggregateMatrices(
+        disaggregate_dataset.zone_system,
+        disaggregate_dataset.type_,
+        from_segmentation=disaggregate_dataset.to_segmentation,
+        to_segmentation=disaggregate_dataset.from_segmentation,
+        input_=input_matrices[1],
+        expected=disaggregate_dataset.input_,
+    )
+
+
+@pytest.fixture(name="aggregate_long_matrices")
+def fix_aggregate_long_matrices(
+    disaggregate_dataset: DisaggregateDatasets,
+) -> AggregateMatrices:
+    """LongMatrices for testing aggregate method."""
+    input_matrices = _produce_long_matrices(
+        disaggregate_dataset.zone_system,
+        disaggregate_dataset.to_segmentation,
+        disaggregate_dataset.type_,
         data=disaggregate_dataset.expected,
     )
     return AggregateMatrices(
@@ -735,6 +864,35 @@ def fix_disaggregate_replace_matrices_files(
     )
 
 
+@pytest.fixture(name="disaggregate_replace_long_matrices")
+def fix_disaggregate_replace_long_matrices(
+    disaggregate_replace_datasets: DisaggregateReplaceDatasets,
+) -> DisaggregateReplaceMatrices:
+    """LongMatrices for testing disaggregate method with replace."""
+    input_matrices = _produce_long_matrices(
+        disaggregate_replace_datasets.zone_system,
+        disaggregate_replace_datasets.from_segmentation,
+        disaggregate_replace_datasets.type_,
+        data=disaggregate_replace_datasets.input_,
+    )
+    target_matrices = _produce_long_matrices(
+        disaggregate_replace_datasets.zone_system,
+        disaggregate_replace_datasets.to_segmentation,
+        disaggregate_replace_datasets.type_,
+        data=disaggregate_replace_datasets.targets,
+    )
+    return DisaggregateReplaceMatrices(
+        disaggregate_replace_datasets.zone_system,
+        disaggregate_replace_datasets.type_,
+        disaggregate_replace_datasets.from_segmentation,
+        disaggregate_replace_datasets.to_segmentation,
+        input_matrices[1],
+        target_matrices[1],
+        disaggregate_replace_datasets.expected,
+        disaggregate_replace_datasets.segments,
+    )
+
+
 @pytest.fixture(name="disaggregate_and_replace_datasets")
 def fix_disaggregate_and_replace_datasets(zone_system: base.ZoningSystem):
     """Datasets for the disaggregate and replace tests."""
@@ -867,34 +1025,73 @@ def fix_disaggregate_and_replace_matrices_files(
     )
 
 
+@pytest.fixture(name="disaggregate_and_replace_long_matrices")
+def fix_disaggregate_and_replace_long_matrices(
+    disaggregate_and_replace_datasets: DisaggregateReplaceDatasets,
+) -> DisaggregateReplaceMatrices:
+    """LongMatrices for testing disaggrate with new segment and replace."""
+    input_matrices = _produce_long_matrices(
+        disaggregate_and_replace_datasets.zone_system,
+        disaggregate_and_replace_datasets.from_segmentation,
+        disaggregate_and_replace_datasets.type_,
+        data=disaggregate_and_replace_datasets.input_,
+    )
+    target_matrices = _produce_long_matrices(
+        disaggregate_and_replace_datasets.zone_system,
+        disaggregate_and_replace_datasets.to_segmentation,
+        disaggregate_and_replace_datasets.type_,
+        data=disaggregate_and_replace_datasets.targets,
+    )
+    return DisaggregateReplaceMatrices(
+        disaggregate_and_replace_datasets.zone_system,
+        disaggregate_and_replace_datasets.type_,
+        disaggregate_and_replace_datasets.from_segmentation,
+        disaggregate_and_replace_datasets.to_segmentation,
+        input_matrices[1],
+        target_matrices[1],
+        disaggregate_and_replace_datasets.expected,
+        disaggregate_and_replace_datasets.segments,
+    )
+
+
 class TestMatrices:
     """Tests for the common functionality across all matrices."""
 
-    @pytest.mark.parametrize("matrices_", ["tp_memory_matrices", "tp_matrices_files"])
+    @pytest.mark.parametrize(
+        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+    )
     def test_segmentation(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test segmentation property returns expected Segmentation."""
         result: MatricesResults = request.getfixturevalue(matrices_)
         assert result.test.segmentation == result.segmentation_
 
-    @pytest.mark.parametrize("matrices_", ["tp_memory_matrices", "tp_matrices_files"])
+    @pytest.mark.parametrize(
+        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+    )
     def test_zoning(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test zoning property returns expected ZoningSystem."""
         result: MatricesResults = request.getfixturevalue(matrices_)
         assert result.test.zoning == result.zoning_
 
-    @pytest.mark.parametrize("matrices_", ["tp_memory_matrices", "tp_matrices_files"])
+    @pytest.mark.parametrize(
+        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+    )
     def test_type(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test type property returns expected MatrixType."""
         result: MatricesResults = request.getfixturevalue(matrices_)
         assert result.test.type == result.type_
 
-    @pytest.mark.parametrize("matrices_", ["tp_memory_matrices", "tp_matrices_files"])
+    @pytest.mark.parametrize(
+        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+    )
     def test_name(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test name property returns a string."""
         result: MatricesResults = request.getfixturevalue(matrices_)
         assert isinstance(result.test.name, str)
 
-    @pytest.mark.parametrize("matrices_", ["tp_memory_matrices", "tp_matrices_files"])
+    @pytest.mark.parametrize(
+        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+    )
     def test_get_matrix(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test `get_matrix` method returns expected DataFrame for all slices."""
         result: MatricesResults = request.getfixturevalue(matrices_)
@@ -912,7 +1109,9 @@ class TestMatrices:
                 check_column_type=False,
             )
 
-    @pytest.mark.parametrize("matrices_", ["tp_memory_matrices", "tp_matrices_files"])
+    @pytest.mark.parametrize(
+        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+    )
     def test_set_matrix(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test `set_matrix` method for all slices."""
         result: MatricesResults = request.getfixturevalue(matrices_)
@@ -932,7 +1131,9 @@ class TestMatrices:
                 check_column_type=False,
             )
 
-    @pytest.mark.parametrize("matrices_", ["tp_memory_matrices", "tp_matrices_files"])
+    @pytest.mark.parametrize(
+        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+    )
     @pytest.mark.parametrize(
         "new_seg_input",
         [
@@ -993,8 +1194,10 @@ class TestMatrices:
         [
             ("tp_memory_matrices", True),
             ("tp_matrices_files", True),
+            ("tp_long_matrices", True),
             ("hb_memory_matrices", False),
             ("hb_matrices_files", False),
+            ("hb_long_matrices", False),
         ],
     )
     def test_has_time_periods(
@@ -1011,8 +1214,10 @@ class TestMatrices:
             ("tp_matrices_files", False),
             ("hb_memory_matrices", True),
             ("hb_matrices_files", True),
+            ("hb_long_matrices", True),
             ("nhb_memory_matrices", False),
             ("nhb_matrices_files", False),
+            ("nhb_long_matrices", False),
         ],
     )
     def test_home_based_only(
@@ -1029,8 +1234,10 @@ class TestMatrices:
             ("tp_matrices_files", False),
             ("hb_memory_matrices", False),
             ("hb_matrices_files", False),
+            ("hb_long_matrices", False),
             ("nhb_memory_matrices", True),
             ("nhb_matrices_files", True),
+            ("nhb_long_matrices", True),
         ],
     )
     def test_non_home_based_only(
@@ -1045,6 +1252,7 @@ class TestMatrices:
         [
             ("tp_memory_matrices", {"userclass": 3, "direction": 1, "tp": 2}),
             ("tp_matrices_files", {"userclass": 3, "direction": 1, "tp": 2}),
+            ("tp_long_matrices", {"userclass": 3, "direction": 1, "tp": 2}),
         ],
     )
     def test_validate_slice(
@@ -1061,6 +1269,7 @@ class TestMatrices:
         [
             ("tp_memory_matrices", {"userclass": 7, "direction": 3, "tp": 5}),
             ("tp_matrices_files", {"userclass": 7, "direction": 3, "tp": 5}),
+            ("tp_long_matrices", {"userclass": 7, "direction": 3, "tp": 5}),
         ],
     )
     def test_validate_slice_invalid(
@@ -1073,7 +1282,9 @@ class TestMatrices:
         with pytest.raises(ValueError):
             result.test.validate_slice(slice_)
 
-    @pytest.mark.parametrize("matrices_", ["tp_memory_matrices", "tp_matrices_files"])
+    @pytest.mark.parametrize(
+        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+    )
     def test_validate_matrix(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test `validate_matrix` for valid matrix."""
         result: MatricesResults = request.getfixturevalue(matrices_)
@@ -1081,7 +1292,9 @@ class TestMatrices:
         rand = random_matrices(result.zoning_)
         result.test.validate_matrix(next(rand), "Valid matrix")
 
-    @pytest.mark.parametrize("matrices_", ["tp_memory_matrices", "tp_matrices_files"])
+    @pytest.mark.parametrize(
+        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+    )
     def test_validate_matrix_invalid(
         self, request: pytest.FixtureRequest, matrices_: str
     ) -> None:
@@ -1098,7 +1311,8 @@ class TestMatrices:
             result.test.validate_matrix(next(rand), "Invalid matrix")
 
     @pytest.mark.parametrize(
-        "matrices_", ["aggregate_memory_matrices", "aggregate_matrices_files"]
+        "matrices_",
+        ["aggregate_memory_matrices", "aggregate_matrices_files", "aggregate_long_matrices"],
     )
     def test_aggregate(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test aggregating to up a segment."""
@@ -1117,7 +1331,12 @@ class TestMatrices:
             )
 
     @pytest.mark.parametrize(
-        "matrices_", ["disaggregate_memory_matrices", "disaggregate_matrices_files"]
+        "matrices_",
+        [
+            "disaggregate_memory_matrices",
+            "disaggregate_matrices_files",
+            "disaggregate_long_matrices",
+        ],
     )
     def test_disaggregate(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test disaggregating to one new segment, with no replacements."""
@@ -1137,7 +1356,11 @@ class TestMatrices:
 
     @pytest.mark.parametrize(
         "matrices_",
-        ["disaggregate_replace_memory_matrices", "disaggregate_replace_matrices_files"],
+        [
+            "disaggregate_replace_memory_matrices",
+            "disaggregate_replace_matrices_files",
+            "disaggregate_replace_long_matrices",
+        ],
     )
     def test_disaggregate_replace(
         self, request: pytest.FixtureRequest, matrices_: str
@@ -1162,6 +1385,7 @@ class TestMatrices:
         [
             "disaggregate_and_replace_memory_matrices",
             "disaggregate_and_replace_matrices_files",
+            "disaggregate_and_replace_long_matrices",
         ],
     )
     def test_disaggregate_and_replace(

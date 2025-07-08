@@ -751,10 +751,16 @@ class LongMatrices(MatricesBase):
         """Return a copy of the underlying DataFrame."""
         return self._data.copy(deep)
 
-    def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
+    def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix | pd.DataFrame:
         self.validate_slice(slice_)
+        data: pd.DataFrame = self._data.loc[slice_.as_tuple()].copy()
+        if len(data.columns) > 1:
+            return data
 
-        return Matrix(self._data.loc[slice_.as_tuple()].copy(), slice_)
+        data = data.squeeze()
+        data.index.names = [None, None]
+        data.name = None
+        return Matrix(data.unstack(), slice_)
 
     def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice):
         self.validate_slice(slice_)
