@@ -735,6 +735,13 @@ class LongMatrices(MatricesBase):
         if data.index.has_duplicates:
             raise ValueError(f"duplicate indices found in {self.name}")
 
+        if self._columns is None:
+            self._columns = data.columns.to_list()
+        elif set(data.columns.to_list()) != set(self._columns):
+            raise ValueError(
+                f"expected columns {self._columns} but given {data.columns.to_list()}"
+            )
+
         seg_data = data.reset_index()[self.segmentation.naming_order].drop_duplicates(
             keep="first"
         )
@@ -764,6 +771,14 @@ class LongMatrices(MatricesBase):
 
     def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice):
         self.validate_slice(slice_)
+
+        if matrix.index.nlevels == 1:
+            self.validate_matrix(matrix, str(slice_))
+            matrix.index.name = self._origin_column
+            matrix.columns.name = self._dest_column
+
+            assert self._columns is not None
+            matrix = matrix.stack().to_frame(name=self._columns[0])
 
         if matrix.index.names != [self._origin_column, self._dest_column]:
             raise ValueError(

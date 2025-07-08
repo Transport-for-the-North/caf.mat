@@ -1129,6 +1129,7 @@ class TestMatrices:
                 obj=str(slice_),
                 check_index_type=False,
                 check_column_type=False,
+                check_names=False,
             )
 
     @pytest.mark.parametrize(
