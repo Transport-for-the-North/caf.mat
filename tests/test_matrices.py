@@ -7,6 +7,7 @@
 import dataclasses
 import functools
 import pathlib
+import warnings
 from typing import Generator
 
 # Third Party
@@ -53,9 +54,9 @@ def random_matrices(
 def fix_long_segmentation() -> segmentation.Segmentation:
     """Segmentation for LongMatrices tests."""
     config = segmentation.SegmentationInput(
-        enum_segments=["p", "tp", "m"],
-        naming_order=["p", "tp", "m"],
-        subsets={"p": [1, 2], "m": [3], "tp": [1, 3]},
+        enum_segments=["p", "tp", "direction"],  # type: ignore
+        naming_order=["p", "tp", "direction"],
+        subsets={"p": [1, 2], "direction": [1], "tp": [1, 3]},
     )
     return segmentation.Segmentation(config)
 
@@ -240,7 +241,9 @@ def _produce_matrices_files(
     folder.mkdir()
 
     for slice_, df in data.items():
-        df.to_csv(folder / f"{type_.name}_{slice_.generate_name(segmentation_.seg_dict)}.csv")
+        df.to_csv(
+            folder / f"{type_.name}_{slice_.generate_name(segmentation_.seg_dict)}.csv.bz2"
+        )
 
     matrices_ = matrices.MatrixFiles(segmentation_, zone_system, type_, folder)
 
@@ -479,12 +482,16 @@ class DisaggregateDatasets:
 
 
 @pytest.fixture(name="disaggregate_dataset")
-def fix_disaggregate_dataset(
-    zone_system: zoning.ZoningSystem,
-    tp_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
-) -> DisaggregateDatasets:
+def fix_disaggregate_dataset(zone_system: zoning.ZoningSystem) -> DisaggregateDatasets:
     """Dataset for testing disaggregate method."""
-    to_segmentation, type_ = tp_segmentation
+    to_segmentation = segmentation.Segmentation(
+        segmentation.SegmentationInput(
+            enum_segments=["userclass", "direction_od", "tp"],  # type: ignore
+            naming_order=["userclass", "direction_od", "tp"],
+            subsets={"tp": [1, 2, 3]},
+        )
+    )
+    type_ = matrices.MatrixType.OD
 
     filter_tp = functools.partial(filter, lambda x: x != "tp")
     from_segmentation = segmentation.Segmentation(
@@ -1173,9 +1180,10 @@ class TestMatrices:
         else:
             new_segmentation = None
 
-        new = result.test.new(
-            name, segmentation_=new_segmentation, zoning=new_zoning, type_=new_type
-        )
+        with warnings.catch_warnings(action="ignore", category=matrices.MatricesWarning):
+            new = result.test.new(
+                name, segmentation_=new_segmentation, zoning=new_zoning, type_=new_type
+            )
 
         assert isinstance(new, type(result.test))
         assert new.name == name
@@ -1363,6 +1371,7 @@ class TestMatrices:
             "disaggregate_replace_long_matrices",
         ],
     )
+    @pytest.mark.filterwarnings("ignore:No slices found .*:RuntimeWarning")
     def test_disaggregate_replace(
         self, request: pytest.FixtureRequest, matrices_: str
     ) -> None:
@@ -1389,6 +1398,7 @@ class TestMatrices:
             "disaggregate_and_replace_long_matrices",
         ],
     )
+    @pytest.mark.filterwarnings("ignore:No slices found .*:RuntimeWarning")
     def test_disaggregate_and_replace(
         self, request: pytest.FixtureRequest, matrices_: str
     ) -> None:

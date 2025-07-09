@@ -696,19 +696,7 @@ class LongMatrices(MatricesBase):
         self._columns = columns
 
         if data is None:
-            self._data = pd.DataFrame(
-                -1,
-                index=self._segmentation.ind(),
-                columns=pd.MultiIndex.from_product(
-                    [self._zoning.zone_ids] * 2, names=[self._origin_column, self._dest_column]
-                ),
-            )
-            self._data = (
-                self._data.stack(self._origin_column)
-                .stack(self._dest_column)
-                .to_frame(name="trips")
-            )
-            self._data.loc[:] = np.nan
+            self._data = self._create_empty_data()
         else:
             self._data = self._validate_data(data)
 
@@ -719,6 +707,24 @@ class LongMatrices(MatricesBase):
     @property
     def name(self) -> str:
         return self._name
+
+    def _create_empty_data(self) -> pd.DataFrame:
+        """Create DataFrame of NaNs with correct indices."""
+        data = pd.DataFrame(
+            -1,
+            index=self._segmentation.ind(),
+            columns=pd.MultiIndex.from_product(
+                [self._zoning.zone_ids] * 2, names=[self._origin_column, self._dest_column]
+            ),
+            dtype=float,
+        )
+        data = (
+            data.stack(self._origin_column, future_stack=True)
+            .stack(self._dest_column, future_stack=True)
+            .to_frame(name="trips")
+        )
+        data.loc[:] = np.nan
+        return data
 
     def _validate_data(self, data: pd.DataFrame) -> pd.DataFrame:
         """Validate the data has correct indices and columns."""
