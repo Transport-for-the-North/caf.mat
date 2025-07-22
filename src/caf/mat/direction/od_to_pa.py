@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""PA to OD conversion functionality."""
+"""OD to PA conversion functionality."""
 
 ##### IMPORTS #####
 
@@ -19,7 +19,7 @@ from caf.distribute import furness
 
 # Local Imports
 from caf.mat import matrices
-from caf.mat.pa_to_od import factors
+from caf.mat.direction import factors
 
 ##### CONSTANTS #####
 
