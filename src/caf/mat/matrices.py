@@ -83,7 +83,7 @@ class MatricesBase(abc.ABC):
         self._zoning = zoning
         self._type = type_
 
-        if type_.direction_segment.name not in (i.name for i in segmentation_.segments):
+        if not self.has_type_segment:
             warnings.warn(
                 "matrices doesn't contain direction segment "
                 f"({type_.direction_segment.name}) some functionality won't be possible",
@@ -154,7 +154,16 @@ class MatricesBase(abc.ABC):
         # TODO get information about the time format, e.g. avg hour / period
         return self._segmentation.has_time_period_segments()
 
+    @property
+    def has_type_segment(self) -> bool:
+        """Return True if segmentation contains correct direction segment."""
+        segment = self.type.direction_segment.name
+        return segment in (i.name for i in self.segmentation.segments)
+
     def _get_direction_subset(self) -> None | set[int]:
+        if not self.has_type_segment:
+            return None
+
         subsets = self._segmentation.input.subsets
         direction = self._type.direction_segment
 
@@ -230,9 +239,8 @@ class MatricesBase(abc.ABC):
     def __repr__(self) -> str:
         """Return a string representation of the matrices."""
         return (
-            f"{self.__class__.__name__}(type={self.type.name}, "
-            f"segmentation={self.segmentation.names}, "
-            f"zoning={self.zoning.name})"
+            f"{self.__class__.__name__}(name={self.name}, type={self.type.name},"
+            f" segmentation={self.segmentation.names}, zoning={self.zoning.name})"
         )
 
     def aggregate(
@@ -610,6 +618,8 @@ class MatrixFiles(MatricesBase):
 
     def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:
         """Save the matrix to a CSV, with a filename based on the slice parameters."""
+        self.validate_slice(slice_)
+
         filename = self._get_filename(slice_)
         self.validate_matrix(matrix, filename)
 
@@ -619,6 +629,8 @@ class MatrixFiles(MatricesBase):
 
     def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
         """Load the matrix from a CSV."""
+        self.validate_slice(slice_)
+
         filename = self._get_filename(slice_)
         path = ctk.io.find_file_with_name(self._folder, filename, self._file_suffixes)
 

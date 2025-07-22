@@ -83,6 +83,7 @@ class PhiFactors:
             data, self._additional_segments, subsets
         )
 
+        # TODO This could be a parameter which warns user if not already sums to 1
         # Normalise time period factors
         self._data = self._data / self._data.groupby(levels=self._additional_segments)
 
@@ -217,6 +218,7 @@ def load_occupancies(
     total_column: str = "total",
     translate_segments: dict[str, str] | None = None,
 ) -> base.DVector:
+    # TODO(MB) Reimplement this as a class which supports matrices (LongMatrices)
     dtypes = {
         **dict.fromkeys(tuple(segment_columns), int),
         **dict.fromkeys((driver_column, total_column), float),
