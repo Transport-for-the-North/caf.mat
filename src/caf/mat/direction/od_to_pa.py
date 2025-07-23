@@ -12,7 +12,9 @@ from typing import Literal, Sequence, TypeVar
 
 # Third Party
 import caf.base as base
+import caf.toolkit as ctk
 import pandas as pd
+import pydantic
 import xarray
 from caf.base import segmentation, segments
 from caf.distribute import furness
@@ -503,51 +505,66 @@ def od_to_pa(
         )
 
 
-def _main():
-    zone_system = base.ZoningSystem.get_zoning("noham_v3.8")
-    phi_path = pathlib.Path(
-        r"I:\NTS\outputs\productions\hb\phi_factors\tour_proportions_PA_reg.csv"
-    )
-    occ_path = pathlib.Path(r"I:\NTS\outputs\occs\vehicle_occupancy_sum.csv")
-    tp_factors = {1: 3, 2: 6, 3: 3, 4: 12}
+class OD2PAParameters(ctk.BaseConfig):
+    """Define parameters for OD to PA conversion process."""
 
-    postme_segmentation = base.Segmentation(
-        base.SegmentationInput(
-            enum_segments=["userclass", "tp", "m"],
-            naming_order=["m", "tp", "userclass"],
-            subsets={"m": [3], "tp": [1, 2, 3, 4]},
-        )
-    )
+    zone_system: str
+    time_period_factors: dict[int, int]
+
+    postme_folder: pydantic.DirectoryPath
+    postme_segmentation: base.SegmentationInput
+    synthetic_folder: pydantic.DirectoryPath
+
+    phi_factors: factors.PhiFactorsParameters
+    occupancy_factors: factors.OccupanciesParameters
+
+
+def main(parameters: OD2PAParameters):
+    """Run OD to PA conversion process."""
+    zone_system = base.ZoningSystem.get_zoning(parameters.zone_system)
+
+    tp_segment = segments.SegmentsSuper.TIMEPERIOD.get_segment()
+    postme_segmentation = segmentation.Segmentation(parameters.postme_segmentation)
+
+    if tp_segment not in postme_segmentation.segments:
+        raise ValueError("postME matrices should contain time period segmentation")
 
     disaggregated = disaggregate_postme(
-        pathlib.Path(r"C:\Users\MattBuckley\Documents\GitHub\caf.mat\.temp\postme"),
-        pathlib.Path(r"C:\Users\MattBuckley\Documents\GitHub\caf.mat\.temp\synthetic"),
+        parameters.postme_folder,
+        parameters.synthetic_folder,
         zone_system,
         postme_segmentation,
-        ["direction_od"],
+        [segments.SegmentsSuper.DIRECTION_OD.value],
     )
 
     phi = factors.PhiFactors.from_csv(
-        phi_path,
-        {"purpose.fr": "p", "mode": "m"},
-        data_column="trips.est",
-        period_filter=postme_segmentation.input.subsets["tp"],
-        translate_segments={"p": "userclass"},
+        parameters.phi_factors.path,
+        parameters.phi_factors.segment_columns,
+        data_column=parameters.phi_factors.data_column,
+        period_filter=postme_segmentation.input.subsets[tp_segment],
+        translate_segments=parameters.phi_factors.segment_translation,
         segment_filters=postme_segmentation.input.subsets,
     )
     occupancies = factors.load_occupancies(
-        occ_path,
-        segment_columns={"purpose": "p", "direction": "direction_od", "period": "tp"},
-        translate_segments={"p": "userclass"},
+        parameters.occupancy_factors.path,
+        segment_columns=parameters.occupancy_factors.segment_columns,
+        translate_segments=parameters.occupancy_factors.segment_translation,
     )
 
+    pa_segments = list(
+        filter(lambda x: x != tp_segment.name, postme_segmentation.input.naming_order)
+    ) + [segments.SegmentsSuper.DIRECTION.value]
     pa_matrices = disaggregated.new(
         "pa_postme",
         segmentation_=base.Segmentation(
             base.SegmentationInput(
-                enum_segments=["m", "userclass", "direction"],
-                naming_order=["m", "userclass", "direction"],
-                subsets={i: j for i, j in postme_segmentation.input.subsets if i != "tp"},
+                enum_segments=pa_segments,
+                naming_order=pa_segments,
+                subsets={
+                    i: j
+                    for i, j in postme_segmentation.input.subsets.items()
+                    if i != tp_segment.name
+                },
             )
         ),
     )
@@ -558,9 +575,5 @@ def _main():
         "op",
         phi,
         occ_factors=occupancies,
-        tp_factors=tp_factors,
+        tp_factors=parameters.time_period_factors,
     )
-
-
-if __name__ == "__main__":
-    _main()

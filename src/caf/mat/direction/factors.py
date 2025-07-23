@@ -9,14 +9,17 @@ import collections.abc
 import logging
 import pathlib
 import warnings
+from typing import Self
 
 # Third Party
+import caf.base as base
 import caf.toolkit as ctk
 import pandas as pd
+import pydantic
 from caf.base import segmentation, segments
+from pydantic import dataclasses
 
 # Local Imports
-from caf import base
 from caf.mat import matrices
 
 ##### CONSTANTS #####
@@ -45,6 +48,36 @@ class FromToHome(abc.ABC):
         """Get matrix of from home factors for each output time period."""
 
     def get_to(self, _slice: dict[str, int]) -> matrices.Matrix: ...
+
+
+@dataclasses.dataclass
+class PhiFactorsParameters:
+    """Parameters for loading phi factors from a CSV."""
+
+    path: pydantic.FilePath
+    segment_columns: dict[str, segments.SegmentsSuper]
+    data_column: str
+    segment_translation: dict[segments.SegmentsSuper, segments.SegmentsSuper]
+
+    @pydantic.model_validator(mode="after")
+    def _valid_segments(self) -> Self:
+        """Validate no contradicting columns / segments are provided."""
+        if self.data_column in self.segment_columns:
+            raise ValueError(f"{self.data_column} column defined as data and segment")
+
+        for i, j in self.segment_translation.items():
+            if i not in self.segment_columns.values():
+                raise ValueError(
+                    f"{i} segment defined in translation but"
+                    " not defined in segment column lookup"
+                )
+            if j in self.segment_columns.values():
+                raise ValueError(
+                    f"{j} segment defined as being translated to"
+                    " but already found in segments columns"
+                )
+
+        return self
 
 
 class PhiFactors:
@@ -209,6 +242,32 @@ def _replace_segment_columns(
         drop_columns.append(from_seg.name)
 
     return data.drop(columns=drop_columns)
+
+
+@dataclasses.dataclass
+class OccupanciesParameters:
+    """Parameters for loading occupancies factors from a CSV."""
+
+    path: pydantic.FilePath
+    segment_columns: dict[str, segments.SegmentsSuper]
+    segment_translation: dict[segments.SegmentsSuper, segments.SegmentsSuper]
+
+    @pydantic.model_validator(mode="after")
+    def _valid_segments(self) -> Self:
+        """Validate no contradicting columns / segments are provided."""
+        for i, j in self.segment_translation.items():
+            if i not in self.segment_columns.values():
+                raise ValueError(
+                    f"{i} segment defined in translation but"
+                    " not defined in segment column lookup"
+                )
+            if j in self.segment_columns.values():
+                raise ValueError(
+                    f"{j} segment defined as being translated to"
+                    " but already found in segments columns"
+                )
+
+        return self
 
 
 def load_occupancies(
