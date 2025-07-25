@@ -5,15 +5,16 @@
 
 # Built-Ins
 import abc
-import collections.abc
 import logging
 import pathlib
 import warnings
+from collections.abc import Collection, Mapping, Sequence
 from typing import Self
 
 # Third Party
 import caf.base as base
 import caf.toolkit as ctk
+import numpy as np
 import pandas as pd
 import pydantic
 from caf.base import segmentation, segments
@@ -40,14 +41,17 @@ class TimePeriod(abc.ABC):
 
     def get(self, _slice: dict[str, int]) -> list[matrices.Matrix]:
         """Get matrix of TP factors for given segment."""
+        raise NotImplementedError("WIP")
 
 
 class FromToHome(abc.ABC):
 
     def get_from(self, _slice: dict[str, int]) -> matrices.Matrix:
         """Get matrix of from home factors for each output time period."""
+        raise NotImplementedError("WIP")
 
-    def get_to(self, _slice: dict[str, int]) -> matrices.Matrix: ...
+    def get_to(self, _slice: dict[str, int]) -> matrices.Matrix:
+        raise NotImplementedError("WIP")
 
 
 @dataclasses.dataclass
@@ -58,6 +62,7 @@ class PhiFactorsParameters:
     segment_columns: dict[str, segments.SegmentsSuper]
     data_column: str
     segment_translation: dict[segments.SegmentsSuper, segments.SegmentsSuper]
+    period_columns: tuple[str, str]
 
     @pydantic.model_validator(mode="after")
     def _valid_segments(self) -> Self:
@@ -83,19 +88,19 @@ class PhiFactorsParameters:
 class PhiFactors:
 
     _tp_segment_enum = segments.SegmentsSuper.TIMEPERIOD
-    _period_columns = ("tp.fr", "tp.to")
+    _period_columns = ("tp", "tp.to")
 
     def __init__(
         self,
         data: pd.DataFrame,
-        period_filter: collections.abc.Collection[int] | None = None,
-        additional_segments: collections.abc.Sequence[str] | None = None,
-        segment_filters: dict[str, collections.abc.Sequence[int]] | None = None,
+        period_filter: Collection[int] | None = None,
+        additional_segments: Sequence[str] | None = None,
+        segment_filters: Mapping[str, Sequence[int]] | None = None,
     ):
 
         self._tp_segment = self._tp_segment_enum.get_segment()
 
-        subsets: dict[str, collections.abc.Sequence[int]] = {}
+        subsets: dict[str, Sequence[int]] = {}
         if period_filter is not None:
             subsets[self._tp_segment.name] = tuple(period_filter)
             expected_columns = set(period_filter)
@@ -105,7 +110,7 @@ class PhiFactors:
         data = self._validate_columns(data, expected_columns)
 
         if segment_filters is not None:
-            subsets = subsets | segment_filters
+            subsets = subsets | dict(segment_filters)
 
         if additional_segments is not None:
             self._additional_segments: list[str] | None = list(additional_segments)
@@ -115,10 +120,13 @@ class PhiFactors:
         self._segmentation, self._data = self._validate_segmentation(
             data, self._additional_segments, subsets
         )
+        # Segmentation with time period remove for validating get method
+        self._segmentation_no_tp = self._segmentation.remove_segment(self._tp_segment.name)
 
         # TODO This could be a parameter which warns user if not already sums to 1
-        # Normalise time period factors
-        self._data = self._data / self._data.groupby(levels=self._additional_segments)
+        # Normalise time period factors, so time period from sums to 1
+        # i.e. all trips leaving in 1 time period must return at some point
+        self._data = self._data.div(self._data.sum(axis=1), axis=0)
 
     def _validate_columns(
         self, data: pd.DataFrame, expected_columns: set[int]
@@ -145,7 +153,7 @@ class PhiFactors:
         self,
         data: pd.DataFrame,
         additional_segments: list[str] | None,
-        subsets: dict[str, collections.abc.Sequence[int]],
+        subsets: dict[str, Sequence[int]],
     ) -> tuple[segmentation.Segmentation, pd.DataFrame]:
         if additional_segments is None:
             enum_segments = [self._tp_segment_enum]
@@ -153,6 +161,11 @@ class PhiFactors:
         else:
             enum_segments = list(additional_segments) + [self._tp_segment.name]
             naming = enum_segments
+
+        mask = np.full(len(data), True)
+        for seg, values in subsets.items():
+            mask = mask & np.isin(data.index.get_level_values(seg), values)
+        data = data.loc[mask]
 
         segmentation_ = segmentation.Segmentation(
             segmentation.SegmentationInput(
@@ -179,8 +192,8 @@ class PhiFactors:
         if slice_ is None:
             raise ValueError("no slice given for getting phi factors with segmentation")
 
-        self._segmentation.validate_slice(slice_)
-        return self._data.loc[slice_.as_tuple(), :, :]
+        slice_ = self._segmentation_no_tp.validate_slice(slice_, fix_order=True)
+        return self._data.loc[slice_.as_tuple(), :]
 
     @classmethod
     def from_csv(
@@ -188,17 +201,17 @@ class PhiFactors:
         path: pathlib.Path,
         segment_columns: dict[str, str],
         data_column: str = "trips.est",
-        period_filter: collections.abc.Collection[int] | None = None,
+        period_filter: Collection[int] | None = None,
         period_columns: tuple[str, str] = ("period.fr", "period"),
         translate_segments: dict[str, str] | None = None,
-        segment_filters: dict[str, collections.abc.Sequence[int]] | None = None,
+        segment_filters: Mapping[str, Sequence[int]] | None = None,
     ) -> "PhiFactors":
         dtypes = {
             **dict.fromkeys(tuple(segment_columns) + period_columns, int),
             data_column: float,
         }
         data = ctk.io.read_csv(
-            path, "Tour Proportions", dtypes=dtypes, usecols=list(dtypes.keys())
+            path, "Tour Proportions", dtype=dtypes, usecols=list(dtypes.keys())
         )
         data = data.rename(
             columns=segment_columns | dict(zip(period_columns, cls._period_columns))
@@ -218,13 +231,13 @@ class PhiFactors:
         else:
             columns = tuple(translate_segments.get(i, i) for i in segment_columns.values())
 
-        data = data.groupby(columns + period_columns)[data_column].sum()
-        data = data.unstack(period_columns[1])
+        data = data.groupby([*columns, *cls._period_columns])[data_column].sum()
+        data = data.unstack(cls._period_columns[1])
 
         return PhiFactors(
             data,
             period_filter=period_filter,
-            additional_segments=list(segment_columns.values()),
+            additional_segments=columns,
             segment_filters=segment_filters,
         )
 
@@ -283,7 +296,7 @@ def load_occupancies(
         **dict.fromkeys((driver_column, total_column), float),
     }
     data = ctk.io.read_csv(
-        path, "occupancy factors", dtypes=dtypes, usecols=list(dtypes.keys())
+        path, "occupancy factors", dtype=dtypes, usecols=list(dtypes.keys())
     )
     data = data.rename(columns=segment_columns)
 
@@ -302,7 +315,7 @@ def load_occupancies(
     segmentation_ = segmentation.Segmentation(
         segmentation.SegmentationInput(enum_segments=columns, naming_order=columns)
     )
-    return base.DVector(segmentation_, data)
+    return base.DVector(segmentation_, data, cut_read=True)
 
 
 class MissingTP(abc.ABC):

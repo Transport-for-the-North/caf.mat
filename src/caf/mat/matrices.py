@@ -18,6 +18,7 @@ import caf.base as bs
 import caf.toolkit as ctk
 import numpy as np
 import pandas as pd
+import tqdm
 from caf.base import segmentation, segments
 
 # Local Imports
@@ -145,6 +146,11 @@ class MatricesBase(abc.ABC):
         The current value for segmentation, zoning, and type will be used
         if not provided.
         """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def exists(self) -> bool:
+        """Check if matrices exist for all slices."""
         raise NotImplementedError()
 
     @property
@@ -289,7 +295,10 @@ class MatricesBase(abc.ABC):
         targets: "MatricesBase",
         from_segment: segments.Segment | None = None,
         to_segment: segments.Segment | None = None,
+        *,
         output_name: str = "{name}-disaggregated",
+        progress_bar: bool = True,
+        ignore_if_exists: bool = True,
     ) -> Self:
         """Disaggregate matrices to a target segmentation.
 
@@ -307,9 +316,14 @@ class MatricesBase(abc.ABC):
         to_segment : segments.Segment | None, optional
             Optional segment to replace the `from_segment`,
             mandatory if `from_segment` is given.
-        output_name : str, default "{name}-disaggregated"
-            Name of disaggregated matrices, will replace
-            "{name}" with the name of this instance.
+        output_name
+            Name of disaggregated matrices defaults to "{name}-disaggregated",
+            will replace "{name}" with the name of this instance.
+        progress_bar
+            If True display progress bar for disaggregation.
+        ignore_if_exists
+            If True check if all disaggregated matrices already exist
+            and don't attempt to recreate.
 
         Returns
         -------
@@ -362,12 +376,38 @@ class MatricesBase(abc.ABC):
             output_name.format(name=self.name), segmentation_=targets.segmentation
         )
 
-        for from_slice, to_slices in disaggregations.items():
+        disaggregation_segments = ", ".join(
+            filter(
+                lambda x: x not in self.segmentation.seg_dict,
+                targets.segmentation.seg_dict,
+            )
+        )
+        if ignore_if_exists and output.exists():
+            LOG.debug(
+                "Dissagregation of %s to additional segments (%s) already exists: %s",
+                self.name,
+                disaggregation_segments,
+                output.name,
+            )
+            return output
+
+        LOG.info(
+            "Disaggregating %s to additional segments: %s", self.name, disaggregation_segments
+        )
+
+        if progress_bar:
+            iterator = tqdm.tqdm(
+                disaggregations.items(), desc=f"Disaggregating {self.name}", dynamic_ncols=True
+            )
+        else:
+            iterator = disaggregations.items()
+
+        for from_slice, to_slices in iterator:
             disagg_matrices: list[Matrix] = []
             for slice_ in to_slices:
                 disagg_matrices.append(targets.get_matrix(slice_))
 
-            LOG.info(
+            LOG.debug(
                 "Disaggregating %s matrix into %s matrices: %s",
                 self.segmentation.generate_slice_name(from_slice),
                 len(disagg_matrices),
@@ -521,6 +561,12 @@ class MemoryMatrices(MatricesBase):
             name=name,
         )
 
+    def exists(self) -> bool:
+        for slice_ in self.segmentation.iter_slices():
+            if slice_ not in self._matrices:
+                return False
+        return True
+
     def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
         """Get in-memory matrix."""
         self.validate_slice(slice_)
@@ -625,7 +671,7 @@ class MatrixFiles(MatricesBase):
 
         path = self._folder / (filename + self._file_suffixes[0])
         matrix.to_csv(path)
-        LOG.info("Written: %s", path)
+        LOG.debug("Written: %s", path)
 
     def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
         """Load the matrix from a CSV."""
@@ -634,7 +680,7 @@ class MatrixFiles(MatricesBase):
         filename = self._get_filename(slice_)
         path = ctk.io.find_file_with_name(self._folder, filename, self._file_suffixes)
 
-        LOG.info("Loading matrix file: %s", path)
+        LOG.debug("Loading matrix file: %s", path)
         data = ctk.io.read_csv_matrix(path)
 
         self.validate_matrix(data, filename)
@@ -658,6 +704,23 @@ class MatrixFiles(MatricesBase):
             filename_template=self._filename_template,
             check_files=False,
         )
+
+    def exists(self) -> bool:
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=".*Performing in-depth search.",
+                    category=RuntimeWarning,
+                )
+                self._segmentation.find_files(
+                    self._folder,
+                    self._filename_template,
+                    self._file_suffixes,
+                )
+        except FileNotFoundError:
+            return False
+        return True
 
 
 class LongMatrices(MatricesBase):
@@ -853,6 +916,13 @@ class LongMatrices(MatricesBase):
             name=name,
             columns=self._columns,
         )
+
+    def exists(self) -> bool:
+        try:
+            self._validate_data(self._data)
+        except ValueError:
+            return False
+        return True
 
     @classmethod
     def from_csv(

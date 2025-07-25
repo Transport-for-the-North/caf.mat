@@ -8,6 +8,9 @@ import abc
 import logging
 import pathlib
 
+# Third Party
+import pydantic
+
 ##### CONSTANTS #####
 
 LOG = logging.getLogger(__name__)
@@ -20,7 +23,7 @@ class MatrixError(Exception):
     """Generic matrix error from caf.mat."""
 
 
-class ArgumentHandler(abc.ABC):
+class ArgumentHandler(pydantic.BaseModel, abc.ABC):
     """Define required methods for argument sub-command classes."""
 
     @abc.abstractmethod

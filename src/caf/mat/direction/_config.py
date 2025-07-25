@@ -27,7 +27,7 @@ LOG = logging.getLogger(__name__)
 class _OD2PAArguments(_mat.ArgumentHandler):
     """Define arguments for OD to PA sub-command."""
 
-    config: pydantic.FilePath
+    config: pydantic.FilePath = pydantic.Field(description="path to config file for od2pa")
 
     def run(self) -> None:
         """Run OD to PA conversion."""

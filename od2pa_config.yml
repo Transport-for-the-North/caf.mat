@@ -5,7 +5,8 @@ time_period_factors:
   3: 3
   4: 12
 
-postme_folder: .temp\postme
+postme_folder: C:\Users\Kirkland\Documents\caf.mat tests\postme
+#postme_folder: I:\NorMITs Forecast\base_year_matrices
 postme_segmentation:
   enum_segments:
     - userclass
@@ -24,7 +25,8 @@ postme_segmentation:
       - 3
       - 4
 
-synthetic_folder: .temp\synthetic
+synthetic_folder: C:\Users\Kirkland\Documents\caf.mat tests\synthetic
+#synthetic_folder: I:\NorMITs Distribution\voa_gb_2023_uni\mat\vdm\synthetic
 
 # Parameters defining the phi factors CSV columns and the corresponding segment
 phi_factors:
@@ -36,11 +38,15 @@ phi_factors:
   data_column: trips.est
   segment_translation:
     p: userclass
+  period_columns:
+    - period.fr
+    - period
 
 occupancy_factors:
   path: I:\NTS\outputs\occs\vehicle_occupancy_sum_direction_int.csv
   # All column names and their corresponding segment
   segment_columns:
+    mode: m
     purpose: p
     direction: direction_od
     period: tp

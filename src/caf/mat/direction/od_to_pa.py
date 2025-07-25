@@ -210,20 +210,14 @@ def nhb_proportions(
 ):
     _validate_od_input_outputs(input_, output)
 
-    params = params | {segments.SegmentsSuper.DIRECTION_OD.value: _DIRECTION_VALUES["nhb"]}
+    od_params = params | {segments.SegmentsSuper.DIRECTION_OD.value: _DIRECTION_VALUES["nhb"]}
 
     tp_matrices: dict[segmentation.SegmentationSlice, pd.DataFrame] = {}
-    for slice_ in input_.segmentation.iter_slices(params):
+    for slice_ in input_.segmentation.iter_slices(od_params):
         data = _matrix_multiply(slice_, input_, occ_factors, tp_factors)
+        tp_matrices[slice_] = data
 
-        output_slice = slice_.replace(
-            segments.SegmentsSuper.DIRECTION_OD.value,
-            segments.SegmentsSuper.DIRECTION.value,
-            _DIRECTION_VALUES["nhb"],
-        )
-        tp_matrices[output_slice] = data
-
-    nhb_24hr = sum(data.values())
+    nhb_24hr = sum(tp_matrices.values())
     output.set_matrix(
         nhb_24hr,
         segmentation.SegmentationSlice(
@@ -337,15 +331,15 @@ def _normalise_to_xarray(data: pd.DataFrame) -> xarray.DataArray:
 def _od_adjustment_segmentation(input_: Matrices) -> segmentation.Segmentation:
     """Create segmentation for OD adjustments which doesn't include NHB / HB."""
     direction = input_.type.direction_segment.name
-    enum_segments = filter(
-        lambda x: x.name != direction, input_.segmentation.input.enum_segments
-    )
-    names = filter(lambda x: x != direction, input_.segmentation.input.naming_order)
+    enum_segments = [
+        i for i in input_.segmentation.input.enum_segments if i.value != direction
+    ]
+    names = [i for i in input_.segmentation.input.naming_order if i != direction]
+    custom = [i for i in input_.segmentation.input.custom_segments if i.name != direction]
 
     config = segmentation.SegmentationInput(
-        enum_segments=list(enum_segments), naming_order=list(names)
+        enum_segments=enum_segments, naming_order=names, custom_segments=custom
     )
-
     return segmentation.Segmentation(config)
 
 
@@ -353,15 +347,27 @@ def _tour_proportions_segmentation(input_: Matrices) -> segmentation.Segmentatio
     """Create segmentation for OD adjustments which doesn't include NHB / HB."""
     tp_name = segments.SegmentsSuper.TIMEPERIOD.value
     remove = (input_.type.direction_segment.name, tp_name)
-    enum_segments = filter(
-        lambda x: x.name not in remove, input_.segmentation.input.enum_segments
-    )
-    names = filter(lambda x: x not in remove, input_.segmentation.input.naming_order)
 
-    new = [segments.SegmentsSuper.DIRECTION.value, f"from_{tp_name}", f"to_{tp_name}"]
+    new_enum = [segments.SegmentsSuper.DIRECTION]
+    enum_segments = [
+        i for i in input_.segmentation.input.enum_segments if i.value not in remove
+    ] + new_enum
+    names = [i for i in input_.segmentation.input.naming_order if i not in remove]
+
+    from_segment = segments.SegmentsSuper.TIMEPERIOD.get_segment().model_copy()
+    from_segment.name = f"from_{tp_name}"
+    to_segment = segments.SegmentsSuper.TIMEPERIOD.get_segment().model_copy()
+    to_segment.name = f"to_{tp_name}"
+
+    new_custom = [from_segment, to_segment]
+    custom_segments = [
+        i for i in input_.segmentation.input.custom_segments if i.name not in remove
+    ] + new_custom
 
     config = segmentation.SegmentationInput(
-        enum_segments=list(enum_segments) + new, naming_order=list(names) + new
+        enum_segments=enum_segments,
+        naming_order=names + [i.value for i in new_enum] + [i.name for i in new_custom],
+        custom_segments=custom_segments,
     )
 
     return segmentation.Segmentation(config)
@@ -436,16 +442,17 @@ def od_to_pa(
 
     tp_name = segments.SegmentsSuper.TIMEPERIOD.value
 
-    slices_iter: pd.DataFrame = input_.segmentation.ind().to_frame()
+    slices_iter: pd.DataFrame = input_.segmentation.ind().to_frame(index=False)
     slices_iter = slices_iter.drop(
         columns=[input_.type.direction_segment.name, tp_name]
     ).drop_duplicates()
 
     for params in slices_iter.itertuples(index=False):
+        params = params._asdict()
         if not input_.home_based_only:
             nhb_proportions(
                 input_,
-                params._asdict(),
+                params,
                 output,
                 return_factors,
                 occ_factors=occ_factors,
@@ -461,7 +468,7 @@ def od_to_pa(
         phi_factors = phi.get(segmentation.SegmentationSlice(params))
 
         from_home, to_home, nhb = _get_time_matrices(
-            input_, params._asdict(), occ_factors, tp_factors
+            input_, params, occ_factors, tp_factors
         )
         from_home, to_home, adjustments = _balance_fh_th(
             from_home,
@@ -495,6 +502,8 @@ def od_to_pa(
         if not calculate_tour_proportions:
             continue
 
+        # Can't be None at this point
+        assert tour_proportions is not None
         _calculate_tour_proportions(
             from_home,
             to_home,
@@ -523,10 +532,10 @@ def main(parameters: OD2PAParameters):
     """Run OD to PA conversion process."""
     zone_system = base.ZoningSystem.get_zoning(parameters.zone_system)
 
-    tp_segment = segments.SegmentsSuper.TIMEPERIOD.get_segment()
+    tp_name = segments.SegmentsSuper.TIMEPERIOD.value
     postme_segmentation = segmentation.Segmentation(parameters.postme_segmentation)
 
-    if tp_segment not in postme_segmentation.segments:
+    if tp_name not in [i.name for i in postme_segmentation.segments]:
         raise ValueError("postME matrices should contain time period segmentation")
 
     disaggregated = disaggregate_postme(
@@ -539,20 +548,28 @@ def main(parameters: OD2PAParameters):
 
     phi = factors.PhiFactors.from_csv(
         parameters.phi_factors.path,
-        parameters.phi_factors.segment_columns,
+        {i: j.value for i, j in parameters.phi_factors.segment_columns.items()},
         data_column=parameters.phi_factors.data_column,
-        period_filter=postme_segmentation.input.subsets[tp_segment],
-        translate_segments=parameters.phi_factors.segment_translation,
+        period_filter=postme_segmentation.input.subsets[tp_name],
+        period_columns=parameters.phi_factors.period_columns,
+        translate_segments={
+            i.value: j.value for i, j in parameters.phi_factors.segment_translation.items()
+        },
         segment_filters=postme_segmentation.input.subsets,
     )
     occupancies = factors.load_occupancies(
         parameters.occupancy_factors.path,
-        segment_columns=parameters.occupancy_factors.segment_columns,
-        translate_segments=parameters.occupancy_factors.segment_translation,
+        segment_columns={
+            i: j.value for i, j in parameters.occupancy_factors.segment_columns.items()
+        },
+        translate_segments={
+            i.value: j.value
+            for i, j in parameters.occupancy_factors.segment_translation.items()
+        },
     )
 
     pa_segments = list(
-        filter(lambda x: x != tp_segment.name, postme_segmentation.input.naming_order)
+        filter(lambda x: x != tp_name, postme_segmentation.input.naming_order)
     ) + [segments.SegmentsSuper.DIRECTION.value]
     pa_matrices = disaggregated.new(
         "pa_postme",
@@ -561,12 +578,11 @@ def main(parameters: OD2PAParameters):
                 enum_segments=pa_segments,
                 naming_order=pa_segments,
                 subsets={
-                    i: j
-                    for i, j in postme_segmentation.input.subsets.items()
-                    if i != tp_segment.name
+                    i: j for i, j in postme_segmentation.input.subsets.items() if i != tp_name
                 },
             )
         ),
+        type_=matrices.MatrixType.PA,
     )
 
     od_to_pa(

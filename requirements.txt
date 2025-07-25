@@ -3,4 +3,5 @@ pandas>=2.2
 caf.base @ git+https://github.com/Transport-for-the-North/caf.base.git@userclass
 caf.toolkit>=0.9.0
 caf.distribute @ git+https://github.com/Transport-for-the-North/caf.distribute.git@pandas_furness_wrapper
-xarray
+xarray>=2025.7.1
+tqdm>=4.67
