@@ -240,7 +240,33 @@ class MatricesBase(abc.ABC):
         if not matrix.index.equals(matrix.columns):
             raise ValueError(f"{name} must be square, with the same index and columns.")
 
+        self._check_matrix_nan(matrix, name)
         self._validate_zones(matrix.index.to_numpy(), name)
+
+    @staticmethod
+    def _check_matrix_nan(matrix: pd.DataFrame, name: str) -> None:
+        """Raise ValueError if matrix contains any non-finite values."""
+        if np.isfinite(matrix.to_numpy()).all():
+            return
+
+        na = np.isnan(matrix.to_numpy())
+        inf = np.isinf(matrix.to_numpy())
+
+        messages = []
+        for number, array in (("NaN", na), ("Infinite", inf)):
+            if array.any():
+                msg = f"{np.sum(array):,} {number} cells"
+
+                for i, nm in enumerate(("origin", "destination")):
+                    zones = matrix.index.to_numpy()[np.any(array, axis=i)]
+                    msg += (
+                        f"\n\t\t{len(zones):,} {nm} rows with"
+                        f" {number} values: {_short_list(zones)}"
+                    )
+
+                messages.append(msg)
+
+        raise ValueError(f"{name} contains invalid values\n\t" + "\n\t".join(messages))
 
     def __repr__(self) -> str:
         """Return a string representation of the matrices."""
@@ -253,6 +279,7 @@ class MatricesBase(abc.ABC):
         self,
         segmentation_: "segmentation.Segmentation",
         output_name: str = "{name}-aggregated",
+        progress_bar: bool = True,
     ) -> Self:
         """Aggregate matrices to target segmentation.
 
@@ -266,6 +293,8 @@ class MatricesBase(abc.ABC):
         output_name : str
             Name for the output matrices, default "{name}-aggregated",
             where name is `self.name`.
+        progress_bar
+            If True display progress bar for aggregation.
 
         Returns
         -------
@@ -281,7 +310,24 @@ class MatricesBase(abc.ABC):
             raise ValueError("cannot aggregate to segmentation which isn't a subset")
 
         output = self.new(output_name.format(name=self.name), segmentation_=segmentation_)
-        for to_slice in segmentation_.iter_slices():
+
+        LOG.info(
+            "Aggregating %s to segments %s, outputting as %s",
+            self.name,
+            ", ".join(segmentation_.names),
+            output.name,
+        )
+
+        if progress_bar:
+            iterator = tqdm.tqdm(
+                segmentation_.iter_slices(),
+                total=len(segmentation_),
+                desc=f"Aggregating {self.name}",
+            )
+        else:
+            iterator = segmentation_.iter_slices()
+
+        for to_slice in iterator:
             total = 0
             for from_slice in self.segmentation.iter_slices(to_slice.data):
                 total += self.get_matrix(from_slice).data
@@ -504,9 +550,19 @@ def _disaggregate_matrix(
     output: MatricesBase,
 ):
     """Disaggregate a single matrix and save outputs."""
-    total = sum(i.data for i in targets)
+    total = sum(i.data for i in targets).to_numpy()
+    mask = total != 0
+
     for matrix in targets:
-        disaggregated = aggregate.data * matrix.data / total
+        data = matrix.data.to_numpy()
+        if np.any(data[~mask] != 0):
+            raise ValueError(
+                f"{matrix.slice} matrix contains non-zero values in"
+                " cells where the total is zero, this shouldn't be possible"
+            )
+
+        factor = np.divide(data, total, out=np.full_like(total, 0), where=mask)
+        disaggregated = aggregate.data * factor
         output.set_matrix(disaggregated, matrix.slice)
 
 
@@ -682,6 +738,8 @@ class MatrixFiles(MatricesBase):
 
         LOG.debug("Loading matrix file: %s", path)
         data = ctk.io.read_csv_matrix(path)
+        data.index.name = "origin"
+        data.columns.name = "destination"
 
         self.validate_matrix(data, filename)
         return Matrix(data, slice_)

@@ -13,6 +13,7 @@ from typing import Literal, Sequence, TypeVar
 # Third Party
 import caf.base as base
 import caf.toolkit as ctk
+import numpy as np
 import pandas as pd
 import pydantic
 import xarray
@@ -217,6 +218,10 @@ def nhb_proportions(
         data = _matrix_multiply(slice_, input_, occ_factors, tp_factors)
         tp_matrices[slice_] = data
 
+    if len(tp_matrices) == 0:
+        LOG.debug("No NHB matrices in %s for slice = %s", input_.name, params)
+        return None
+
     nhb_24hr = sum(tp_matrices.values())
     output.set_matrix(
         nhb_24hr,
@@ -226,8 +231,16 @@ def nhb_proportions(
         ),
     )
 
+    mask = nhb_24hr.to_numpy() != 0
     for slice_, data in tp_matrices.items():
-        output_proportions.set_matrix(data / nhb_24hr, slice_)
+        if np.any(data.to_numpy()[~mask] != 0):
+            raise ValueError(
+                f"{slice_} matrix contains non-zero values in"
+                " cells where the total is zero, this shouldn't be possible"
+            )
+
+        data = np.divide(data, nhb_24hr, out=np.full_like(nhb_24hr, 0), where=mask)
+        output_proportions.set_matrix(data, slice_)
 
 
 def _get_time_matrices(
@@ -237,34 +250,47 @@ def _get_time_matrices(
     tp_factors: dict[int, int] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame | None]:
     unstacked_matrices: dict[str, list[pd.Series]] = {"nhb": [], "from": [], "to": []}
-    for tp_slice in input_.segmentation.iter_slices(params):
-        tp_params = tp_slice.data
+    direction_lookup = {_DIRECTION_VALUES[i]: i for i in unstacked_matrices}
 
-        for nm, list_ in unstacked_matrices.items():
-            tp_params[input_.type.direction_segment.name] = _DIRECTION_VALUES[nm]
+    for slice_ in input_.segmentation.iter_slices(params):
+        direction_value = slice_.get(input_.type.direction_segment.name)
+        if direction_value is None:
+            raise ValueError(f"direction is None in slice = {slice_}")
+        direction = direction_lookup[direction_value]
 
-            try:
-                square_matrix = _matrix_multiply(
-                    segmentation.SegmentationSlice(tp_params, tp_slice.naming_order),
-                    input_,
-                    occ_factors,
-                    tp_factors,
-                )
-            except ValueError:
-                # NHB doesn't need to be included in the segmentation
-                if nm == "nhb":
-                    continue
-                raise
+        try:
+            square_matrix = _matrix_multiply(
+                slice_,
+                input_,
+                occ_factors,
+                tp_factors,
+            )
+        except ValueError:
+            # NHB doesn't need to be included in the segmentation
+            if direction == "nhb":
+                continue
+            raise
 
-            # Stack to long format so time period can be concatenated
-            long_matrix: pd.Series = square_matrix.stack()
-            long_matrix.name = tp_slice.get(segments.SegmentsSuper.TIMEPERIOD.value)
-            list_.append(long_matrix)
+        # Stack to long format so time period can be concatenated
+        long_matrix: pd.Series = square_matrix.stack()
+        if not np.all(
+            long_matrix.index.get_level_values("origin")
+            == np.repeat(square_matrix.index, len(square_matrix))
+        ):
+            raise ValueError("something wrong with stacked matrix origins")
+        if not np.all(
+            long_matrix.index.get_level_values("destination")
+            == np.tile(square_matrix.index, len(square_matrix))
+        ):
+            raise ValueError("something wrong with stacked matrix destinations")
 
-    from_home = pd.concat(unstacked_matrices["from"])
-    to_home = pd.concat(unstacked_matrices["to"])
+        long_matrix.name = slice_.get(segments.SegmentsSuper.TIMEPERIOD.value)
+        unstacked_matrices[direction].append(long_matrix)
+
+    from_home = pd.concat(unstacked_matrices["from"], axis=1)
+    to_home = pd.concat(unstacked_matrices["to"], axis=1)
     if len(unstacked_matrices["nhb"]) > 0:
-        nhb = pd.concat(unstacked_matrices["nhb"])
+        nhb = pd.concat(unstacked_matrices["nhb"], axis=1)
     else:
         nhb = None
     return from_home, to_home, nhb
@@ -302,7 +328,22 @@ def _balance_fh_th(
     if nhb is not None:
         balanced += nhb
 
-    adjustment = original / balanced
+    mask = balanced.to_numpy() != 0
+    if np.any(~mask):
+        warnings.warn(
+            f"balanced matrix contains {np.sum(~mask):,} cells with"
+            " zeros these will have adjustment factors set to 1",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+    if np.any(original.to_numpy()[~mask] != 0):
+        raise ValueError(
+            "During balancing matrix contains non-zero values in"
+            " cells where the total is zero, this shouldn't be possible"
+        )
+
+    adjustment = np.divide(original, balanced, out=np.full_like(original, 1), where=mask)
 
     return from_home, to_home, adjustment
 
@@ -318,13 +359,14 @@ def _set_matrices_by_time_period(
             params | {column_segment: int(column)},
             naming_order=matrices_.segmentation.naming_order,
         )
-        matrices_.set_matrix(data[column], slice_)
+        matrices_.set_matrix(data[column].unstack(), slice_)
 
 
-def _normalise_to_xarray(data: pd.DataFrame) -> xarray.DataArray:
+def _normalise_to_xarray(data: pd.DataFrame, name: str) -> xarray.DataArray:
     total = data.sum(axis=1)
     data = data.div(total.replace(0, 1), axis=0)
     data.loc[total == 0] = (0.25, 0.25, 0.25, 0.25)
+    data.columns.name = name
     return data.stack().to_xarray()
 
 
@@ -348,10 +390,9 @@ def _tour_proportions_segmentation(input_: Matrices) -> segmentation.Segmentatio
     tp_name = segments.SegmentsSuper.TIMEPERIOD.value
     remove = (input_.type.direction_segment.name, tp_name)
 
-    new_enum = [segments.SegmentsSuper.DIRECTION]
     enum_segments = [
         i for i in input_.segmentation.input.enum_segments if i.value not in remove
-    ] + new_enum
+    ]
     names = [i for i in input_.segmentation.input.naming_order if i not in remove]
 
     from_segment = segments.SegmentsSuper.TIMEPERIOD.get_segment().model_copy()
@@ -366,7 +407,7 @@ def _tour_proportions_segmentation(input_: Matrices) -> segmentation.Segmentatio
 
     config = segmentation.SegmentationInput(
         enum_segments=enum_segments,
-        naming_order=names + [i.value for i in new_enum] + [i.name for i in new_custom],
+        naming_order=names + [i.name for i in new_custom],
         custom_segments=custom_segments,
     )
 
@@ -381,8 +422,8 @@ def _calculate_tour_proportions(
     output: Matrices,
     tp_name: str = "{}_tp",
 ):
-    from_array = _normalise_to_xarray(from_home)
-    to_array = _normalise_to_xarray(to_home)
+    from_array = _normalise_to_xarray(from_home, "from")
+    to_array = _normalise_to_xarray(to_home, "to")
 
     time_periods = phi_factors.index.tolist()
 
@@ -391,7 +432,7 @@ def _calculate_tour_proportions(
     ).stack()
     seed_index = pd.MultiIndex.from_product(
         [time_periods, time_periods, output.zoning.zone_ids, output.zoning.zone_ids],
-        names=["from", "to", "o", "d"],
+        names=["from", "to", "origin", "destination"],
     )
     phi = phi.reindex(seed_index)
 
@@ -407,9 +448,13 @@ def _calculate_tour_proportions(
 
     tour_props = furness_return_vals.to_dataframe(name="trips")
     for from_tp, to_tp in itertools.product(time_periods, time_periods):
-        data = tour_props.loc[from_tp, to_tp].unstack("d")
+        data = tour_props.loc[from_tp, to_tp]["trips"].unstack("destination")
         output.set_matrix(
-            data, slice_params | {tp_name.format("from"): from_tp, tp_name.format("to"): to_tp}
+            data,
+            segmentation.SegmentationSlice(
+                slice_params | {tp_name.format("from"): from_tp, tp_name.format("to"): to_tp},
+                output.segmentation.naming_order,
+            ),
         )
 
 
@@ -467,9 +512,7 @@ def od_to_pa(
 
         phi_factors = phi.get(segmentation.SegmentationSlice(params))
 
-        from_home, to_home, nhb = _get_time_matrices(
-            input_, params, occ_factors, tp_factors
-        )
+        from_home, to_home, nhb = _get_time_matrices(input_, params, occ_factors, tp_factors)
         from_home, to_home, adjustments = _balance_fh_th(
             from_home,
             to_home,
@@ -504,14 +547,20 @@ def od_to_pa(
 
         # Can't be None at this point
         assert tour_proportions is not None
-        _calculate_tour_proportions(
-            from_home,
-            to_home,
-            phi_factors,
-            params,
-            tour_proportions,
-            tp_name=f"{{}}_{tp_name}",
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r".*'(from|to)_tp' is not a valid SegmentsSuper.*",
+                category=RuntimeWarning,
+            )
+            _calculate_tour_proportions(
+                from_home,
+                to_home,
+                phi_factors,
+                params,
+                tour_proportions,
+                tp_name=f"{{}}_{tp_name}",
+            )
 
 
 class OD2PAParameters(ctk.BaseConfig):

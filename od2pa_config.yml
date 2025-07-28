@@ -26,7 +26,7 @@ postme_segmentation:
       - 4
 
 synthetic_folder: C:\Users\Kirkland\Documents\caf.mat tests\synthetic
-#synthetic_folder: I:\NorMITs Distribution\voa_gb_2023_uni\mat\vdm\synthetic
+#synthetic_folder: I:\NorMITs Distribution\voa_gb_2023_uni\mat\vdm\synthetic\od2pa_synthetic
 
 # Parameters defining the phi factors CSV columns and the corresponding segment
 phi_factors:
