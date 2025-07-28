@@ -678,6 +678,7 @@ class MatrixFiles(MatricesBase):
     ):
         super().__init__(segmentation_, zoning, type_)
 
+        self._raw_filename_template = filename_template
         self._filename_template = filename_template.format(
             type=self.type.name, slice_name="{slice_name}"
         )
@@ -759,7 +760,7 @@ class MatrixFiles(MatricesBase):
             zoning=self._zoning if zoning is None else zoning,
             type_=self._type if type_ is None else type_,
             folder=folder,
-            filename_template=self._filename_template,
+            filename_template=self._raw_filename_template,
             check_files=False,
         )
 
