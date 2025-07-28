@@ -981,7 +981,8 @@ class LongMatrices(MatricesBase):
             self._validate_data(self._data)
         except ValueError:
             return False
-        return True
+
+        return not self._data.isna().any().any()
 
     @classmethod
     def from_csv(
