@@ -11,7 +11,7 @@ import enum
 import logging
 import pathlib
 import warnings
-from typing import Iterator, Self
+from typing import Iterator
 
 # Third Party
 import caf.base as bs
@@ -140,7 +140,7 @@ class MatricesBase(abc.ABC):
         segmentation_: bs.Segmentation | None = None,
         zoning: bs.ZoningSystem | None = None,
         type_: MatrixType | None = None,
-    ) -> Self:
+    ) -> "Self":
         """Create a new instance of the matrices class with a new name.
 
         The current value for segmentation, zoning, and type will be used
@@ -280,7 +280,7 @@ class MatricesBase(abc.ABC):
         segmentation_: "segmentation.Segmentation",
         output_name: str = "{name}-aggregated",
         progress_bar: bool = True,
-    ) -> Self:
+    ) -> "Self":
         """Aggregate matrices to target segmentation.
 
         Outputs aggregated to a new matrices class.
@@ -345,7 +345,7 @@ class MatricesBase(abc.ABC):
         output_name: str = "{name}-disaggregated",
         progress_bar: bool = True,
         ignore_if_exists: bool = True,
-    ) -> Self:
+    ) -> "Self":
         """Disaggregate matrices to a target segmentation.
 
         Optionally a single segment can be translated to another one
@@ -752,10 +752,10 @@ class MatrixFiles(MatricesBase):
         segmentation_: bs.Segmentation | None = None,
         zoning: bs.ZoningSystem | None = None,
         type_: MatrixType | None = None,
-    ) -> Self:
+    ) -> "Self":
         folder = self._folder.with_name(name)
         folder.mkdir(exist_ok=True)
-        return MatrixFiles(
+        return self.__class__(
             segmentation_=self._segmentation if segmentation_ is None else segmentation_,
             zoning=self._zoning if zoning is None else zoning,
             type_=self._type if type_ is None else type_,
@@ -827,12 +827,15 @@ class LongMatrices(MatricesBase):
         super().__init__(segmentation_, zoning, type_)
         self._name = name
         self._index = self._get_index_names(segmentation_)
-        self._columns = columns
+
+        if columns is not None and len(columns) == 0:
+            raise ValueError("empty list given for columns")
 
         if data is None:
-            self._data = self._create_empty_data()
+            self._data, columns = self._create_empty_data(columns)
         else:
-            self._data = self._validate_data(data)
+            self._data, columns = self._validate_data(data)
+        self._columns = columns
 
     @classmethod
     def _get_index_names(cls, segmentation_: segmentation.Segmentation) -> list[str]:
@@ -842,7 +845,10 @@ class LongMatrices(MatricesBase):
     def name(self) -> str:
         return self._name
 
-    def _create_empty_data(self) -> pd.DataFrame:
+    def _create_empty_data(
+        self,
+        columns: list[str] | None = None,
+    ) -> tuple[pd.DataFrame, list[str]]:
         """Create DataFrame of NaNs with correct indices."""
         data = pd.DataFrame(
             -1,
@@ -852,15 +858,26 @@ class LongMatrices(MatricesBase):
             ),
             dtype=float,
         )
+
+        if columns is None:
+            columns = ["trips"]
+
         data = (
             data.stack(self._origin_column, future_stack=True)
             .stack(self._dest_column, future_stack=True)
-            .to_frame(name="trips")
+            .to_frame(name=columns[0])
         )
         data.loc[:] = np.nan
-        return data
 
-    def _validate_data(self, data: pd.DataFrame) -> pd.DataFrame:
+        if len(columns) > 1:
+            for i in columns:
+                data[i] = np.nan
+
+        return data, columns
+
+    def _validate_data(
+        self, data: pd.DataFrame, columns: list[str] | None = None
+    ) -> tuple[pd.DataFrame, list[str]]:
         """Validate the data has correct indices and columns."""
         index = set(self._index)
         if set(data.index.names) != index:
@@ -895,12 +912,10 @@ class LongMatrices(MatricesBase):
         if data.index.has_duplicates:
             raise ValueError(f"duplicate indices found in {self.name}")
 
-        if self._columns is None:
-            self._columns = data.columns.to_list()
-        elif set(data.columns.to_list()) != set(self._columns):
-            raise ValueError(
-                f"expected columns {self._columns} but given {data.columns.to_list()}"
-            )
+        if columns is None:
+            columns = data.columns.to_list()
+        elif set(data.columns.to_list()) != set(columns):
+            raise ValueError(f"expected columns {columns} but given {data.columns.to_list()}")
 
         seg_data = data.reset_index()[self.segmentation.naming_order].drop_duplicates(
             keep="first"
@@ -912,7 +927,7 @@ class LongMatrices(MatricesBase):
                 data.index.get_level_values(i).unique().to_numpy(), f"{self.name} - {i}"
             )
 
-        return data
+        return data, columns
 
     def to_frame(self, deep: bool = False) -> pd.DataFrame:
         """Return a copy of the underlying DataFrame."""
