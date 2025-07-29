@@ -179,7 +179,7 @@ class MatricesBase(abc.ABC):
         return set(subsets[direction.name])
 
     @property
-    def home_based_only(self) -> bool:
+    def is_home_based_only(self) -> bool:
         """Return True if segmentation contains home-based direction only."""
         subset = self._get_direction_subset()
 
@@ -190,7 +190,7 @@ class MatricesBase(abc.ABC):
         return False
 
     @property
-    def non_home_based_only(self) -> bool:
+    def is_non_home_based_only(self) -> bool:
         """Return True if segmentation contains non-home-based direction only."""
         subset = self._get_direction_subset()
 

@@ -494,7 +494,7 @@ def od_to_pa(
 
     for params in slices_iter.itertuples(index=False):
         params = params._asdict()
-        if not input_.home_based_only:
+        if not input_.is_home_based_only:
             nhb_proportions(
                 input_,
                 params,
@@ -504,7 +504,7 @@ def od_to_pa(
                 tp_factors=tp_factors,
             )
 
-        if input_.non_home_based_only:
+        if input_.is_non_home_based_only:
             warnings.warn(
                 "input matrices are NHB only, so OD to PA conversion is ignored for HB"
             )

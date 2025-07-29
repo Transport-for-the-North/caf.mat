@@ -1235,7 +1235,7 @@ class TestMatrices:
     ) -> None:
         """Test home_based_only method works correctly."""
         result: MatricesResults = request.getfixturevalue(matrices_)
-        assert result.test.home_based_only == home_based_only
+        assert result.test.is_home_based_only == home_based_only
 
     @pytest.mark.parametrize(
         "matrices_, non_home_based_only",
@@ -1255,7 +1255,7 @@ class TestMatrices:
     ) -> None:
         """Test non_home_based_only method works correctly."""
         result: MatricesResults = request.getfixturevalue(matrices_)
-        assert result.test.non_home_based_only == non_home_based_only
+        assert result.test.is_non_home_based_only == non_home_based_only
 
     @pytest.mark.parametrize(
         "matrices_, params",
