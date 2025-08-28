@@ -1,5 +1,5 @@
 # pytables on conda-forge
-tables>=3.10.1
+tables>=3.10
 numpy>=2
 pandas>=2.2.3
-caf.toolkit @ git+https://github.com/Transport-for-the-North/caf.toolkit@matrix_comparisons
+#caf.toolkit @ git+https://github.com/Transport-for-the-North/caf.toolkit@matrix_comparisons

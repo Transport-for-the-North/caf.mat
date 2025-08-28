@@ -524,7 +524,7 @@ def read_ufm(
     omx_path = converter.ufm_to_omx(matrix_path)
 
     omx_reader = omx_file.OMXFile(omx_path)
-    output = {}
+    output: dict[int, pd.DataFrame] = {}
     for level_name in omx_reader.matrix_levels:
         matched = re.match(r"^l(\d{2})", level_name, flags=re.IGNORECASE)
 

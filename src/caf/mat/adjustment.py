@@ -94,7 +94,10 @@ class MatrixSectorScaling:
                 adj_matrix_sectors_labelled.set_index(["origin", "destination"])["demand"]
             )
             LOG.debug("writing out matrix")
-            adjusted_matrix.to_csv(out_path / f"{self.name}_{level}_adjusted_matrix.csv")
+            adj_matrix_sectors_labelled.set_index(["origin", "destination"])["demand"].to_csv(
+                out_path / f"{self.name}_{level}_tuba2_adjusted_matrix.csv", header=False
+            )
+            adjusted_matrix.to_csv(out_path / f"{self.name}_{level}_sq_adjusted_matrix.csv")
 
             adj_sector_check = adj_matrix_sectors_labelled.groupby(
                 ["origin_sector", "destination_sector"]

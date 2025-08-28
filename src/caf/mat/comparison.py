@@ -80,6 +80,10 @@ class BaseComparison(abc.ABC):
             #    raise ValueError(
             #        "Cost matrix does not contain the same keys as the other matrices"
             #    )
+            try:
+                cost_matrix.columns = [int(col) for col in cost_matrix.columns]
+            except ValueError:
+                pass
 
         if self.tld_sector_system_path is not None:
             tld_sector_system = self.tld_sector_system_path.read(
@@ -107,17 +111,28 @@ class BaseComparison(abc.ABC):
 
 @dataclasses.dataclass(kw_only=True)
 class CompareMatrices(BaseComparison):
-    matrix_a_path: pathlib.Path
-    """Path to the first matrix in the comparison."""
-    matrix_b_path: pathlib.Path
-    """Path to the second matrix in the comparison."""
+    matrix_a_path: pathlib.Path | dict[int, pathlib.Path]
+    """Path to the first matrix in the comparison. 
+    If a Path is provided, it should point to a UFM.
+    If a dict is provided, the keys are used as levels 
+    and paths should point to csvs containing square matrices."""
+    matrix_b_path: pathlib.Path | dict[int, pathlib.Path]
+    """Path to the second matrix in the comparison.
+    If a Path is provided, it should point to a UFM.
+    If a dict is provided, the keys are used as levels 
+    and paths should point to csvs containing square matrices."""
+    levels: list[int] | None = None
+    """"Levels to compare.
+    If None, all levels in the matrix are used."""
 
     def _process_demand_matrices(
         self, saturn_folder: pathlib.Path
     ) -> tuple[dict[int, pd.DataFrame], dict[int, pd.DataFrame]]:
         LOG.info("Comparing matrices %s and %s", self.matrix_a_path, self.matrix_b_path)
-        matrix_a = self._extract_matrix(saturn_folder, self.matrix_a_path)
-        matrix_b = self._extract_matrix(saturn_folder, self.matrix_b_path)
+
+        matrix_a = self._extract_matrix(saturn_folder, self.matrix_a_path, self.levels)
+
+        matrix_b = self._extract_matrix(saturn_folder, self.matrix_b_path, self.levels)
 
         if matrix_a.keys() != matrix_b.keys():
             raise ValueError("Read in matrices do not contain the same keys")
@@ -125,10 +140,36 @@ class CompareMatrices(BaseComparison):
         return matrix_a, matrix_b
 
     def _extract_matrix(
-        self, saturn_path: pathlib.Path, matrix_path: pathlib.Path
+        self,
+        saturn_path: pathlib.Path,
+        matrix_path: pathlib.Path | dict[int, pathlib.Path],
+        levels: list[int] | None = None,
     ) -> dict[int, pd.DataFrame]:
         LOG.info("Reading %s", matrix_path)
-        return ufm_converter.read_ufm(matrix_path, saturn_path)
+
+        if isinstance(matrix_path, pathlib.Path):
+            return ufm_converter.read_ufm(matrix_path, saturn_path, levels)
+
+        elif isinstance(matrix_path, dict):
+            if levels is not None:
+                if set(levels).issubset(matrix_path.keys()):
+                    keys = levels
+                else:
+                    raise ValueError(
+                        f"Levels {levels} are not a subset of the keys {matrix_path.keys()}"
+                    )
+            else:
+                keys = matrix_path.keys()
+            matrices: dict[int, pd.DataFrame] = {}
+            for k in keys:
+                matrices[k] = pd.read_csv(matrix_path[k], index_col=0)
+                try:
+                    matrices[k].columns = [int(col) for col in matrices[k].columns]
+                except ValueError:
+                    pass
+            return matrices
+        else:
+            raise ValueError("matrix_path must be a Path or a dict[int, Path]")
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -206,7 +247,7 @@ def compare_matrix(
         TLD sector system to translate the matrices.
     """
     matrix_report_a = ctk.pandas_utils.MatrixReport(
-        matrix=matrix_a,
+        matrix=matrix_a.sort_index(axis=1).sort_index(axis=0),
         translation_factors=matrix_sector_system,
         translation_from_col="from",
         translation_to_col="to",
@@ -214,28 +255,37 @@ def compare_matrix(
     )
 
     matrix_report_b = ctk.pandas_utils.MatrixReport(
-        matrix=matrix_b,
+        matrix=matrix_b.sort_index(axis=1).sort_index(axis=0),
         translation_factors=matrix_sector_system,
         translation_from_col="from",
         translation_to_col="to",
         translation_factors_col="factors",
     )
 
-    if cost_matrix is not None and bins is not None:
-        matrix_report_a.trip_length_distribution(
-            cost_matrix,
-            bins,
-            sector_zone_lookup=tld_sector_system,
-            zone_column="from",
-            sector_column="to",
-        )
-        matrix_report_b.trip_length_distribution(
-            cost_matrix,
-            bins,
-            sector_zone_lookup=tld_sector_system,
-            zone_column="from",
-            sector_column="to",
-        )
+    if cost_matrix is not None:
+        matrix_report_a.calc_vehicle_kms(cost_matrix=cost_matrix.sort_index(axis=1).sort_index(axis=0),sector_zone_lookup=tld_sector_system,
+                zone_column="from",
+                sector_column="to",
+            )
+        matrix_report_b.calc_vehicle_kms(cost_matrix.sort_index(axis=1).sort_index(axis=0),sector_zone_lookup=tld_sector_system,
+                zone_column="from",
+                sector_column="to",
+            )
+        if bins is not None:
+            matrix_report_a.trip_length_distribution(
+                cost_matrix.sort_index(axis=1).sort_index(axis=0),
+                bins,
+                sector_zone_lookup=tld_sector_system,
+                zone_column="from",
+                sector_column="to",
+            )
+            matrix_report_b.trip_length_distribution(
+                cost_matrix.sort_index(axis=1).sort_index(axis=0),
+                bins,
+                sector_zone_lookup=tld_sector_system,
+                zone_column="from",
+                sector_column="to",
+            )
     # or would work here because of the above condition, but xor is more explicit
     elif (cost_matrix is not None) ^ (bins is not None):
         raise ValueError("Both cost_matrix and bins must be provided")
