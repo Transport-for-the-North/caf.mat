@@ -446,9 +446,9 @@ def _calculate_tour_proportions(
         "tour proportions furnessing complete after %s iterations with RMSE=%.0e", iter_, rmse
     )
 
-    tour_props = furness_return_vals.to_dataframe(name="trips")
+    tour_props = furness_return_vals.to_series()
     for from_tp, to_tp in itertools.product(time_periods, time_periods):
-        data = tour_props.loc[from_tp, to_tp]["trips"].unstack("destination")
+        data = tour_props.loc[from_tp, to_tp].unstack("destination")
         output.set_matrix(
             data,
             segmentation.SegmentationSlice(
