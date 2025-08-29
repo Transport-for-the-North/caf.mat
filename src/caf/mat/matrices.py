@@ -651,8 +651,9 @@ class MatrixFiles(MatricesBase):
     folder
         Path to folder for storing matrices in.
     filename_template
-        Template for the filenames of individual matrix CSVs, default
-        "{type}_{slice_name}". Template will be infilled with the following:
+        Template for the filenames of individual matrix CSVs,
+        if None defaults to "{type}_{slice_name}".
+        Template will be infilled with the following:
         - {type} - name of the matrix `type_` e.g. "OD";
         - {slice_name} - the name of the individual slice e.g. "p1_m3_nhb"
           from :class:`SegmentationSlice`.
@@ -664,7 +665,8 @@ class MatrixFiles(MatricesBase):
         Add support for zipped folders.
     """
 
-    _file_suffixes: tuple[str] = (".csv.bz2", ".csv")
+    _file_suffixes: tuple[str, ...] = (".csv.bz2", ".csv")
+    _default_filename_template = "{type}_{slice_name}"
 
     def __init__(
         self,
@@ -673,10 +675,13 @@ class MatrixFiles(MatricesBase):
         type_: MatrixType,
         folder: pathlib.Path,
         *,
-        filename_template: str = "{type}_{slice_name}",
+        filename_template: str | None = None,
         check_files: bool = True,
     ):
         super().__init__(segmentation_, zoning, type_)
+
+        if filename_template is None:
+            filename_template = self._default_filename_template
 
         self._raw_filename_template = filename_template
         self._filename_template = filename_template.format(

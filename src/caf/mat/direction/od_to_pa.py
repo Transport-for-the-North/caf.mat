@@ -118,6 +118,8 @@ def disaggregate_postme(
     zone_system: base.ZoningSystem,
     postme_segmentation: base.Segmentation,
     disaggregation_segments: list[str],
+    postme_filename_template: str | None = None,
+    synthetic_filename_template: str | None = None,
 ) -> matrices.MatrixFiles:
     LOG.info(
         "Disaggregating PostME matrices (%s) using synthetic (%s)",
@@ -130,6 +132,7 @@ def disaggregate_postme(
         zone_system,
         matrices.MatrixType.OD,
         postme_folder,
+        filename_template=postme_filename_template
     )
 
     synth_seg_input = base.SegmentationInput(
@@ -142,7 +145,7 @@ def disaggregate_postme(
         zone_system,
         matrices.MatrixType.OD,
         synth_folder,
-        filename_template="noham_{slice_name}",
+        filename_template=synthetic_filename_template,
     )
 
     output = postme.disaggregate(synthetic)
@@ -576,6 +579,9 @@ class OD2PAParameters(ctk.BaseConfig):
     phi_factors: factors.PhiFactorsParameters
     occupancy_factors: factors.OccupanciesParameters
 
+    postme_filename_template: str | None = None
+    synthetic_filename_template: str | None = None
+
 
 def main(parameters: OD2PAParameters):
     """Run OD to PA conversion process."""
@@ -593,6 +599,8 @@ def main(parameters: OD2PAParameters):
         zone_system,
         postme_segmentation,
         [segments.SegmentsSuper.DIRECTION_OD.value],
+        postme_filename_template=parameters.postme_filename_template,
+        synthetic_filename_template=parameters.synthetic_filename_template,
     )
 
     phi = factors.PhiFactors.from_csv(

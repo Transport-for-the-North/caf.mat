@@ -7,6 +7,7 @@ time_period_factors:
 
 postme_folder: C:\Users\Kirkland\Documents\caf.mat tests\postme
 #postme_folder: I:\NorMITs Forecast\base_year_matrices
+postme_filename_template: "{type}_{slice_name}"
 postme_segmentation:
   enum_segments:
     - userclass
@@ -27,6 +28,7 @@ postme_segmentation:
 
 synthetic_folder: C:\Users\Kirkland\Documents\caf.mat tests\synthetic
 #synthetic_folder: I:\NorMITs Distribution\voa_gb_2023_uni\mat\vdm\synthetic\od2pa_synthetic
+synthetic_filename_template: noham_{slice_name}
 
 # Parameters defining the phi factors CSV columns and the corresponding segment
 phi_factors:
