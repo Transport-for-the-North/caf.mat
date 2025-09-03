@@ -516,6 +516,9 @@ def od_to_pa(
         phi_factors = phi.get(segmentation.SegmentationSlice(params))
 
         from_home, to_home, nhb = _get_time_matrices(input_, params, occ_factors, tp_factors)
+        
+        # Transpose to home to ensure correct balancing
+        to_home = to_home.T
         from_home, to_home, adjustments = _balance_fh_th(
             from_home,
             to_home,
