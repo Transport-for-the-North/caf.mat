@@ -1,6 +1,7 @@
-final_outputs:
+disaggregated_od:
   old: T:\Matt Buckley\PAOD\od_matrices\post_me_by_dir
   new: I:\NorMITs Forecast\base_year_matrices\MB-od2pa\postme-disaggregated
-disaggregated_od:
+final_outputs:
   old: I:\NorMITs Forecast\base_year_matrices\24hr_PA
   new: I:\NorMITs Forecast\base_year_matrices\MB-od2pa\pa_postme
+output_folder: .temp\od2pa_checks

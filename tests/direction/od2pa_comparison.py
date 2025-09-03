@@ -10,11 +10,11 @@ from collections.abc import Iterable
 
 import numpy as np
 import pandas as pd
-
-import caf.toolkit as ctk
 import pydantic
-import caf.mat
 from pydantic import dataclasses
+
+import caf.mat
+import caf.toolkit as ctk
 
 ##### CONSTANTS #####
 
@@ -208,23 +208,29 @@ class _Folders:
 class _Parameters(ctk.BaseConfig):
     final_outputs: _Folders
     disaggregated_od: _Folders
+    output_folder: pydantic.DirectoryPath
 
 
 def main() -> None:
-    details = ctk.ToolDetails("caf.mat.compare", caf.mat.__version__)
-    output_folder = pathlib.Path(".temp/pa_comparisons")
-    output_folder.mkdir(exist_ok=True)
+    parameters = _Parameters.load_yaml(CONFIG_PATH)
 
-    log_file = output_folder / "compare.log"
+    details = ctk.ToolDetails("caf.mat.compare", caf.mat.__version__)
+    parameters.output_folder.mkdir(exist_ok=True)
+
+    log_file = parameters.output_folder / "compare.log"
 
     with ctk.LogHelper("", details, log_file=log_file):
-        parameters = _Parameters.load_yaml(CONFIG_PATH)
+        LOG.debug("Parameters:\n%s", parameters.to_yaml())
 
         compare_disaggregated_od(
-            parameters.disaggregated_od.old, parameters.disaggregated_od.new, output_folder
+            parameters.disaggregated_od.old,
+            parameters.disaggregated_od.new,
+            parameters.output_folder,
         )
         compare_pa_outputs(
-            parameters.final_outputs.old, parameters.final_outputs.new, output_folder
+            parameters.final_outputs.old,
+            parameters.final_outputs.new,
+            parameters.output_folder,
         )
 
 
