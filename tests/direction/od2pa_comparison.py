@@ -3,18 +3,21 @@
 
 ##### IMPORTS #####
 
+# Built-Ins
 import logging
 import pathlib
 import warnings
 from collections.abc import Iterable
 
+# Third Party
+import caf.toolkit as ctk
 import numpy as np
 import pandas as pd
 import pydantic
 from pydantic import dataclasses
 
+# Local Imports
 import caf.mat
-import caf.toolkit as ctk
 
 ##### CONSTANTS #####
 

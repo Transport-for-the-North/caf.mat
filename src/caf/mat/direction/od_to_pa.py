@@ -118,9 +118,37 @@ def disaggregate_postme(
     zone_system: base.ZoningSystem,
     postme_segmentation: base.Segmentation,
     disaggregation_segments: list[str],
+    *,
     postme_filename_template: str | None = None,
     synthetic_filename_template: str | None = None,
 ) -> matrices.MatrixFiles:
+    """Disaggregate postME highway matrices to match synthetic segmentation.
+
+    Parameters
+    ----------
+    postme_folder, synth_folder
+        Folders containing highway matrices as
+        square CSVs (.csv or .csv.bz2).
+    zone_system
+        Zone system of all matrices.
+    postme_segmentation
+        Segmentation for the postME matrices.
+    disaggregation_segments
+        List of segments to disaggregate to.
+    postme_filename_template, synthetic_filename_template
+        Expected template for the matrices CSVs,
+        if None defaults to "{type}_{slice_name}".
+
+    Returns
+    -------
+    matrices.MatrixFiles
+        Disaggregated postME matrices.
+
+    See Also
+    --------
+    matrices.MatrixFiles
+        for information on how the matrices are loaded.
+    """
     LOG.info(
         "Disaggregating PostME matrices (%s) using synthetic (%s)",
         postme_folder.name,
@@ -132,7 +160,7 @@ def disaggregate_postme(
         zone_system,
         matrices.MatrixType.OD,
         postme_folder,
-        filename_template=postme_filename_template
+        filename_template=postme_filename_template,
     )
 
     synth_seg_input = base.SegmentationInput(
@@ -516,7 +544,7 @@ def od_to_pa(
         phi_factors = phi.get(segmentation.SegmentationSlice(params))
 
         from_home, to_home, nhb = _get_time_matrices(input_, params, occ_factors, tp_factors)
-        
+
         # Transpose to home to ensure correct balancing
         to_home = to_home.T
         from_home, to_home, adjustments = _balance_fh_th(

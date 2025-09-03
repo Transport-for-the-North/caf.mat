@@ -11,7 +11,7 @@ import enum
 import logging
 import pathlib
 import warnings
-from typing import Iterator
+from typing import Iterator, Self
 
 # Third Party
 import caf.base as bs
@@ -49,9 +49,9 @@ class MatrixType(enum.Enum):
     @property
     def direction_segment(self) -> segments.Segment:
         """Required direction segment for the matrix type."""
-        lookup = {
-            self.PA: segments.SegmentsSuper.DIRECTION.get_segment(),
-            self.OD: segments.SegmentsSuper.DIRECTION_OD.get_segment(),
+        lookup: dict[MatrixType, segments.Segment] = {
+            MatrixType.PA: segments.SegmentsSuper.DIRECTION.get_segment(),
+            MatrixType.OD: segments.SegmentsSuper.DIRECTION_OD.get_segment(),
         }
         return lookup[self]
 
@@ -140,7 +140,7 @@ class MatricesBase(abc.ABC):
         segmentation_: bs.Segmentation | None = None,
         zoning: bs.ZoningSystem | None = None,
         type_: MatrixType | None = None,
-    ) -> "Self":
+    ) -> Self:
         """Create a new instance of the matrices class with a new name.
 
         The current value for segmentation, zoning, and type will be used
@@ -280,7 +280,7 @@ class MatricesBase(abc.ABC):
         segmentation_: "segmentation.Segmentation",
         output_name: str = "{name}-aggregated",
         progress_bar: bool = True,
-    ) -> "Self":
+    ) -> Self:
         """Aggregate matrices to target segmentation.
 
         Outputs aggregated to a new matrices class.
@@ -345,7 +345,7 @@ class MatricesBase(abc.ABC):
         output_name: str = "{name}-disaggregated",
         progress_bar: bool = True,
         ignore_if_exists: bool = True,
-    ) -> "Self":
+    ) -> Self:
         """Disaggregate matrices to a target segmentation.
 
         Optionally a single segment can be translated to another one
@@ -757,7 +757,7 @@ class MatrixFiles(MatricesBase):
         segmentation_: bs.Segmentation | None = None,
         zoning: bs.ZoningSystem | None = None,
         type_: MatrixType | None = None,
-    ) -> "Self":
+    ) -> Self:
         folder = self._folder.with_name(name)
         folder.mkdir(exist_ok=True)
         return self.__class__(

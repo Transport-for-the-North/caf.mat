@@ -411,7 +411,7 @@ def fix_nhb_segmentation() -> tuple[segmentation.Segmentation, matrices.MatrixTy
     input_ = segmentation.SegmentationInput(
         enum_segments=["p", "direction"],  # type: ignore
         naming_order=["p", "direction"],
-        subsets={"p": [11, 12, 13, 14, 15, 16, 18], "direction": [0]},
+        subsets={"p": [11, 12, 13, 14, 15, 16, 17, 18], "direction": [0]},
     )
     return segmentation.Segmentation(input_), matrices.MatrixType.PA
 
@@ -754,7 +754,7 @@ def fix_disaggregate_replace_datasets(
     # Aggregate expected matrices to produce test compiled
     aggregations: list[tuple[int, int, tuple[int, ...]]] = [
         (0, 1, (11, 12)),
-        (0, 3, (13, 14, 15, 16, 18)),
+        (0, 3, (13, 14, 15, 16, 17, 18)),
         (1, 1, (2,)),
         (1, 2, (1,)),
         (1, 3, tuple(range(3, 9))),
@@ -927,7 +927,7 @@ def fix_disaggregate_and_replace_datasets(zone_system: base.ZoningSystem):
     # Aggregate expected matrices to produce test compiled
     aggregations: list[tuple[int, int, tuple[int, ...]]] = [
         (0, 1, (11, 12)),
-        (0, 3, (13, 14, 15, 16, 18)),
+        (0, 3, (13, 14, 15, 16, 17, 18)),
         (1, 1, (2,)),
         (1, 2, (1,)),
         (1, 3, tuple(range(3, 9))),
