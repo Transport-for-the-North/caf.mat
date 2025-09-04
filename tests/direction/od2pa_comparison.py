@@ -6,6 +6,7 @@
 # Built-Ins
 import logging
 import pathlib
+import datetime
 import warnings
 from collections.abc import Iterable
 
@@ -218,9 +219,12 @@ def main() -> None:
     parameters = _Parameters.load_yaml(CONFIG_PATH)
 
     details = ctk.ToolDetails("caf.mat.compare", caf.mat.__version__)
-    parameters.output_folder.mkdir(exist_ok=True)
+    output_folder = (
+        parameters.output_folder / f"OD2PA_comparison-{datetime.date.today():%Y%m%d}"
+    )
+    output_folder.mkdir(exist_ok=True)
 
-    log_file = parameters.output_folder / "compare.log"
+    log_file = output_folder / "compare.log"
 
     with ctk.LogHelper("", details, log_file=log_file):
         LOG.debug("Parameters:\n%s", parameters.to_yaml())
@@ -228,12 +232,12 @@ def main() -> None:
         compare_disaggregated_od(
             parameters.disaggregated_od.old,
             parameters.disaggregated_od.new,
-            parameters.output_folder,
+            output_folder,
         )
         compare_pa_outputs(
             parameters.final_outputs.old,
             parameters.final_outputs.new,
-            parameters.output_folder,
+            output_folder,
         )
 
 
