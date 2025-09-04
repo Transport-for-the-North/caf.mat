@@ -10,13 +10,14 @@ import pathlib
 import warnings
 from typing import Literal, Sequence, TypeVar
 
-# Third Party
-import caf.base as base
-import caf.toolkit as ctk
 import numpy as np
 import pandas as pd
 import pydantic
 import xarray
+
+# Third Party
+import caf.base as base
+import caf.toolkit as ctk
 from caf.base import segmentation, segments
 from caf.distribute import furness
 
@@ -279,6 +280,8 @@ def _get_time_matrices(
     params: dict[str, int],
     occ_factors: base.DVector | None = None,
     tp_factors: dict[int, int] | None = None,
+    *,
+    transpose_to_home: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame | None]:
     unstacked_matrices: dict[str, list[pd.Series]] = {"nhb": [], "from": [], "to": []}
     direction_lookup = {_DIRECTION_VALUES[i]: i for i in unstacked_matrices}
@@ -320,6 +323,11 @@ def _get_time_matrices(
 
     from_home = pd.concat(unstacked_matrices["from"], axis=1)
     to_home = pd.concat(unstacked_matrices["to"], axis=1)
+    if transpose_to_home:
+        # Switch origins and destinations to transpose
+        to_home.index.rename(list(reversed(to_home.index.names)), inplace=True)
+        to_home.reorder_levels(from_home.index.names)
+
     if len(unstacked_matrices["nhb"]) > 0:
         nhb = pd.concat(unstacked_matrices["nhb"], axis=1)
     else:
@@ -543,10 +551,13 @@ def od_to_pa(
 
         phi_factors = phi.get(segmentation.SegmentationSlice(params))
 
-        from_home, to_home, nhb = _get_time_matrices(input_, params, occ_factors, tp_factors)
-
-        # Transpose to home to ensure correct balancing
-        to_home = to_home.T
+        from_home, to_home, nhb = _get_time_matrices(
+            input_,
+            params,
+            occ_factors,
+            tp_factors,
+            transpose_to_home=True,
+        )
         from_home, to_home, adjustments = _balance_fh_th(
             from_home,
             to_home,
