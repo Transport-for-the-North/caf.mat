@@ -315,7 +315,7 @@ def load_occupancies(
     segmentation_ = segmentation.Segmentation(
         segmentation.SegmentationInput(enum_segments=columns, naming_order=columns)
     )
-    return base.DVector(segmentation_, data, cut_read=True)
+    return base.DVector(segmentation_, data)
 
 
 class MissingTP(abc.ABC):
