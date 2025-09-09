@@ -70,7 +70,7 @@ class MatrixComparison:
             f"{name}_finite_proportion": finite / size,
             f"{name}_zeros": np.sum(data == 0),
             f"{name}_negatives": np.sum(data < 0),
-            f"{name}_total": np.sum(data),
+            f"{name}_total": np.nansum(data),
         }
 
     def compare(self) -> dict[str, float]:
