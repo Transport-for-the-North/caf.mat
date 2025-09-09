@@ -530,6 +530,8 @@ def od_to_pa(
     slices_iter = slices_iter.drop(
         columns=[input_.type.direction_segment.name, tp_name]
     ).drop_duplicates()
+    transpose_to_home = True
+    LOG.debug("OD to PA transpose to home = %s", transpose_to_home)
 
     for params in slices_iter.itertuples(index=False):
         params = params._asdict()
@@ -556,7 +558,7 @@ def od_to_pa(
             params,
             occ_factors,
             tp_factors,
-            transpose_to_home=True,
+            transpose_to_home=transpose_to_home,
         )
         totals = {"From Home": from_home.sum(), "To Home": to_home.sum()}
         if nhb is not None:

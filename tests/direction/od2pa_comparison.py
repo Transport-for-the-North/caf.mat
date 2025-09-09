@@ -229,14 +229,14 @@ def main() -> None:
     with ctk.LogHelper("", details, log_file=log_file):
         LOG.debug("Parameters:\n%s", parameters.to_yaml())
 
-        compare_disaggregated_od(
-            parameters.disaggregated_od.old,
-            parameters.disaggregated_od.new,
-            output_folder,
-        )
         compare_pa_outputs(
             parameters.final_outputs.old,
             parameters.final_outputs.new,
+            output_folder,
+        )
+        compare_disaggregated_od(
+            parameters.disaggregated_od.old,
+            parameters.disaggregated_od.new,
             output_folder,
         )
 
