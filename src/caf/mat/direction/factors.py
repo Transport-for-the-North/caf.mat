@@ -20,8 +20,6 @@ import pydantic
 from caf.base import segmentation, segments
 from pydantic import dataclasses
 
-# Local Imports
-from caf.mat import matrices
 
 ##### CONSTANTS #####
 
@@ -31,27 +29,12 @@ LOG = logging.getLogger(__name__)
 ##### CLASSES & FUNCTIONS #####
 
 
-class UnexpectedTourProportionsWarning(UserWarning): ...
+class UnexpectedPhiFactorsWarning(UserWarning):
+    """Warning for unexpected input for PhiFactors, which can be handled."""
 
 
-class InvalidTourProportions(ValueError): ...
-
-
-class TimePeriod(abc.ABC):
-
-    def get(self, _slice: dict[str, int]) -> list[matrices.Matrix]:
-        """Get matrix of TP factors for given segment."""
-        raise NotImplementedError("WIP")
-
-
-class FromToHome(abc.ABC):
-
-    def get_from(self, _slice: dict[str, int]) -> matrices.Matrix:
-        """Get matrix of from home factors for each output time period."""
-        raise NotImplementedError("WIP")
-
-    def get_to(self, _slice: dict[str, int]) -> matrices.Matrix:
-        raise NotImplementedError("WIP")
+class InvalidPhiFactors(ValueError):
+    """Error for invalid input for PhiFactors."""
 
 
 @dataclasses.dataclass
@@ -138,14 +121,14 @@ class PhiFactors:
             warnings.warn(
                 f"{len(missing)} expected columns missing ({missing})"
                 f" and {len(extra)} extra columns (ignored)",
-                UnexpectedTourProportionsWarning,
+                UnexpectedPhiFactorsWarning,
                 stacklevel=2,
             )
 
         data = data[list(expected_columns)]
 
         if len(data.columns) == 0:
-            raise InvalidTourProportions("no time period columns")
+            raise InvalidPhiFactors("no time period columns")
 
         return data
 

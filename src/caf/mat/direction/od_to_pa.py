@@ -249,19 +249,19 @@ def nhb_proportions(
     for slice_ in input_.segmentation.iter_slices(od_params):
         data = _matrix_multiply(slice_, input_, occ_factors, tp_factors)
         tp_matrices[slice_] = data
+        LOG.debug("%s matrix total %.0f (after applying factors)", slice_, data.sum().sum())
 
     if len(tp_matrices) == 0:
         LOG.debug("No NHB matrices in %s for slice = %s", input_.name, params)
         return None
 
     nhb_24hr = sum(tp_matrices.values())
-    output.set_matrix(
-        nhb_24hr,
-        segmentation.SegmentationSlice(
-            params | {segments.SegmentsSuper.DIRECTION.value: _DIRECTION_VALUES["nhb"]},
-            naming_order=output.segmentation.naming_order,
-        ),
+    slice_ = segmentation.SegmentationSlice(
+        params | {segments.SegmentsSuper.DIRECTION.value: _DIRECTION_VALUES["nhb"]},
+        naming_order=output.segmentation.naming_order,
     )
+    output.set_matrix(nhb_24hr, slice_)
+    LOG.debug("%s 24hr matrix total %.0f", slice_, nhb_24hr.sum().sum())
 
     mask = nhb_24hr.to_numpy() != 0
     for slice_, data in tp_matrices.items():
@@ -558,6 +558,10 @@ def od_to_pa(
             tp_factors,
             transpose_to_home=True,
         )
+        totals = {"From Home": from_home.sum(), "To Home": to_home.sum()}
+        if nhb is not None:
+            totals["NHB"] = nhb.sum()
+
         from_home, to_home, adjustments = _balance_fh_th(
             from_home,
             to_home,
@@ -565,6 +569,14 @@ def od_to_pa(
             nhb,
             time_periods=input_.segmentation.get_segment_values(tp_name),
             seed_value=phi_factors.iloc[-1, -1],
+        )
+        totals.update(
+            {"From Home - Balanced": from_home.sum(), "To Home - Balanced": to_home.sum()}
+        )
+        totals = pd.DataFrame(totals)
+        totals.index.name = "Time Period"
+        LOG.debug(
+            "%s matrix totals\n%s", ", ".join(f"{i}={j}" for i, j in params.items()), totals.T
         )
 
         output.set_matrix(
@@ -613,6 +625,7 @@ class OD2PAParameters(ctk.BaseConfig):
 
     zone_system: str
     time_period_factors: dict[int, int]
+    balancing_method: Literal["op", "24"]
 
     postme_folder: pydantic.DirectoryPath
     postme_segmentation: base.SegmentationInput
@@ -627,6 +640,7 @@ class OD2PAParameters(ctk.BaseConfig):
 
 def main(parameters: OD2PAParameters):
     """Run OD to PA conversion process."""
+    LOG.debug("Run parameters\n%s", parameters.to_yaml())
     zone_system = base.ZoningSystem.get_zoning(parameters.zone_system)
 
     tp_name = segments.SegmentsSuper.TIMEPERIOD.value
@@ -687,7 +701,7 @@ def main(parameters: OD2PAParameters):
     od_to_pa(
         disaggregated,
         pa_matrices,
-        "op",
+        parameters.balancing_method,
         phi,
         occ_factors=occupancies,
         tp_factors=parameters.time_period_factors,

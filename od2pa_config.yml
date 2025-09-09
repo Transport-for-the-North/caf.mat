@@ -4,6 +4,7 @@ time_period_factors:
   2: 6
   3: 3
   4: 12
+balancing_method: 24
 
 postme_folder: C:\Users\Kirkland\Documents\caf.mat tests\postme
 #postme_folder: I:\NorMITs Forecast\base_year_matrices
