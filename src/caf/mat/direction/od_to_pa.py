@@ -674,13 +674,11 @@ def main(parameters: OD2PAParameters):
     )
     occupancies = factors.load_occupancies(
         parameters.occupancy_factors.path,
-        segment_columns={
-            i: j.value for i, j in parameters.occupancy_factors.segment_columns.items()
-        },
-        translate_segments={
-            i.value: j.value
-            for i, j in parameters.occupancy_factors.segment_translation.items()
-        },
+        segment_columns=parameters.occupancy_factors.segment_names,
+        driver_column=parameters.occupancy_factors.driver_column,
+        total_column=parameters.occupancy_factors.total_column,
+        occupancy_column=parameters.occupancy_factors.occupancy_column,
+        translate_segments=parameters.occupancy_factors.segment_translation_names,
     )
 
     pa_segments = list(

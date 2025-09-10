@@ -24,7 +24,7 @@ from pydantic import dataclasses
 ##### CONSTANTS #####
 
 LOG = logging.getLogger(__name__)
-
+_OD_DIRECTION_LOOKUP = {"nhb": 0, "hb_fr": 1, "hb_to": 2}
 
 ##### CLASSES & FUNCTIONS #####
 
@@ -246,11 +246,17 @@ class OccupanciesParameters:
 
     path: pydantic.FilePath
     segment_columns: dict[str, segments.SegmentsSuper]
-    segment_translation: dict[segments.SegmentsSuper, segments.SegmentsSuper]
+    segment_translation: dict[segments.SegmentsSuper, segments.SegmentsSuper] | None = None
+    driver_column: str | None = None
+    total_column: str | None = None
+    occupancy_column: str | None = None
 
     @pydantic.model_validator(mode="after")
     def _valid_segments(self) -> Self:
         """Validate no contradicting columns / segments are provided."""
+        if self.segment_translation is None:
+            return self
+
         for i, j in self.segment_translation.items():
             if i not in self.segment_columns.values():
                 raise ValueError(
@@ -265,23 +271,65 @@ class OccupanciesParameters:
 
         return self
 
+    @pydantic.model_validator(mode="after")
+    def _validate_value_columns(self) -> Self:
+        """Check required value columns are given."""
+        _validate_occupancy_columns(
+            self.driver_column, self.total_column, self.occupancy_column
+        )
+        return self
+
+    @property
+    def segment_names(self) -> dict[str, str]:
+        """Names of columns (key) and segments (value)."""
+        return {i: j.value for i, j in self.segment_columns.items()}
+
+    @property
+    def segment_translation_names(self) -> dict[str, str] | None:
+        """Names of segments to be translated."""
+        if self.segment_translation is None:
+            return None
+        return {i.value: j.value for i, j in self.segment_translation.items()}
+
+
+def _validate_occupancy_columns(
+    driver_column: str | None, total_column: str | None, occupancy_column: str | None
+):
+    if occupancy_column is None and (total_column is None or driver_column is None):
+        raise ValueError(
+            "if occupancy column isn't given then total_column and"
+            " driver_column are required to calculate occupancies"
+        )
+    if (total_column is None) ^ (driver_column is None):
+        raise ValueError(
+            "both total_column and driver_column are required to calculate occupancies"
+        )
+
 
 def load_occupancies(
     path: pathlib.Path,
     segment_columns: dict[str, str],
-    driver_column: str = "driver",
-    total_column: str = "total",
+    driver_column: str | None = "driver",
+    total_column: str | None = "total",
+    occupancy_column: str | None = None,
     translate_segments: dict[str, str] | None = None,
 ) -> base.DVector:
     # TODO(MB) Reimplement this as a class which supports matrices (LongMatrices)
+    _validate_occupancy_columns(driver_column, total_column, occupancy_column)
+
     dtypes = {
         **dict.fromkeys(tuple(segment_columns), int),
-        **dict.fromkeys((driver_column, total_column), float),
+        **{i: float for i in (driver_column, total_column, occupancy_column) if i is not None},
     }
     data = ctk.io.read_csv(
         path, "occupancy factors", dtype=dtypes, usecols=list(dtypes.keys())
     )
     data = data.rename(columns=segment_columns)
+
+    # direction_od segments have different names in occupancies dataset
+    for col in data.columns:
+        if col == segments.SegmentsSuper.DIRECTION_OD.value:
+            data[col] = data[col].replace(_OD_DIRECTION_LOOKUP).astype(int)
 
     if translate_segments is not None:
         data = _replace_segment_columns(data, translate_segments)
@@ -291,8 +339,24 @@ def load_occupancies(
     else:
         columns = [translate_segments.get(i, i) for i in segment_columns.values()]
 
-    data = data.groupby(columns)[[driver_column, total_column]].sum()
-    data = data[total_column] / data[driver_column]
+    if not data.duplicated(columns).any():
+        LOG.debug("Occupancies column used from input: %s", occupancy_column)
+        data = data.set_index(columns)[occupancy_column]
+
+    elif total_column is not None and driver_column is not None:
+        LOG.debug(
+            "Occupancies recalculated after grouping as %s / %s", total_column, driver_column
+        )
+        data = data.groupby(columns)[[driver_column, total_column]].sum()
+        data = data[total_column] / data[driver_column]
+
+    else:
+        raise ValueError(
+            f"occupancies contains duplicates within {columns}"
+            f" columns but groupby recalculation cannot be done"
+            f" because {total_column=} and {driver_column=}"
+        )
+
     data.name = "occupancies"
 
     segmentation_ = segmentation.Segmentation(

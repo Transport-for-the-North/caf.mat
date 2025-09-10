@@ -46,12 +46,10 @@ phi_factors:
     - period
 
 occupancy_factors:
-  path: I:\NTS\outputs\occs\vehicle_occupancy_sum_direction_int.csv
+  path: I:\NorMITs Forecast\vehicle_occupancies\car_vehicle_occupancies_uc.csv
   # All column names and their corresponding segment
   segment_columns:
-    mode: m
-    purpose: p
+    purpose: userclass
     direction: direction_od
     period: tp
-  segment_translation:
-    p: userclass
+  occupancy_column: occs
