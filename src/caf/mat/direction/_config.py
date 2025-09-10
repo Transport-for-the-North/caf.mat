@@ -5,6 +5,7 @@
 
 # Built-Ins
 import argparse
+import datetime
 import logging
 import pathlib
 
@@ -37,7 +38,7 @@ class _OD2PAArguments(_mat.ArgumentHandler):
     @property
     def log_path(self) -> pathlib.Path:
         """Define log file path for OD to PA conversion."""
-        return self.config.parent / "od2pa.log"
+        return self.config.parent / f"od2pa-{datetime.date.today():%Y%m%d}.log"
 
 
 def add_direction_commands(parser: argparse.ArgumentParser) -> None:
