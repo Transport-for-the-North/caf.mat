@@ -5,6 +5,7 @@ time_period_factors:
   3: 3
   4: 12
 balancing_method: 24
+calculate_tour_proportions: true
 
 postme_folder: C:\Users\Kirkland\Documents\caf.mat tests\postme
 #postme_folder: I:\NorMITs Forecast\base_year_matrices
@@ -46,10 +47,11 @@ phi_factors:
     - period
 
 occupancy_factors:
-  path: I:\NorMITs Forecast\vehicle_occupancies\car_vehicle_occupancies_uc.csv
+  path: I:\NorMITs Forecast\vehicle_occupancies\car_vehicle_occupancies_uc-int.csv
   # All column names and their corresponding segment
   segment_columns:
+    mode: m
     purpose: userclass
-    direction: direction_od
+    direction_od: direction_od
     period: tp
   occupancy_column: occs

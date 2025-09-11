@@ -189,9 +189,18 @@ def _matrix_multiply(
     tp_factors: dict[int, int] | None = None,
 ) -> pd.DataFrame:
     data = matrices_.get_matrix(slice_).data
+    LOG.debug(
+        "Loading %s matrix for multiplication total = %.0f", slice_, np.sum(data.to_numpy())
+    )
 
     if occ_factors is not None:
-        data *= occ_factors.get_slice(slice_, allow_closest=True)
+        occ_multiply = occ_factors.get_slice(slice_, allow_closest=True)
+        data *= occ_multiply
+        LOG.debug(
+            "Multiplying by occupancy factors\n%s\nnew total: %s",
+            occ_multiply,
+            np.sum(data.to_numpy()),
+        )
 
     if tp_factors is not None:
         tp = slice_.get(segments.SegmentsSuper.TIMEPERIOD.value)
@@ -199,6 +208,12 @@ def _matrix_multiply(
             raise KeyError("time period missing from slice")
 
         data *= tp_factors[tp]
+        LOG.debug(
+            "Multiplying by TP (%s) factor %s, new total = %.0f",
+            tp,
+            tp_factors[tp],
+            np.sum(data.to_numpy()),
+        )
 
     return data
 
@@ -241,6 +256,7 @@ def nhb_proportions(
     occ_factors: base.DVector | None = None,
     tp_factors: dict[int, int] | None = None,
 ):
+    LOG.info("Producing NHB proportions for %s - %s", input_.name, params)
     _validate_od_input_outputs(input_, output)
 
     od_params = params | {segments.SegmentsSuper.DIRECTION_OD.value: _DIRECTION_VALUES["nhb"]}
@@ -261,7 +277,7 @@ def nhb_proportions(
         naming_order=output.segmentation.naming_order,
     )
     output.set_matrix(nhb_24hr, slice_)
-    LOG.debug("%s 24hr matrix total %.0f", slice_, nhb_24hr.sum().sum())
+    LOG.debug("%s %s 24hr matrix total %.0f", output.name, slice_, nhb_24hr.sum().sum())
 
     mask = nhb_24hr.to_numpy() != 0
     for slice_, data in tp_matrices.items():
@@ -283,6 +299,7 @@ def _get_time_matrices(
     *,
     transpose_to_home: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame | None]:
+    LOG.info("Getting TP matrices for %s %s", input_.name, params)
     unstacked_matrices: dict[str, list[pd.Series]] = {"nhb": [], "from": [], "to": []}
     direction_lookup = {_DIRECTION_VALUES[i]: i for i in unstacked_matrices}
 
@@ -326,12 +343,18 @@ def _get_time_matrices(
     if transpose_to_home:
         # Switch origins and destinations to transpose
         to_home.index.rename(list(reversed(to_home.index.names)), inplace=True)
-        to_home.reorder_levels(from_home.index.names)
+        to_home = to_home.reorder_levels(from_home.index.names).sort_index()
 
     if len(unstacked_matrices["nhb"]) > 0:
         nhb = pd.concat(unstacked_matrices["nhb"], axis=1)
     else:
         nhb = None
+    LOG.debug(
+        "Returning TP matrices with totals from_home = %.0f, to_home = %.0f, nhb = %s",
+        from_home.sum().sum(),
+        to_home.sum().sum(),
+        f"{nhb.sum().sum():.0f}" if nhb is not None else None,
+    )
     return from_home, to_home, nhb
 
 
@@ -576,6 +599,7 @@ def od_to_pa(
             {"From Home - Balanced": from_home.sum(), "To Home - Balanced": to_home.sum()}
         )
         totals = pd.DataFrame(totals)
+        totals.loc["Total", :] = totals.sum()
         totals.index.name = "Time Period"
         LOG.debug(
             "%s matrix totals\n%s", ", ".join(f"{i}={j}" for i, j in params.items()), totals.T
@@ -638,6 +662,7 @@ class OD2PAParameters(ctk.BaseConfig):
 
     postme_filename_template: str | None = None
     synthetic_filename_template: str | None = None
+    calculate_tour_proportions: bool = True
 
 
 def main(parameters: OD2PAParameters):
@@ -705,4 +730,5 @@ def main(parameters: OD2PAParameters):
         phi,
         occ_factors=occupancies,
         tp_factors=parameters.time_period_factors,
+        calculate_tour_proportions=parameters.calculate_tour_proportions,
     )
