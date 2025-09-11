@@ -164,8 +164,9 @@ def disaggregate_postme(
         filename_template=postme_filename_template,
     )
 
+    enum_segments = [segments.SegmentsSuper(i) for i in disaggregation_segments]
     synth_seg_input = base.SegmentationInput(
-        enum_segments=postme_segmentation.input.enum_segments + disaggregation_segments,
+        enum_segments=postme_segmentation.input.enum_segments + enum_segments,
         naming_order=postme_segmentation.input.naming_order + disaggregation_segments,
         subsets=postme_segmentation.input.subsets,
     )
@@ -186,7 +187,7 @@ def _matrix_multiply(
     slice_: segmentation.SegmentationSlice,
     matrices_: Matrices,
     occ_factors: base.DVector | None = None,
-    tp_factors: dict[int, int] | None = None,
+    tp_factors: dict[int, int | float] | None = None,
 ) -> pd.DataFrame:
     data = matrices_.get_matrix(slice_).data
     LOG.debug(
@@ -254,8 +255,34 @@ def nhb_proportions(
     output_proportions: Matrices,
     *,
     occ_factors: base.DVector | None = None,
-    tp_factors: dict[int, int] | None = None,
+    tp_factors: dict[int, int | float] | None = None,
 ):
+    """Calculate 24hr NHB and return proportions.
+
+    Parameters
+    ----------
+    input_
+        OD matrices split by time period.
+    params
+        Parameters to select matrices for a single set of
+        time periods e.g. {"m": 3, "p": 1}, the specific
+        segments are dependent on `input_` segmentation.
+    output
+        Class to save output 24hr matrices to, should
+        have the same segmentation as `input_` except
+        without time period.
+    output_proportions
+        Class to handle saving the output return
+        proportions, should have the same segmentation
+        as `input_`.
+    occ_factors
+        Optional occupancy factors DVector, will be applied
+        to matrices before aggregating to 24 hr.
+    tp_factors
+        Optional factors to apply to each time period matrix
+        before aggregating to 24hr, keys should be time period
+        integers.
+    """
     LOG.info("Producing NHB proportions for %s - %s", input_.name, params)
     _validate_od_input_outputs(input_, output)
 
@@ -269,7 +296,7 @@ def nhb_proportions(
 
     if len(tp_matrices) == 0:
         LOG.debug("No NHB matrices in %s for slice = %s", input_.name, params)
-        return None
+        return
 
     nhb_24hr = sum(tp_matrices.values())
     slice_ = segmentation.SegmentationSlice(
@@ -295,7 +322,7 @@ def _get_time_matrices(
     input_: Matrices,
     params: dict[str, int],
     occ_factors: base.DVector | None = None,
-    tp_factors: dict[int, int] | None = None,
+    tp_factors: dict[int, int | float] | None = None,
     *,
     transpose_to_home: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame | None]:
@@ -527,9 +554,32 @@ def od_to_pa(
     phi: factors.PhiFactors,
     *,
     occ_factors: base.DVector | None = None,
-    tp_factors: dict[int, int] | None = None,
+    tp_factors: dict[int, int | float] | None = None,
     calculate_tour_proportions: bool = True,
 ):
+    """Convert OD matrices to PA and generate tour proportions.
+
+    Parameters
+    ----------
+    input_
+        Input OD matrices at least split by segmentation and
+        direction (from / to home and non-home-based.)
+    output
+        Class to handle output PA matrices.
+    balancing_method
+        Method of balancing from / to home matrices.
+        - op: 
+        - 24: 
+    phi
+        Phi factors, required for op balancing and generating
+        tour proportions.
+    occ_factors
+        Optional occupancy factors to apply to matrices.
+    tp_factors
+        Optional time period factors to apply to matrices.
+    calculate_tour_proportions
+        If True (default) then produce tour proportions.
+    """
     _validate_od_input_outputs(input_, output)
 
     return_factors = input_.new("od_return_factors")
@@ -650,7 +700,7 @@ class OD2PAParameters(ctk.BaseConfig):
     """Define parameters for OD to PA conversion process."""
 
     zone_system: str
-    time_period_factors: dict[int, int]
+    time_period_factors: dict[int, int | float]
     balancing_method: Literal["op", "24"]
 
     postme_folder: pydantic.DirectoryPath
@@ -707,14 +757,15 @@ def main(parameters: OD2PAParameters):
     )
 
     pa_segments = list(
-        filter(lambda x: x != tp_name, postme_segmentation.input.naming_order)
-    ) + [segments.SegmentsSuper.DIRECTION.value]
+        filter(lambda x: x.value != tp_name, postme_segmentation.input.enum_segments)
+    ) + [segments.SegmentsSuper.DIRECTION]
     pa_matrices = disaggregated.new(
         "pa_postme",
         segmentation_=base.Segmentation(
             base.SegmentationInput(
                 enum_segments=pa_segments,
-                naming_order=pa_segments,
+                naming_order=postme_segmentation.input.naming_order
+                + [segments.SegmentsSuper.DIRECTION.value],
                 subsets={
                     i: j for i, j in postme_segmentation.input.subsets.items() if i != tp_name
                 },

@@ -4,7 +4,6 @@
 ##### IMPORTS #####
 
 # Built-Ins
-import abc
 import logging
 import pathlib
 import warnings
@@ -69,6 +68,26 @@ class PhiFactorsParameters:
 
 
 class PhiFactors:
+    """Managing phi factors data for OD to PA conversion.
+
+    Parameters
+    ----------
+    data
+        DataFrame with integer column names for time period (to home)
+        and segmentation defined in the index. The segmentation
+        index should at least contain time period (from home) and
+        any other segments should be lists in `additional_segments`
+        parameter.
+    period_filter
+        Optional list of time periods (columns) to keep,
+        if not given all time period columns are used.
+    additional_segments
+        Optional list of segments in addition to the time periods,
+        these should be include in the index.
+    segment_filters
+        Optional filters to apply to any of the segment columns
+        in the index.
+    """
 
     _tp_segment_enum = segments.SegmentsSuper.TIMEPERIOD
     _period_columns = ("tp", "tp.to")
@@ -114,16 +133,19 @@ class PhiFactors:
     def _validate_columns(
         self, data: pd.DataFrame, expected_columns: set[int]
     ) -> pd.DataFrame:
+        """Raises error if columns are missing and warns about extras."""
         columns = set(data.columns.to_list())
         if columns != expected_columns:
-            missing = expected_columns - columns
             extra = columns - expected_columns
             warnings.warn(
-                f"{len(missing)} expected columns missing ({missing})"
-                f" and {len(extra)} extra columns (ignored)",
+                f"{len(extra)} extra columns are ignored: {extra}",
                 UnexpectedPhiFactorsWarning,
                 stacklevel=2,
             )
+
+            missing = expected_columns - columns
+            if len(missing) > 0:
+                raise InvalidPhiFactors(f"{len(missing)} expected columns missing {missing}")
 
         data = data[list(expected_columns)]
 
@@ -167,6 +189,14 @@ class PhiFactors:
         return segmentation_, data
 
     def get(self, slice_: segmentation.SegmentationSlice | None = None) -> pd.DataFrame:
+        """Get phi factors for a single slice as a time period matrix.
+
+        Returns
+        -------
+        DataFrame
+            Square matrix where the index and columns are the time
+            period integers, from and to home respectively.
+        """
         if self._additional_segments is None and slice_ is None:
             return self._data.copy()
         if self._additional_segments is None:
@@ -183,12 +213,35 @@ class PhiFactors:
         cls,
         path: pathlib.Path,
         segment_columns: dict[str, str],
+        *,
         data_column: str = "trips.est",
         period_filter: Collection[int] | None = None,
         period_columns: tuple[str, str] = ("period.fr", "period"),
         translate_segments: dict[str, str] | None = None,
         segment_filters: Mapping[str, Sequence[int]] | None = None,
     ) -> "PhiFactors":
+        """Load phi factors from a CSV.
+
+        Parameters
+        ----------
+        path
+            Path to the CSV.
+        segment_columns
+            Names of CSV columns (keys) and their corresponding
+            segment (values).
+        data_column
+            Name of column containing trips data, by default "trips.est".
+        period_filter
+            Optional list of time periods to filter down to.
+        period_columns
+            Name of columns containing time periods from and to home,
+            by default ("period.fr", "period").
+        translate_segments
+            Mapping of any segments that need translating, translates
+            from keys to values. All must be names of segments not columns.
+        segment_filters
+            Optional segment filters, for any additional segmentation provided.
+        """
         dtypes = {
             **dict.fromkeys(tuple(segment_columns) + period_columns, int),
             data_column: float,
@@ -309,11 +362,47 @@ def _validate_occupancy_columns(
 def load_occupancies(
     path: pathlib.Path,
     segment_columns: dict[str, str],
+    *,
     driver_column: str | None = "driver",
     total_column: str | None = "total",
     occupancy_column: str | None = None,
     translate_segments: dict[str, str] | None = None,
 ) -> base.DVector:
+    """Load occupancy factors from a CSV.
+
+    Parameters
+    ----------
+    path
+        Path to CSV.
+    segment_columns
+        Mapping from column names (keys) to segments (values).
+    driver_column
+        Name of column containing number of drivers (default "driver"),
+        used for calculating occupancies. Set to None if providing
+        precalculated `occupancy_column`.
+    total_column
+        Name of column containing total people (default "total"),
+        used for calculating occupancies. Set to None if providing
+        precalculated `occupancy_column`.
+    occupancy_column
+        Name of column containing pre-calculated occupancies, required
+        if total or driver columns aren't provided.
+    translate_segments
+        Mapping to translate segments given (keys) to
+        new segments (values) for output occupancies.
+
+    Returns
+    -------
+    base.DVector
+        Occupancies data as a DVector.
+
+    Raises
+    ------
+    ValueError
+        If duplicates are found in the segmentation (often the case
+        when translating) and `total_column` or `driver_column` isn't
+        provided to recalculate the occupancies.
+    """
     # TODO(MB) Reimplement this as a class which supports matrices (LongMatrices)
     _validate_occupancy_columns(driver_column, total_column, occupancy_column)
 
@@ -360,10 +449,14 @@ def load_occupancies(
     data.name = "occupancies"
 
     segmentation_ = segmentation.Segmentation(
-        segmentation.SegmentationInput(enum_segments=columns, naming_order=columns)
+        segmentation.SegmentationInput(
+            enum_segments=columns,  # type: ignore
+            naming_order=columns,
+        )
     )
-    return base.DVector(segmentation_, data)
 
-
-class MissingTP(abc.ABC):
-    """Scaling factors for handling missing time periods during combining."""
+    try:
+        return base.DVector(segmentation_, data)
+    except segmentation.SegmentationError:
+        LOG.exception("error creating DVector for occupancies, trying cut_read=True")
+        return base.DVector(segmentation_, data, cut_read=True)

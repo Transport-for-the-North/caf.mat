@@ -212,14 +212,14 @@ class MatricesBase(abc.ABC):
         missing = self.zoning.zone_ids[~np.isin(self.zoning.zone_ids, zones)]
         if len(missing) > 0:
             raise ValueError(
-                f"{name} is missing {len(missing):,} zones: {_short_list(missing)}"
+                f"{name} is missing {len(missing):,} zones: {_short_list(list(missing))}"
             )
 
         extra = zones[~np.isin(zones, self.zoning.zone_ids)]
         if len(extra) > 0:
             raise ValueError(
                 f"{name} has {len(extra):,} zones not found in"
-                f" zone system ({self.zoning.name}): {_short_list(extra)}"
+                f" zone system ({self.zoning.name}): {_short_list(list(extra))}"
             )
 
     def validate_matrix(self, matrix: pd.DataFrame, name: str | None = None) -> None:

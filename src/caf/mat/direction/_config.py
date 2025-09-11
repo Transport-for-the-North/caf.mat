@@ -38,6 +38,8 @@ class _OD2PAArguments(_mat.ArgumentHandler):
     @property
     def log_path(self) -> pathlib.Path:
         """Define log file path for OD to PA conversion."""
+        # False positive caused by pydantic.Field
+        # pylint: disable=no-member
         return self.config.parent / f"od2pa-{datetime.date.today():%Y%m%d}.log"
 
 
