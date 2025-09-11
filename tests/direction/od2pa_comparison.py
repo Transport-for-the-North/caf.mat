@@ -7,6 +7,7 @@
 import logging
 import pathlib
 import datetime
+from typing import Literal
 import warnings
 from collections.abc import Iterable
 
@@ -116,14 +117,23 @@ class MatrixComparison:
 
 
 def compare_matrices(
-    matrices: Iterable[tuple[pathlib.Path, pathlib.Path]], output_folder: pathlib.Path
+    matrices: Iterable[tuple[pathlib.Path, pathlib.Path]],
+    output_folder: pathlib.Path,
+    old_format: Literal["square", "long", "tp"] = "square",
+    new_format: Literal["square", "long"] = "square",
 ):
+    output_folder.mkdir(exist_ok=True)
+
     summary_data = {}
     for old_path, new_path in matrices:
         LOG.info("Loading matrices %s, %s", old_path.name, new_path.name)
         try:
-            old = ctk.io.read_csv_matrix(old_path, format_="square")
-            new = ctk.io.read_csv_matrix(new_path, format_="square")
+            if old_format == "tp":
+                old = pd.read_csv(old_path, index_col=["o", "d"]).sum(axis=1).unstack()
+            else:
+                old = ctk.io.read_csv_matrix(old_path, format_=old_format)
+
+            new = ctk.io.read_csv_matrix(new_path, format_=new_format)
         except FileNotFoundError as exc:
             LOG.error("File doesn't exist: %s", exc)
             continue
@@ -155,64 +165,18 @@ def compare_matrices(
     summary.to_csv(out_path)
 
 
-def compare_pa_outputs(
-    old_folder: pathlib.Path, new_folder: pathlib.Path, output_folder: pathlib.Path
-):
-    lookup = [
-        ("hb_pa_yr2023_uc1_m3.csv", "PA_m3_business_hb.csv.bz2"),
-        ("hb_pa_yr2023_uc2_m3.csv", "PA_m3_commute_hb.csv.bz2"),
-        ("hb_pa_yr2023_uc3_m3.csv", "PA_m3_other_hb.csv.bz2"),
-        ("nhb_pa_yr2023_uc4_m3.csv", "PA_m3_business_nhb.csv.bz2"),
-        ("nhb_pa_yr2023_uc5_m3.csv", "PA_m3_other_nhb.csv.bz2"),
-    ]
-    LOG.info(
-        "Comparing PA outputs matrices:\n\tNew: %s\n\tOld: %s",
-        new_folder.resolve(),
-        old_folder.resolve(),
-    )
-
-    compare_matrices(((old_folder / i, new_folder / j) for i, j in lookup), output_folder)
-
-
-def compare_disaggregated_od(
-    old_folder: pathlib.Path, new_folder: pathlib.Path, output_folder: pathlib.Path
-):
-    old_name = "noham_m3_ts{ts}_uc{uc}{ft}.csv"  # noham_m3_ts1_uc1fr.csv
-    new_name = "OD_m3_ts{ts}_{uc_name}_{ft}.csv.bz2"  # OD_m3_ts1_business_fr.csv.bz2
-
-    paths = []
-    for ts in (1, 2, 3, 4):
-        for uc, name in ((1, "business"), (2, "commute"), (3, "other")):
-            for from_to in ("fr", "to", "nhb"):
-                paths.append(
-                    (
-                        old_folder / old_name.format(ts=ts, uc=uc, ft=from_to),
-                        new_folder / new_name.format(ts=ts, uc_name=name, ft=from_to),
-                    )
-                )
-
-    output_folder = output_folder / "disaggregated od"
-    output_folder.mkdir(exist_ok=True)
-
-    LOG.info(
-        "Comparing disaggregated OD matrices:\n\tNew: %s\n\tOld: %s",
-        new_folder.resolve(),
-        old_folder.resolve(),
-    )
-
-    compare_matrices(paths, output_folder)
-
-
 @dataclasses.dataclass
 class _Folders:
     old: pydantic.DirectoryPath
     new: pydantic.DirectoryPath
+    filenames: dict[str, str]
+    old_format: Literal["square", "long", "tp"] = "square"
+    new_format: Literal["square", "long"] = "square"
 
 
 class _Parameters(ctk.BaseConfig):
-    final_outputs: _Folders
-    disaggregated_od: _Folders
     output_folder: pydantic.DirectoryPath
+    comparisons: dict[str, _Folders]
 
 
 def main() -> None:
@@ -229,16 +193,17 @@ def main() -> None:
     with ctk.LogHelper("", details, log_file=log_file):
         LOG.debug("Parameters:\n%s", parameters.to_yaml())
 
-        compare_pa_outputs(
-            parameters.final_outputs.old,
-            parameters.final_outputs.new,
-            output_folder,
-        )
-        compare_disaggregated_od(
-            parameters.disaggregated_od.old,
-            parameters.disaggregated_od.new,
-            output_folder,
-        )
+        for name, folders in parameters.comparisons.items():
+            LOG.info(
+                "Comparing matrices:\nold: %s\nnew: %s",
+                folders.old.resolve(),
+                folders.new.resolve(),
+            )
+
+            compare_matrices(
+                [(folders.old / i, folders.new / j) for i, j in folders.filenames.items()],
+                output_folder / name,
+            )
 
 
 ##### MAIN #####

@@ -1,7 +1,20 @@
-disaggregated_od:
-  old: T:\Matt Buckley\PAOD\od_matrices\post_me_by_dir
-  new: I:\NorMITs Forecast\base_year_matrices\MB-od2pa\postme-disaggregated
-final_outputs:
-  old: I:\NorMITs Forecast\base_year_matrices\24hr_PA
-  new: I:\NorMITs Forecast\base_year_matrices\MB-od2pa\pa_postme
-output_folder: .temp\od2pa_checks
+output_folder: C:\Users\Kirkland\Documents\caf.mat tests
+comparisons:
+  final_outputs:
+    old: T:\Matt Buckley\PAOD\od_matrices\factorised
+    old_format: tp
+    new: C:\Users\Kirkland\Documents\caf.mat tests\pa_postme
+    new_format: square
+    filenames:
+      noham_m3_ts24hr_post_uc1fr.csv: PA_m3_business_hb.csv.bz2
+      noham_m3_ts24hr_post_uc2fr.csv: PA_m3_commute_hb.csv.bz2
+      noham_m3_ts24hr_post_uc3fr.csv: PA_m3_other_hb.csv.bz2
+  pre_balanced_outputs:
+    old: T:\Matt Buckley\PAOD\od_matrices\factorised
+    old_format: tp
+    new: C:\Users\Kirkland\Documents\caf.mat tests\pa_postme
+    new_format: square
+    filenames:
+      noham_m3_ts24hr_pre_uc1fr.csv: PA_m3_business_hb.csv.bz2
+      noham_m3_ts24hr_pre_uc2fr.csv: PA_m3_commute_hb.csv.bz2
+      noham_m3_ts24hr_pre_uc3fr.csv: PA_m3_other_hb.csv.bz2
