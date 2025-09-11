@@ -9,12 +9,5 @@ comparisons:
       noham_m3_ts24hr_post_uc1fr.csv: PA_m3_business_hb.csv.bz2
       noham_m3_ts24hr_post_uc2fr.csv: PA_m3_commute_hb.csv.bz2
       noham_m3_ts24hr_post_uc3fr.csv: PA_m3_other_hb.csv.bz2
-  pre_balanced_outputs:
-    old: T:\Matt Buckley\PAOD\od_matrices\factorised
-    old_format: tp
-    new: C:\Users\Kirkland\Documents\caf.mat tests\pa_postme
-    new_format: square
-    filenames:
-      noham_m3_ts24hr_pre_uc1fr.csv: PA_m3_business_hb.csv.bz2
-      noham_m3_ts24hr_pre_uc2fr.csv: PA_m3_commute_hb.csv.bz2
-      noham_m3_ts24hr_pre_uc3fr.csv: PA_m3_other_hb.csv.bz2
+      noham_m3_ts24hr_uc1nhb.csv: PA_m3_business_nhb.csv.bz2
+      noham_m3_ts24hr_uc3nhb.csv: PA_m3_other_nhb.csv.bz2

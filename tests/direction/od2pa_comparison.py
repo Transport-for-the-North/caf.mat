@@ -203,6 +203,8 @@ def main() -> None:
             compare_matrices(
                 [(folders.old / i, folders.new / j) for i, j in folders.filenames.items()],
                 output_folder / name,
+                old_format=folders.old_format,
+                new_format=folders.new_format,
             )
 
 
