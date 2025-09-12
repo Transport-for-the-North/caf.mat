@@ -10,14 +10,13 @@ import pathlib
 import warnings
 from typing import Literal, Sequence, TypeVar
 
+# Third Party
+import caf.base as base  # isort conflict pylint: disable=consider-using-from-import
+import caf.toolkit as ctk
 import numpy as np
 import pandas as pd
 import pydantic
 import xarray
-
-# Third Party
-import caf.base as base
-import caf.toolkit as ctk
 from caf.base import segmentation, segments
 from caf.distribute import furness
 
@@ -443,6 +442,7 @@ def _set_matrices_by_time_period(
     params: dict[str, int],
     column_segment: str = segments.SegmentsSuper.TIMEPERIOD.value,
 ):
+    """Output each column as a separate matrix."""
     for column in data.columns:
         slice_ = segmentation.SegmentationSlice(
             params | {column_segment: int(column)},
@@ -509,26 +509,27 @@ def _calculate_tour_proportions(
     phi_factors: pd.DataFrame,
     slice_params: dict[str, int],
     output: Matrices,
+    *,
     tp_name: str = "{}_tp",
 ):
-    from_array = _normalise_to_xarray(from_home, "from")
-    to_array = _normalise_to_xarray(to_home, "to")
+    targets = [_normalise_to_xarray(from_home, "from"), _normalise_to_xarray(to_home, "to")]
 
     time_periods = phi_factors.index.tolist()
 
     phi = pd.DataFrame(
         phi_factors, index=phi_factors.index.tolist(), columns=time_periods
     ).stack()
-    seed_index = pd.MultiIndex.from_product(
-        [time_periods, time_periods, output.zoning.zone_ids, output.zoning.zone_ids],
-        names=["from", "to", "origin", "destination"],
+    phi = phi.reindex(
+        pd.MultiIndex.from_product(
+            [time_periods, time_periods, output.zoning.zone_ids, output.zoning.zone_ids],
+            names=["from", "to", "origin", "destination"],
+        )
     )
-    phi = phi.reindex(seed_index)
 
     furness_return_vals: xarray.DataArray
     furness_return_vals, rmse, iter_ = furness.numpy_ndim_furness(
         phi.to_xarray(),
-        [from_array, to_array],
+        targets,
         len(time_periods) * (len(output.zoning) ** 2),
     )
     LOG.info(
@@ -537,13 +538,29 @@ def _calculate_tour_proportions(
 
     tour_props = furness_return_vals.to_series()
     for from_tp, to_tp in itertools.product(time_periods, time_periods):
-        data = tour_props.loc[from_tp, to_tp].unstack("destination")
         output.set_matrix(
-            data,
+            tour_props.loc[from_tp, to_tp].unstack("destination"),
             segmentation.SegmentationSlice(
                 slice_params | {tp_name.format("from"): from_tp, tp_name.format("to"): to_tp},
                 output.segmentation.naming_order,
             ),
+        )
+
+
+def _save_hb_return_factors(
+    from_home: pd.DataFrame,
+    to_home: pd.DataFrame,
+    output: Matrices,
+    params: dict[str, int],
+    column_segment: str,
+):
+    """Output normalised from / to home factors."""
+    for name, data in (("from", from_home), ("to", to_home)):
+        _set_matrices_by_time_period(
+            output,
+            data.div(data.sum(axis=1).replace(0, 1), axis=0),
+            params | {output.type.direction_segment.name: _DIRECTION_VALUES[name]},
+            column_segment=column_segment,
         )
 
 
@@ -568,8 +585,8 @@ def od_to_pa(
         Class to handle output PA matrices.
     balancing_method
         Method of balancing from / to home matrices.
-        - op: 
-        - 24: 
+        - op: conserves all but the final time period (OP)
+        - 24: conserves the 24hr total
     phi
         Phi factors, required for op balancing and generating
         tour proportions.
@@ -579,23 +596,27 @@ def od_to_pa(
         Optional time period factors to apply to matrices.
     calculate_tour_proportions
         If True (default) then produce tour proportions.
+
+    See Also
+    --------
+    balance_fh_th_by_op, balance_fh_th_conserve_24hr
     """
     _validate_od_input_outputs(input_, output)
 
-    return_factors = input_.new("od_return_factors")
-    LOG.debug("OD return factors will be saved to %s", input_)
-
-    od_adjustments = input_.new(
-        "od_adjustment_factors", segmentation_=_od_adjustment_segmentation(input_)
-    )
-    LOG.debug("OD adjustment factors will be saved to %s", input_)
-
-    tour_proportions = None
+    output_matrices = {
+        "od_return_factors": input_.new("od_return_factors"),
+        "od_adjustment_factors": input_.new(
+            "od_adjustment_factors", segmentation_=_od_adjustment_segmentation(input_)
+        ),
+    }
     if calculate_tour_proportions:
-        tour_proportions = input_.new(
+        output_matrices["tour_proportions"] = input_.new(
             "tour_proportions", segmentation_=_tour_proportions_segmentation(input_)
         )
-        LOG.debug("Tour proportions will be saved to %s", input_)
+    LOG.debug(
+        "Supplementary outputs will be saved to\n\t- %s",
+        "\n\t- ".join(f"{i}: {j}" for i, j in output_matrices.items()),
+    )
 
     tp_name = segments.SegmentsSuper.TIMEPERIOD.value
 
@@ -603,8 +624,6 @@ def od_to_pa(
     slices_iter = slices_iter.drop(
         columns=[input_.type.direction_segment.name, tp_name]
     ).drop_duplicates()
-    transpose_to_home = True
-    LOG.debug("OD to PA transpose to home = %s", transpose_to_home)
 
     for params in slices_iter.itertuples(index=False):
         params = params._asdict()
@@ -613,7 +632,7 @@ def od_to_pa(
                 input_,
                 params,
                 output,
-                return_factors,
+                output_matrices["od_return_factors"],
                 occ_factors=occ_factors,
                 tp_factors=tp_factors,
             )
@@ -626,33 +645,14 @@ def od_to_pa(
 
         phi_factors = phi.get(segmentation.SegmentationSlice(params))
 
-        from_home, to_home, nhb = _get_time_matrices(
+        from_home, to_home, adjustments = _hb_od_to_pa(
             input_,
-            params,
-            occ_factors,
-            tp_factors,
-            transpose_to_home=transpose_to_home,
-        )
-        totals = {"From Home": from_home.sum(), "To Home": to_home.sum()}
-        if nhb is not None:
-            totals["NHB"] = nhb.sum()
-
-        from_home, to_home, adjustments = _balance_fh_th(
-            from_home,
-            to_home,
             balancing_method,
-            nhb,
-            time_periods=input_.segmentation.get_segment_values(tp_name),
-            seed_value=phi_factors.iloc[-1, -1],
-        )
-        totals.update(
-            {"From Home - Balanced": from_home.sum(), "To Home - Balanced": to_home.sum()}
-        )
-        totals = pd.DataFrame(totals)
-        totals.loc["Total", :] = totals.sum()
-        totals.index.name = "Time Period"
-        LOG.debug(
-            "%s matrix totals\n%s", ", ".join(f"{i}={j}" for i, j in params.items()), totals.T
+            params,
+            phi_factors,
+            occ_factors=occ_factors,
+            tp_factors=tp_factors,
+            tp_segment_name=tp_name,
         )
 
         output.set_matrix(
@@ -662,24 +662,24 @@ def od_to_pa(
             ),
         )
 
-        # Output normalised from / to home factors
-        for name, data in (("from", from_home), ("to", to_home)):
-            _set_matrices_by_time_period(
-                return_factors,
-                data.div(data.sum(axis=1).replace(0, 1), axis=0),
-                params | {return_factors.type.direction_segment.name: _DIRECTION_VALUES[name]},
-                column_segment=tp_name,
-            )
+        _save_hb_return_factors(
+            from_home,
+            to_home,
+            output_matrices["od_return_factors"],
+            params,
+            tp_name,
+        )
 
         _set_matrices_by_time_period(
-            od_adjustments, adjustments, params, column_segment=tp_name
+            output_matrices["od_adjustment_factors"],
+            adjustments,
+            params,
+            column_segment=tp_name,
         )
 
         if not calculate_tour_proportions:
             continue
 
-        # Can't be None at this point
-        assert tour_proportions is not None
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore",
@@ -691,9 +691,52 @@ def od_to_pa(
                 to_home,
                 phi_factors,
                 params,
-                tour_proportions,
+                output_matrices["tour_proportions"],
                 tp_name=f"{{}}_{tp_name}",
             )
+
+
+def _hb_od_to_pa(
+    input_: Matrices,
+    balancing_method: Literal["op", "24"],
+    params: dict[str, int],
+    phi_factors: pd.DataFrame,
+    *,
+    occ_factors: base.DVector | None = None,
+    tp_factors: dict[int, int | float] | None = None,
+    tp_segment_name: str = "tp",
+    transpose_to_home: bool = True,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    from_home, to_home, nhb = _get_time_matrices(
+        input_,
+        params,
+        occ_factors,
+        tp_factors,
+        transpose_to_home=transpose_to_home,
+    )
+    totals = {"From Home": from_home.sum(), "To Home": to_home.sum()}
+    if nhb is not None:
+        totals["NHB"] = nhb.sum()
+
+    from_home, to_home, adjustments = _balance_fh_th(
+        from_home,
+        to_home,
+        balancing_method,
+        nhb,
+        time_periods=input_.segmentation.get_segment_values(tp_segment_name),
+        seed_value=phi_factors.iloc[-1, -1],
+    )
+    totals.update(
+        {"From Home - Balanced": from_home.sum(), "To Home - Balanced": to_home.sum()}
+    )
+    totals = pd.DataFrame(totals)
+    totals.loc["Total", :] = totals.sum()
+    totals.index.name = "Time Period"
+    LOG.debug(
+        "%s matrix totals\n%s", ", ".join(f"{i}={j}" for i, j in params.items()), totals.T
+    )
+
+    return from_home, to_home, adjustments
 
 
 class OD2PAParameters(ctk.BaseConfig):

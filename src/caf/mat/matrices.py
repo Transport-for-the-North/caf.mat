@@ -97,7 +97,7 @@ class MatricesBase(abc.ABC):
         Time period information should be included in the segmentation.
         """
         for values in self._segmentation.iter_slices():
-            yield self.get_matrix(values)
+            yield self.get_matrix(slice_=values)
 
     @property
     def segmentation(self) -> bs.Segmentation:
@@ -121,13 +121,18 @@ class MatricesBase(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_matrix(self, slice_: "segmentation.SegmentationSlice") -> Matrix:
+    def get_matrix(
+        self,
+        slice_: "segmentation.SegmentationSlice",  # type: ignore
+    ) -> Matrix:
         """Load the data for a single matrix."""
         raise NotImplementedError()
 
     @abc.abstractmethod
     def set_matrix(
-        self, matrix: pd.DataFrame, slice_: "segmentation.SegmentationSlice"
+        self,
+        matrix: pd.DataFrame,
+        slice_: "segmentation.SegmentationSlice",  # type: ignore
     ) -> None:
         """Save the data for a single matrix."""
         raise NotImplementedError()
@@ -156,8 +161,8 @@ class MatricesBase(abc.ABC):
     @property
     def has_time_periods(self) -> bool:
         """Return True if the segmentation contains time periods."""
-        # TODO check this method works correctly with all time periods Segments
-        # TODO get information about the time format, e.g. avg hour / period
+        # TODO(MB) check this method works correctly with all time periods Segments
+        # TODO(MB) get information about the time format, e.g. avg hour / period
         return self._segmentation.has_time_period_segments()
 
     @property
@@ -199,7 +204,10 @@ class MatricesBase(abc.ABC):
             return True
         return False
 
-    def validate_slice(self, slice_: "segmentation.SegmentationSlice") -> None:
+    def validate_slice(
+        self,
+        slice_: "segmentation.SegmentationSlice",  # type: ignore
+    ) -> None:
         """Raise ValueError if slice not present in segmentation."""
         if slice_ not in self.segmentation.iter_slices():
             raise ValueError(
@@ -277,7 +285,7 @@ class MatricesBase(abc.ABC):
 
     def aggregate(
         self,
-        segmentation_: "segmentation.Segmentation",
+        segmentation_: "segmentation.Segmentation",  # type: ignore
         output_name: str = "{name}-aggregated",
         progress_bar: bool = True,
     ) -> Self:

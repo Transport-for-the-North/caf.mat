@@ -14,7 +14,7 @@ import caf.toolkit as ctk
 import pydantic
 
 # Local Imports
-import caf.mat as mat
+from caf import mat
 from caf.mat import _mat
 from caf.mat.direction import _config
 

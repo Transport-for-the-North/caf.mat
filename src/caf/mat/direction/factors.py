@@ -11,14 +11,13 @@ from collections.abc import Collection, Mapping, Sequence
 from typing import Self
 
 # Third Party
-import caf.base as base
+import caf.base as base  # isort conflict pylint: disable=consider-using-from-import
 import caf.toolkit as ctk
 import numpy as np
 import pandas as pd
 import pydantic
 from caf.base import segmentation, segments
 from pydantic import dataclasses
-
 
 ##### CONSTANTS #####
 
@@ -125,7 +124,7 @@ class PhiFactors:
         # Segmentation with time period remove for validating get method
         self._segmentation_no_tp = self._segmentation.remove_segment(self._tp_segment.name)
 
-        # TODO This could be a parameter which warns user if not already sums to 1
+        # TODO(MB) This could be a parameter which warns user if not already sums to 1
         # Normalise time period factors, so time period from sums to 1
         # i.e. all trips leaving in 1 time period must return at some point
         self._data = self._data.div(self._data.sum(axis=1), axis=0)

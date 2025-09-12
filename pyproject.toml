@@ -48,6 +48,7 @@ disable = [
     "use-dict-literal",
     "use-list-literal",
     "wrong-import-order", # Covered by isort
+    "ungrouped-imports",  # Covered by isort
 ]
 
 # Pylint settings
