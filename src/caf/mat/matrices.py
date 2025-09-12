@@ -406,25 +406,7 @@ class MatricesBase(abc.ABC):
                 f" target ({targets.zoning.name}) matrices are different"
             )
 
-        # Calculate and validate disaggregation slices
-        if from_segment is not None and to_segment is not None:
-            disaggregations = _get_disaggregation_translation(
-                self.segmentation, from_segment, to_segment, targets.segmentation
-            )
-        elif from_segment is not None or to_segment is not None:
-            raise ValueError(
-                "One of from/to segment is provided, both must be provided when translating"
-            )
-        elif not self.segmentation.is_subset(targets.segmentation):
-            missing, _ = targets.segmentation.subset_difference(self.segmentation)
-            raise ValueError(
-                "Target segmentation doesn't include all segments"
-                f" from aggregate, missing {missing}"
-            )
-        else:
-            disaggregations = _get_slice_disaggregation(
-                self.segmentation, targets.segmentation
-            )
+        disaggregations = self._validate_disaggregations(targets, from_segment, to_segment)
 
         output = self.new(
             output_name.format(name=self.name), segmentation_=targets.segmentation
@@ -480,6 +462,34 @@ class MatricesBase(abc.ABC):
 
         return output
 
+    def _validate_disaggregations(
+        self,
+        targets: "MatricesBase",
+        from_segment: segments.Segment | None,
+        to_segment: segments.Segment | None,
+    ) -> dict["segmentation.SegmentationSlice", list["segmentation.SegmentationSlice"]]:  # type: ignore
+        """Calculate and validate disaggregation slices."""
+        if from_segment is not None and to_segment is not None:
+            disaggregations = _get_disaggregation_translation(
+                self.segmentation, from_segment, to_segment, targets.segmentation
+            )
+        elif from_segment is not None or to_segment is not None:
+            raise ValueError(
+                "One of from/to segment is provided, both must be provided when translating"
+            )
+        elif not self.segmentation.is_subset(targets.segmentation):
+            missing, _ = targets.segmentation.subset_difference(self.segmentation)
+            raise ValueError(
+                "Target segmentation doesn't include all segments"
+                f" from aggregate, missing {missing}"
+            )
+        else:
+            disaggregations = _get_slice_disaggregation(
+                self.segmentation, targets.segmentation
+            )
+
+        return disaggregations
+
 
 def _short_list(values: collections.abc.Sequence, length: int = 10) -> str:
     if len(values) <= length:
@@ -512,16 +522,7 @@ def _get_disaggregation_translation(
 
     groupings: dict[int, list[int]] = lookup.groupby(level=0).agg(list).squeeze().to_dict()
 
-    # Check if any segment values are found in multiple lists i.e. many-to-many lookup
-    unique_to_segs = set()
-    for to_segs in groupings.values():
-        for i in to_segs:
-            if i in unique_to_segs:
-                raise ValueError(
-                    f"{to_segment.name} segment {i} found in lookup"
-                    f" for multiple {from_segment.name} segments"
-                )
-        unique_to_segs.update(to_segs)
+    _validate_disaggregation_translation(from_segment, to_segment, groupings)
 
     disaggregations = collections.defaultdict(list)
     for from_slice in from_segmentation.iter_slices():
@@ -538,6 +539,29 @@ def _get_disaggregation_translation(
                 disaggregations[from_slice].append(to_slice)
 
     return disaggregations
+
+
+def _validate_disaggregation_translation(
+    from_segment: segments.Segment,
+    to_segment: segments.Segment,
+    groupings: dict[int, list[int]],
+):
+    """Check if any segment values are found in multiple lists.
+
+    Raises
+    ------
+    ValueError
+        If the translations is a many-to-many lookup.
+    """
+    unique_to_segs = set()
+    for to_segs in groupings.values():
+        for i in to_segs:
+            if i in unique_to_segs:
+                raise ValueError(
+                    f"{to_segment.name} segment {i} found in lookup"
+                    f" for multiple {from_segment.name} segments"
+                )
+        unique_to_segs.update(to_segs)
 
 
 def _get_slice_disaggregation(
@@ -599,6 +623,7 @@ class MemoryMatrices(MatricesBase):
         zoning: bs.ZoningSystem,
         type_: MatrixType,
         matrices: list[Matrix] | None = None,
+        *,
         name: str | None = None,
     ):
         super().__init__(segmentation_, zoning, type_)
