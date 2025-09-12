@@ -74,6 +74,9 @@ convention = "numpy"
 match = '(?!_test)(?!test_)(?!__init__).*\.py'
 add-ignore = [
     "D202", # Temporary compatibility with black
+    "D101", # Covered by pylint: missing-function-docstring (C0116)
+    "D102", # Covered by pylint: missing-function-docstring (C0116)
+    "D103", # Covered by pylint: missing-function-docstring (C0116)
 ]
 
 [tool.isort]

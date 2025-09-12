@@ -132,7 +132,7 @@ class PhiFactors:
     def _validate_columns(
         self, data: pd.DataFrame, expected_columns: set[int]
     ) -> pd.DataFrame:
-        """Raises error if columns are missing and warns about extras."""
+        """Raise error if columns are missing and warns about extras."""
         columns = set(data.columns.to_list())
         if columns != expected_columns:
             extra = columns - expected_columns
