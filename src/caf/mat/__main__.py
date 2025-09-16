@@ -14,7 +14,7 @@ import caf.toolkit as ctk
 import pydantic
 
 # Local Imports
-from caf import mat
+import caf.mat
 from caf.mat import _mat
 from caf.mat.direction import _config
 
@@ -30,7 +30,7 @@ def _create_arg_parser() -> argparse.ArgumentParser:
     """Create ArgumentParser with all caf.mat sub-commands."""
     parser = argparse.ArgumentParser(
         __package__,
-        description=mat.__doc__,
+        description=caf.mat.__doc__,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -38,7 +38,7 @@ def _create_arg_parser() -> argparse.ArgumentParser:
         "--version",
         help="show caf.mat version and exit",
         action="version",
-        version=f"{__package__} {mat.__version__}",
+        version=f"{__package__} {caf.mat.__version__}",
     )
 
     subparsers = parser.add_subparsers(
@@ -77,7 +77,7 @@ def parse_args() -> _mat.ArgumentHandler:
 def main():
     """Parser command-line arguments and run CAF.mat functionality."""
     args = parse_args()
-    details = ctk.ToolDetails(__package__, mat.__version__)
+    details = ctk.ToolDetails(__package__, caf.mat.__version__)
 
     with ctk.LogHelper(__package__, details, log_file=args.log_path):
         try:
