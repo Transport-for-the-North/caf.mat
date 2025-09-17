@@ -799,19 +799,19 @@ def main(parameters: OD2PAParameters):
         translate_segments=parameters.occupancy_factors.segment_translation_names,
     )
 
-    pa_segments = list(
-        filter(lambda x: x.value != tp_name, postme_segmentation.input.enum_segments)
-    ) + [segments.SegmentsSuper.DIRECTION]
+    pa_segments = [
+        i for i in postme_segmentation.input.enum_segments if i.value != tp_name
+    ] + [segments.SegmentsSuper.DIRECTION]
+    pa_naming = [i for i in postme_segmentation.input.naming_order if i != tp_name] + [
+        segments.SegmentsSuper.DIRECTION.value
+    ]
+    pa_subsets = {i: j for i, j in postme_segmentation.input.subsets.items() if i != tp_name}
+
     pa_matrices = disaggregated.new(
         "pa_postme",
         segmentation_=base.Segmentation(
             base.SegmentationInput(
-                enum_segments=pa_segments,
-                naming_order=postme_segmentation.input.naming_order
-                + [segments.SegmentsSuper.DIRECTION.value],
-                subsets={
-                    i: j for i, j in postme_segmentation.input.subsets.items() if i != tp_name
-                },
+                enum_segments=pa_segments, naming_order=pa_naming, subsets=pa_subsets
             )
         ),
         type_=matrices.MatrixType.PA,
