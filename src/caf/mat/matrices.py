@@ -89,7 +89,7 @@ class MatricesBase(abc.ABC):
                 "matrices doesn't contain direction segment "
                 f"({type_.direction_segment.name}) some functionality won't be possible",
                 MatricesWarning,
-                stacklevel=2
+                stacklevel=2,
             )
 
     def __iter__(self) -> Iterator[Matrix]:
