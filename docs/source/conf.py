@@ -3,6 +3,7 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+# Built-Ins
 import pathlib
 import sys
 
@@ -17,6 +18,7 @@ project = "caf.mat"
 copyright = "2024, Transport for the North"
 author = "Transport for the North"
 
+# Local Imports
 import caf.mat
 
 version = str(caf.mat.__version__)
@@ -54,9 +56,7 @@ autodoc_typehints = "description"
 # Auto summary options
 autosummary_generate = True
 
-modindex_common_prefix = [
-"caf.",    "caf.mat."
-]
+modindex_common_prefix = ["caf.", "caf.mat."]
 
 
 # -- Options for HTML output -------------------------------------------------
