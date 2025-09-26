@@ -1,7 +1,6 @@
 pandas>=2.2
-# Waiting for new caf.base release
-caf.base @ git+https://github.com/Transport-for-the-North/caf.base.git
+caf.base>=0.4.0
 caf.toolkit>=0.9.0
-caf.distribute @ git+https://github.com/Transport-for-the-North/caf.distribute.git@pandas_furness_wrapper
+caf.distribute>=0.7.0
 xarray>=2025
 tqdm>=4.67
