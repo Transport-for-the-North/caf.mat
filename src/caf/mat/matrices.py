@@ -20,6 +20,8 @@ import numpy as np
 import pandas as pd
 import tqdm
 from caf.base import segmentation, segments
+from caf.base.segmentation import SegmentationError
+from caf.base.zoning import ZoningError
 
 # Local Imports
 from caf.mat import _mat
@@ -490,6 +492,61 @@ class MatricesBase(abc.ABC):
             )
 
         return disaggregations
+    
+    def copy(self, subsets: dict[str, list[int]], other) -> None:
+        """
+        Copy a subset of self into other.
+        Parameters
+        ----------
+        subsets : dict[str, list[int]]
+            The subset of self to be copied.
+        other : MatrixFiles
+            The instance of MatrixFiles the subset will be copied into.
+
+        Returns
+        -------
+        MatrixFiles
+            Other updated with the subset from self. 
+        """
+        for slice in self.segmentation.iter_slices():
+            break_loop = False
+            for seg, vals in subsets.items():
+                if slice.data[seg] not in vals:
+                    break_loop = True
+                    continue
+            if break_loop:
+                continue
+            other.set_matrix(self.get_matrix(slice).data, slice)
+        return other
+    
+    def translate_zoning(self, new_zoning: bs.ZoningSystem):
+        translation = self.zoning.translate(new_zoning)
+        translation = ctk.translation.ZoneCorrespondence(translation,
+                                                         self.zoning.column_name,
+                                                         new_zoning.column_name,
+                                                         self.zoning.translation_column_name(new_zoning),
+                                                         )
+        translated = self.new(name=f"{self.name}_{new_zoning.name}",
+                              zoning=new_zoning)
+        for slice in self.segmentation.iter_slices():
+            matrix = self.get_matrix(slice)
+            translated_matrix = ctk.translation.pandas_matrix_zone_translation(
+                matrix.data,
+                translation
+            )
+            translated.set_matrix(translated_matrix, slice)
+        return translated
+    
+    def __truediv__(self, other):
+        if self.segmentation != other.segmentation:
+            raise SegmentationError("Segmentations don't match.")
+        if self.zoning != other.zoning:
+            raise ZoningError("Zoning systems don't match.")
+        out = self.new(name=f"{self.name} per {other.name}")
+        for slice in self.segmentation.iter_slices():
+            divved = self.get_matrix(slice).data / other.get_matrix(slice).data
+            out.set_matrix(divved, slice)
+        return out
 
 
 def _short_list(values: collections.abc.Sequence, length: int = 10) -> str:
@@ -819,6 +876,9 @@ class MatrixFiles(MatricesBase):
         except FileNotFoundError:
             return False
         return True
+
+
+
 
 
 class LongMatrices(MatricesBase):
