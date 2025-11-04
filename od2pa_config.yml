@@ -7,8 +7,8 @@ time_period_factors:
 balancing_method: 24
 calculate_tour_proportions: true
 
-postme_folder: C:\Users\Kirkland\Documents\caf.mat tests\postme
-#postme_folder: I:\NorMITs Forecast\base_year_matrices
+# postme_folder: C:\Users\Kirkland\Documents\caf.mat tests\postme
+postme_folder: I:\NorMITs Forecast\base_year_matrices
 postme_filename_template: "{type}_{slice_name}"
 postme_segmentation:
   enum_segments:
@@ -28,8 +28,8 @@ postme_segmentation:
       - 3
       - 4
 
-synthetic_folder: C:\Users\Kirkland\Documents\caf.mat tests\synthetic
-#synthetic_folder: I:\NorMITs Distribution\voa_gb_2023_uni\mat\vdm\synthetic\od2pa_synthetic
+# synthetic_folder: C:\Users\Kirkland\Documents\caf.mat tests\synthetic
+synthetic_folder: I:\NorMITs Distribution\voa_gb_2023_uni\mat\vdm\synthetic\od2pa_synthetic
 synthetic_filename_template: noham_{slice_name}
 
 # Parameters defining the phi factors CSV columns and the corresponding segment

@@ -536,17 +536,34 @@ class MatricesBase(abc.ABC):
             )
             translated.set_matrix(translated_matrix, slice)
         return translated
-    
-    def __truediv__(self, other):
+
+    def generic_dunder(self, other, method, method_name):
+        """
+        Stop telling me to use the imperative mood pydocstyle.
+
+        A generic dunder method which is called by each of the dunder methods.
+
+        Parameters
+        ----------
+        other: MatricesBase
+            Other instance of class.
+        method:
+            A pd.DataFrame method to be called slice by slice on self.data with other.data.
+        method_name: str
+            The name of the method used in naming the return object.
+        """
         if self.segmentation != other.segmentation:
             raise SegmentationError("Segmentations don't match.")
         if self.zoning != other.zoning:
             raise ZoningError("Zoning systems don't match.")
-        out = self.new(name=f"{self.name} per {other.name}")
+        out = self.new(name=f"{self.name}_{method_name}_{other.name}")
         for slice in self.segmentation.iter_slices():
-            divved = self.get_matrix(slice).data / other.get_matrix(slice).data
-            out.set_matrix(divved, slice)
+            product = method(self.get_matrix(slice).data, other.get_matrix(slice).data)
+            out.set_matrix(product, slice)
         return out
+
+    def __truediv__(self, other):
+        return self.generic_dunder(other, pd.DataFrame.__truediv__, 'divide')
 
 
 def _short_list(values: collections.abc.Sequence, length: int = 10) -> str:
