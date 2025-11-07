@@ -536,6 +536,34 @@ class MatricesBase(abc.ABC):
             )
             translated.set_matrix(translated_matrix, slice)
         return translated
+    
+    def to_dvector(self):
+        rows = {}
+        cols = {}
+        for slice in self.segmentation.iter_slices():
+            mat = self.get_matrix(slice).data
+            column = mat.sum(axis=1)
+            row = mat.sum(axis=1)
+            rows[slice.as_tuple()] = row
+            cols[slice.as_tuple()] = column
+        rows = pd.concat(rows, axis=1).T
+        rows.index.names = self.segmentation.naming_order
+        rows = bs.DVector(import_data=rows,
+                          segmentation=self.segmentation,
+                          zoning_system=self.zoning)
+        
+        cols = pd.concat(cols, axis=1).T
+        cols.index.names = self.segmentation.naming_order
+        cols = bs.DVector(import_data=cols,
+                          segmentation=self.segmentation,
+                          zoning_system=self.zoning)
+        if self.type.name == 'PA':
+            return {'P': rows,
+                    'A': cols}
+        elif self.type.name == 'OD':
+            return {'O': rows,
+                    'D': cols}
+        
 
     def generic_dunder(self, other, method, method_name):
         """
