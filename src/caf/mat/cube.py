@@ -174,6 +174,9 @@ class CUBEMatConverter:
         if out_path.is_file():
             raise FileExistsError(out_path)
 
+        mat_file = mat_file.resolve()
+        out_path = out_path.resolve()
+
         LOG.info("Converting %s to OMX file, outputs writing to %s", mat_file.name, out_path)
         script_path = Path(out_path.parent / "Mat2OMX.s")
 
