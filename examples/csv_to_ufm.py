@@ -18,7 +18,7 @@ import pathlib
 import caf.toolkit as ctk
 
 # Local Imports
-from caf.mat.ufm_converter import UFMConverter
+from caf.mat.ufm import UFMConverter
 
 ##### CONSTANTS #####
 
