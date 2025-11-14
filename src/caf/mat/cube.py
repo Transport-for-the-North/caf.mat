@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Module for converting matrices to/from CUBE's .mat format.
-"""
+"""Module for converting matrices to/from CUBE's .mat format."""
 
 ##### IMPORTS #####
 

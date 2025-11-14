@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-"""
-Module for reading from and writing to OMX files.
-"""
+"""Module for reading from and writing to OMX files."""
+
 ##### IMPORTS #####
 
 # Built-Ins
@@ -113,10 +112,11 @@ class OMXFile(tables.File):
             raise ValueError(f"unknown mode '{mode}' should be one of 'r', 'a', 'r+' or 'w'")
 
     def __enter__(self) -> Self:
+        """Enter context and return the same OMXFile."""
         return self
 
     def _can_write(self, name: str) -> None:
-        """Raises ValueError if not in a writing mode."""
+        """Raise ValueError if not in a writing mode."""
         if self.mode == "r":
             raise ValueError(f"cannot set {name} in mode = {self.mode}")
 
@@ -132,7 +132,7 @@ class OMXFile(tables.File):
 
     @staticmethod
     def _check_shape(value: tuple[int, int]) -> tuple[int, int]:
-        """Raises ValueError if shape isn't valid."""
+        """Raise ValueError if shape isn't valid."""
         value = tuple(value)
         if len(value) != 2:
             raise ValueError(f"shape should be a tuple of lenght 2 not length {len(value)}")
@@ -143,7 +143,7 @@ class OMXFile(tables.File):
         return value
 
     def _check_zones(self, value: np.ndarray) -> np.ndarray:
-        """Raises ValueError if zones aren't the correct shape."""
+        """Raise ValueError if zones aren't the correct shape."""
         value = np.array(value)
         if value.shape != (self.shape[0],):
             raise ValueError(
@@ -240,7 +240,7 @@ class OMXFile(tables.File):
         return self.get_node(self._DATA_NODE, name).read()
 
     def set_matrix_level(self, name: str, matrix: np.ndarray | pd.DataFrame) -> None:
-        """Sets matrix level in OMX file to given array.
+        """Set matrix level in OMX file to given array.
 
         Parameters
         ----------
@@ -273,7 +273,7 @@ class OMXFile(tables.File):
         )
 
     def get_matrix_level(self, name: str) -> pd.DataFrame:
-        """Returns a single matrix level as an DataFrame.
+        """Return a single matrix level as an DataFrame.
 
         Parameters
         ----------
