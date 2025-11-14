@@ -44,7 +44,7 @@ def mat_to_csv(
         Folder to save outputs to.
     """
     LOG.info("Converting %s to CSVs", mat_path.name)
-    omx_path = converter.mat_2_omx(mat_path, output_folder, mat_path.stem)
+    omx_path = converter.to_omx(mat_path, output_folder / mat_path.stem)
 
     omx = OMXFile(omx_path)
 

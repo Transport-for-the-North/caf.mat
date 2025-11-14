@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-    Module for converting matrices to/from CUBE's .mat format.
+Module for converting matrices to/from CUBE's .mat format.
 """
 
 ##### IMPORTS #####
@@ -9,8 +9,8 @@
 import logging
 import re
 import subprocess
-from pathlib import Path
 import warnings
+from pathlib import Path
 
 ##### CONSTANTS #####
 
@@ -48,7 +48,7 @@ class CUBEMatConverter:
                 f"'VOYAGER.exe', is '{self.voyager_path.name}' correct?"
             )
 
-    def csv_to_mat(
+    def from_csv(
         self,
         num_zones: int,
         csv_paths: dict[str, Path],
@@ -147,35 +147,39 @@ class CUBEMatConverter:
 
         return mat_path
 
-    def mat_2_omx(self, mat_file: Path, out_path: Path, out_file: str) -> Path:
+    def to_omx(self, mat_file: Path, out_path: Path | None = None) -> Path:
         """Convert Cube .MAT to .OMX.
 
         Parameters
         ----------
         mat_file : Path
-            full path to the .mat file.
-        out_path : Path
-            path to folder where outputs to be saved.
-        out_file : str
-            name of the output omx file.
+            Full path to the .mat file.
+        out_path : Path, optional
+            Optional path to save output OMX to, if None
+            uses `mat_file` with ".omx" extension.
 
         Returns
         -------
         Path
             Path to created OMX file.
         """
-        LOG.info("Converting %s to OMX file, outputs writing to %s", mat_file.name, out_path)
-        script_path = Path(out_path / "Mat2OMX.s")
-
         if not mat_file.is_file():
             raise FileNotFoundError(f"file doesn't exist: {mat_file}")
+        if out_path is None:
+            out_path = mat_file.with_suffix(".omx")
+        if out_path.is_dir():
+            out_path = out_path / f"{mat_file.stem}.omx"
+        if out_path.suffix != ".omx":
+            out_path = out_path.with_suffix(".omx")
+        if out_path.is_file():
+            raise FileExistsError(out_path)
 
-        output_path = out_path / f"{out_file}.omx"
+        LOG.info("Converting %s to OMX file, outputs writing to %s", mat_file.name, out_path)
+        script_path = Path(out_path.parent / "Mat2OMX.s")
 
         with open(script_path, "wt", encoding="utf-8") as file:
             file.write(
-                f'convertmat from="{mat_file}" to="{out_path}\\{out_file}.omx" '
-                "format=omx compression=4"
+                f'convertmat from="{mat_file}" to="{out_path}" ' "format=omx compression=4"
             )
         LOG.debug("Written mat2omx CUBE script: %s", script_path)
 
@@ -191,8 +195,8 @@ class CUBEMatConverter:
             _stdout_decode(comp_proc.stderr),
         )
 
-        if not output_path.is_file():
-            raise CUBEMatConverterError(f"failed creating {output_path.name}")
+        if not out_path.is_file():
+            raise CUBEMatConverterError(f"failed creating {out_path.name}")
 
         # Cleanup files
         script_path.unlink()
@@ -203,7 +207,18 @@ class CUBEMatConverter:
             if match:
                 path.unlink()
 
-        return output_path
+        return out_path
+
+    def folder_to_omx(self, folder: Path, glob: str = "*.mat") -> list[Path]:
+        """Conver all ".mat" files in `folder` to OMX."""
+        # TODO(MB): This could be made more efficient by writing a single script
+        # to convert all files instead of iteratively calling to_omx
+        omx_paths = []
+        for path in folder.glob(glob):
+            out_path = self.to_omx(path)
+            omx_paths.append(out_path)
+
+        return omx_paths
 
 
 def _stdout_decode(stdout: bytes) -> str:
