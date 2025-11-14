@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-    CUBE .mat to CSV
-    ================
+CUBE .mat to CSV
+================
 
-    Example code showing how to use caf.mat for converting CUBE
-    .mat files to CSVs.
+Example code showing how to use caf.mat for converting CUBE
+.mat files to CSVs.
 """
 
 ##### IMPORTS #####
@@ -48,8 +48,7 @@ def mat_to_csv(
 
     omx = OMXFile(omx_path)
 
-    for level in omx.matrix_levels:
-        data = omx.get_matrix_level_dataframe(level)
+    for level, data in omx.get_all():
         out_path = output_folder / f"{mat_path.stem}-{level}.csv"
         data.to_csv(out_path)
         LOG.info("Written: %s", out_path.name)

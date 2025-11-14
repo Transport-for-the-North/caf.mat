@@ -7,6 +7,7 @@ Module for reading from and writing to OMX files.
 # Built-Ins
 import logging
 import warnings
+from collections.abc import Generator
 from pathlib import Path
 from typing import Self
 
@@ -218,27 +219,32 @@ class OMXFile(tables.File):
         """Names of all the matrix levels in the OMX file."""
         return [n.name for n in self.list_nodes(self._DATA_NODE, "Array")]
 
-    def get_matrix_level(self, level_name: str) -> np.ndarray:
-        """Returns a single matrix level as an array.
+    def get_matrix_array(self, name: str) -> np.ndarray:
+        """Return a single matrix level as an array.
 
         Parameters
         ----------
-        level_name : str
+        name : str
             Name of the matrix level to return.
 
         Returns
         -------
         np.ndarray
             2D square matrix for a single level.
-        """
-        return self.get_node(self._DATA_NODE, level_name).read()
 
-    def set_matrix_level(self, level_name: str, matrix: np.ndarray | pd.DataFrame) -> None:
+        See Also
+        --------
+        :func:`OMXFile.get_matrix_level`
+            to get a matrix level as a pandas DataFrame.
+        """
+        return self.get_node(self._DATA_NODE, name).read()
+
+    def set_matrix_level(self, name: str, matrix: np.ndarray | pd.DataFrame) -> None:
         """Sets matrix level in OMX file to given array.
 
         Parameters
         ----------
-        level_name : str
+        name : str
             Name of matrix level to set.
         matrix : np.ndarray
             Square array of matrix values.
@@ -252,7 +258,7 @@ class OMXFile(tables.File):
         if matrix.shape != self.shape:
             raise ValueError(f"matrix shape should be {self.shape} no {matrix.shape}")
         if isinstance(matrix, np.ndarray):
-            self.create_array(self._DATA_NODE, str(level_name), matrix)
+            self.create_array(self._DATA_NODE, str(name), matrix)
             return
 
         if not matrix.index.equals(matrix.columns):
@@ -262,16 +268,16 @@ class OMXFile(tables.File):
 
         self.create_array(
             self._DATA_NODE,
-            str(level_name),
+            str(name),
             matrix.reindex(index=self.zones, columns=self.zones).to_numpy(),
         )
 
-    def get_matrix_level_dataframe(self, level_name: str) -> pd.DataFrame:
+    def get_matrix_level(self, name: str) -> pd.DataFrame:
         """Returns a single matrix level as an DataFrame.
 
         Parameters
         ----------
-        level_name : str
+        name : str
             Name of the matrix level to return.
 
         Returns
@@ -280,5 +286,27 @@ class OMXFile(tables.File):
             2D square matrix for a single level, with
             zones used for column names and indices.
         """
-        data = self.get_matrix_level(level_name)
+        data = self.get_matrix_array(name)
         return pd.DataFrame(data, index=self.zones, columns=self.zones)
+
+    def get_all(self) -> Generator[tuple[str, pd.DataFrame], None, None]:
+        """Iterate through matrix levels as DataFrames.
+
+        Can be used to output matrix levels in a dictionary with
+        ``dict(data.get_all())``.
+
+        Yields
+        ------
+        str
+            Name of matrix level.
+        pd.DataFrame
+            2D square matrix for a single level, with
+            zones used for column names and indices.
+
+        See Also
+        --------
+        :func:`OMXFile.get_matrix_level`
+            to read a single matrix level into a DataFrame.
+        """
+        for name in self.matrix_levels:
+            yield name, self.get_matrix_level(name)
