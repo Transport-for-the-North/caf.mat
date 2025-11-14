@@ -18,8 +18,8 @@ import pathlib
 import caf.toolkit as ctk
 
 # Local Imports
-from caf.mat.cube_mat_converter import CUBEMatConverter
-from caf.mat.omx_file import OMXFile
+from caf.mat.cube import CUBEMatConverter
+from caf.mat.omx import OMXFile
 
 ##### CONSTANTS #####
 
