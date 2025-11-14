@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-    Module for reading from and writing to OMX files.
+Module for reading from and writing to OMX files.
 """
 ##### IMPORTS #####
 
@@ -8,6 +8,7 @@
 import logging
 import warnings
 from pathlib import Path
+from typing import Self
 
 # Third Party
 import numpy as np
@@ -20,6 +21,10 @@ LOG = logging.getLogger(__name__)
 
 
 ##### CLASSES & FUNCTIONS #####
+
+
+class OMXWarning(RuntimeWarning):
+    """Warnings related to OMX files."""
 
 
 class OMXFile(tables.File):
@@ -61,6 +66,13 @@ class OMXFile(tables.File):
     """
 
     _EXPECTED_OMX_VERSION = "0.2"
+    _DATA_NODE = "/data"
+    _LOOKUP_NODE = "/lookup"
+    _KEYS = {
+        "version": "OMX_VERSION",
+        "shape": "SHAPE",
+        "zones": "ZoneNames",
+    }
 
     def __init__(
         self,
@@ -81,11 +93,11 @@ class OMXFile(tables.File):
 
         if self.mode in ("r", "a", "r+"):
             self._omx_version = self._check_omx_version(
-                self.root._v_attrs["OMX_VERSION"].decode()
+                self.root._v_attrs[self._KEYS["version"]].decode()
             )
-            self._shape = self._check_shape(self.root._v_attrs["SHAPE"])
+            self._shape = self._check_shape(self.root._v_attrs[self._KEYS["shape"]])
             self._zones = self._get_zones()
-            self.get_node("/data")
+            self.get_node(self._DATA_NODE)
 
         elif self.mode == "w":
             if omx_version is None or shape is None:
@@ -98,6 +110,9 @@ class OMXFile(tables.File):
 
         else:
             raise ValueError(f"unknown mode '{mode}' should be one of 'r', 'a', 'r+' or 'w'")
+
+    def __enter__(self) -> Self:
+        return self
 
     def _can_write(self, name: str) -> None:
         """Raises ValueError if not in a writing mode."""
@@ -138,8 +153,14 @@ class OMXFile(tables.File):
     def _get_zones(self) -> np.ndarray:
         """Attempt to read ZoneNames from file, otherwise uses sequential zones from 1."""
         try:
-            zones = self.get_node("/lookup", "ZoneNames")
+            zones = self.get_node(self._LOOKUP_NODE, self._KEYS["zones"])
         except tables.NoSuchNodeError:
+            warnings.warn(
+                f"no zone names found at {self._LOOKUP_NODE}/{self._KEYS['zones']},"
+                " defaulting to integers starting at 1",
+                OMXWarning,
+                stacklevel=2,
+            )
             zones = np.arange(1, self.shape[0] + 1)
 
         return self._check_zones(zones)
@@ -158,7 +179,7 @@ class OMXFile(tables.File):
         if value != self._omx_version:
             self._omx_version = value
             # pylint: disable=protected-access
-            self.root._v_attrs["OMX_VERSION"] = self._omx_version
+            self.root._v_attrs[self._KEYS["version"]] = self._omx_version
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -174,7 +195,7 @@ class OMXFile(tables.File):
         if value != self._shape:
             self._shape = value
             # pylint: disable=protected-access
-            self.root._v_attrs["SHAPE"] = self._shape
+            self.root._v_attrs[self._KEYS["shape"]] = self._shape
 
     @property
     def zones(self) -> np.ndarray:
@@ -190,12 +211,12 @@ class OMXFile(tables.File):
         value = self._check_zones(value)
         if np.any(value != self._zones):
             self._zones = value
-            self.create_array("/data", "ZoneNames", self._zones)
+            self.create_array(self._LOOKUP_NODE, self._KEYS["zones"], self._zones)
 
     @property
     def matrix_levels(self) -> list[str]:
         """Names of all the matrix levels in the OMX file."""
-        return [n.name for n in self.list_nodes("/data", "Array")]
+        return [n.name for n in self.list_nodes(self._DATA_NODE, "Array")]
 
     def get_matrix_level(self, level_name: str) -> np.ndarray:
         """Returns a single matrix level as an array.
@@ -210,9 +231,9 @@ class OMXFile(tables.File):
         np.ndarray
             2D square matrix for a single level.
         """
-        return self.get_node("/data", level_name).read()
+        return self.get_node(self._DATA_NODE, level_name).read()
 
-    def set_matrix_level(self, level_name: str, matrix: np.ndarray) -> None:
+    def set_matrix_level(self, level_name: str, matrix: np.ndarray | pd.DataFrame) -> None:
         """Sets matrix level in OMX file to given array.
 
         Parameters
@@ -230,7 +251,20 @@ class OMXFile(tables.File):
         self._can_write("matrix level")
         if matrix.shape != self.shape:
             raise ValueError(f"matrix shape should be {self.shape} no {matrix.shape}")
-        self.create_array("/data", str(level_name), matrix)
+        if isinstance(matrix, np.ndarray):
+            self.create_array(self._DATA_NODE, str(level_name), matrix)
+            return
+
+        if not matrix.index.equals(matrix.columns):
+            raise ValueError("matrix columns and index aren't equal")
+        if not np.array_equal(np.sort(matrix.index.to_numpy()), np.sort(self.zones)):
+            raise ValueError("matrix index doesn't equal OMX zones")
+
+        self.create_array(
+            self._DATA_NODE,
+            str(level_name),
+            matrix.reindex(index=self.zones, columns=self.zones).to_numpy(),
+        )
 
     def get_matrix_level_dataframe(self, level_name: str) -> pd.DataFrame:
         """Returns a single matrix level as an DataFrame.
