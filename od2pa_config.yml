@@ -1,0 +1,57 @@
+zone_system: noham_v3.8
+time_period_factors:
+  1: 3
+  2: 6
+  3: 3
+  4: 12
+balancing_method: 24
+calculate_tour_proportions: true
+
+postme_folder: C:\Users\Kirkland\Documents\caf.mat tests\postme
+#postme_folder: I:\NorMITs Forecast\base_year_matrices
+postme_filename_template: "{type}_{slice_name}"
+postme_segmentation:
+  enum_segments:
+    - userclass
+    - tp
+    - m
+  naming_order:
+    - m
+    - tp
+    - userclass
+  subsets:
+    m:
+      - 3
+    tp:
+      - 1
+      - 2
+      - 3
+      - 4
+
+synthetic_folder: C:\Users\Kirkland\Documents\caf.mat tests\synthetic
+#synthetic_folder: I:\NorMITs Distribution\voa_gb_2023_uni\mat\vdm\synthetic\od2pa_synthetic
+synthetic_filename_template: noham_{slice_name}
+
+# Parameters defining the phi factors CSV columns and the corresponding segment
+phi_factors:
+  path: I:\NTS\outputs\productions\hb\phi_factors\tour_proportions_PA_reg.csv
+  # Column names and their corresponding segment
+  segment_columns:
+    purpose.fr: p
+    mode: m
+  data_column: trips.est
+  segment_translation:
+    p: userclass
+  period_columns:
+    - period.fr
+    - period
+
+occupancy_factors:
+  path: I:\NorMITs Forecast\vehicle_occupancies\car_vehicle_occupancies_uc-int.csv
+  # All column names and their corresponding segment
+  segment_columns:
+    mode: m
+    purpose: userclass
+    direction_od: direction_od
+    period: tp
+  occupancy_column: occs
