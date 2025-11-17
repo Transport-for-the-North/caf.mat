@@ -77,19 +77,19 @@ class UFMConverter:
 
     def _run_cmd(
         self,
-        *args: str,
+        *args: str | int | pathlib.Path,
         cwd: pathlib.Path | None = None,
     ) -> tuple[str, str]:
         if cwd is None:
             cwd = pathlib.Path()
 
+        arguments = [str(i.resolve()) if isinstance(i, pathlib.Path) else str(i) for i in args]
+
         LOG.debug(
-            "Running: %s\nWorking directory: %s",
-            " ".join(repr(i) for i in args),
-            cwd.resolve(),
+            "Running: %s\nWorking directory: %s", " ".join(i for i in arguments), cwd.resolve()
         )
         comp_proc = subprocess.run(
-            args,
+            arguments,
             capture_output=True,
             env=self.environment,
             cwd=cwd,
@@ -399,6 +399,7 @@ class UFMConverter:
             Conversion is only implemented for the SQUARE :class:`CSVFormat`,
             any others will currently raise an error.
         """
+        csv = csv.resolve()
         if format_ == CSVFormat.SQUARE:
             return self._square_csv_to_ufm(csv, ufm, title)
         raise NotImplementedError(f"csv_to_ufm not yet implemented for {format_}")
