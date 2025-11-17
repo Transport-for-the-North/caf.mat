@@ -71,7 +71,7 @@ def main():
         # Find all .UFM files inside given folder and convert each to CSVs separately
         matrices = list(matrix_folder.glob("*.ufm"))
 
-        for i, path in enumerate(matrices):
+        for i, path in enumerate(matrices, start=1):
             stacked, unstacked = converter.ufm_to_square_csvs(
                 path, path.stem, decimal_places=8
             )
