@@ -83,6 +83,8 @@ class OMXFile(tables.File):
         **kwargs,
     ) -> None:
         self.mode = str(mode).strip().lower()
+        if "filters" not in kwargs:
+            kwargs["filters"] = tables.Filters(complevel=4, complib="zlib", shuffle=False)
         super().__init__(filename, mode=self.mode, **kwargs)
 
         self._path = Path(filename)
@@ -107,6 +109,8 @@ class OMXFile(tables.File):
                 )
             self.omx_version = omx_version
             self.shape = shape
+            self._create_omx_nodes()
+            self._clear_attributes(self.root)
 
         else:
             raise ValueError(f"unknown mode '{mode}' should be one of 'r', 'a', 'r+' or 'w'")
@@ -133,7 +137,7 @@ class OMXFile(tables.File):
     @staticmethod
     def _check_shape(value: tuple[int, int]) -> tuple[int, int]:
         """Raise ValueError if shape isn't valid."""
-        value = tuple(value)
+        value = tuple(int(i) for i in value)
         if len(value) != 2:
             raise ValueError(f"shape should be a tuple of lenght 2 not length {len(value)}")
         if value[0] != value[1]:
@@ -166,6 +170,27 @@ class OMXFile(tables.File):
 
         return self._check_zones(zones)
 
+    def _create_omx_nodes(self) -> None:
+        def remove_slash(value: str) -> str:
+            """Remove starting slash from nodes."""
+            return value.removeprefix("/")
+
+        group = self.create_group("/", remove_slash(self._LOOKUP_NODE))
+        self._clear_attributes(group)
+        group = self.create_group("/", remove_slash(self._DATA_NODE))
+        self._clear_attributes(group)
+
+    @staticmethod
+    def _clear_attributes(node: tables.File | tables.Group | tables.Node):
+        """Clear system attributes from given `node`."""
+        for name in node._v_attrs._f_list("sys"):
+            node._f_delattr(name)
+
+    def _create_omx_array(self, where: str, name: str, obj: np.ndarray):
+        self.create_carray(where, name, obj=obj)
+        node = self.get_node(where, name)
+        self._clear_attributes(node)
+
     @property
     def omx_version(self) -> str:
         """OMX version of the current file."""
@@ -180,7 +205,9 @@ class OMXFile(tables.File):
         if value != self._omx_version:
             self._omx_version = value
             # pylint: disable=protected-access
-            self.root._v_attrs[self._KEYS["version"]] = self._omx_version
+            self.root._v_attrs[self._KEYS["version"]] = self._omx_version.encode(
+                encoding="ascii"
+            )
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -196,7 +223,7 @@ class OMXFile(tables.File):
         if value != self._shape:
             self._shape = value
             # pylint: disable=protected-access
-            self.root._v_attrs[self._KEYS["shape"]] = self._shape
+            self.root._v_attrs[self._KEYS["shape"]] = np.array(self._shape, dtype=np.int32)
 
     @property
     def zones(self) -> np.ndarray:
@@ -212,7 +239,7 @@ class OMXFile(tables.File):
         value = self._check_zones(value)
         if np.any(value != self._zones):
             self._zones = value
-            self.create_array(self._LOOKUP_NODE, self._KEYS["zones"], self._zones)
+            self._create_omx_array(self._LOOKUP_NODE, self._KEYS["zones"], self._zones)
 
     @property
     def matrix_levels(self) -> list[str]:
@@ -257,20 +284,15 @@ class OMXFile(tables.File):
         self._can_write("matrix level")
         if matrix.shape != self.shape:
             raise ValueError(f"matrix shape should be {self.shape} no {matrix.shape}")
-        if isinstance(matrix, np.ndarray):
-            self.create_array(self._DATA_NODE, str(name), matrix)
-            return
+        if not isinstance(matrix, np.ndarray):
+            if not matrix.index.equals(matrix.columns):
+                raise ValueError("matrix columns and index aren't equal")
+            if not np.array_equal(np.sort(matrix.index.to_numpy()), np.sort(self.zones)):
+                raise ValueError("matrix index doesn't equal OMX zones")
+            matrix = matrix.reindex(index=self.zones, columns=self.zones).to_numpy()
 
-        if not matrix.index.equals(matrix.columns):
-            raise ValueError("matrix columns and index aren't equal")
-        if not np.array_equal(np.sort(matrix.index.to_numpy()), np.sort(self.zones)):
-            raise ValueError("matrix index doesn't equal OMX zones")
-
-        self.create_array(
-            self._DATA_NODE,
-            str(name),
-            matrix.reindex(index=self.zones, columns=self.zones).to_numpy(),
-        )
+        with warnings.catch_warnings(action="ignore", category=tables.NaturalNameWarning):
+            self._create_omx_array(self._DATA_NODE, str(name), obj=matrix)
 
     def get_matrix_level(self, name: str) -> pd.DataFrame:
         """Return a single matrix level as an DataFrame.
