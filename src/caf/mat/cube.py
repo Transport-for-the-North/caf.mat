@@ -145,7 +145,9 @@ class CUBEMatConverter:
 
         return mat_path
 
-    def to_omx(self, mat_file: Path, out_path: Path | None = None) -> Path:
+    def to_omx(
+        self, mat_file: Path, out_path: Path | None = None, *, overwrite: bool = False
+    ) -> Path:
         """Convert Cube .MAT to .OMX.
 
         Parameters
@@ -155,6 +157,9 @@ class CUBEMatConverter:
         out_path : Path, optional
             Optional path to save output OMX to, if None
             uses `mat_file` with ".omx" extension.
+        overwrite : bool, default False
+            If False and output OMX already exists will
+            raise FileExistsError.
 
         Returns
         -------
@@ -169,7 +174,7 @@ class CUBEMatConverter:
             out_path = out_path / f"{mat_file.stem}.omx"
         if out_path.suffix != ".omx":
             out_path = out_path.with_suffix(".omx")
-        if out_path.is_file():
+        if not overwrite and out_path.is_file():
             raise FileExistsError(out_path)
 
         mat_file = mat_file.resolve()

@@ -15,7 +15,7 @@ import pydantic
 
 # Local Imports
 import caf.mat
-from caf.mat import _mat
+from caf.mat import _convert, _mat
 from caf.mat.direction import _config
 
 ##### CONSTANTS #####
@@ -52,6 +52,15 @@ def _create_arg_parser() -> argparse.ArgumentParser:
         description="Convert between PA and OD matrix formats.",
     )
     _config.add_direction_commands(direction_parser)
+
+    ctk.arguments.ModelArguments(_convert.ConvertArguments).add_subcommands(
+        subparsers,
+        "convert",
+        add_config=False,
+        help="convert matrix file formats",
+        description="Convert between UFM, OMX and CUBE MAT file formats.",
+        formatter_class=ctk.arguments.TidyUsageArgumentDefaultsHelpFormatter,
+    )
 
     return parser
 

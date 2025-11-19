@@ -453,7 +453,12 @@ class UFMConverter:
         return ufm
 
     def _ufm_omx_conversion(
-        self, path: pathlib.Path, from_: Literal["OMX", "UFM"], to: Literal["OMX", "UFM"]
+        self,
+        path: pathlib.Path,
+        from_: Literal["OMX", "UFM"],
+        to: Literal["OMX", "UFM"],
+        *,
+        overwrite: bool = False,
     ) -> pathlib.Path:
         """Internal method for `ufm_to_omx` and `omx_to_ufm` methods."""
 
@@ -469,11 +474,14 @@ class UFMConverter:
         path = pathlib.Path(path).resolve()
         if not path.is_file():
             raise FileNotFoundError(f"{from_} doesn't exist: {path}")
+        out = path.with_suffix(f".{to}")
+
+        if not overwrite and out.is_file():
+            raise FileExistsError(out)
 
         LOG.debug("Converting %s to %s: %s", from_, to, path)
         msg_data = self._run_cmd(f"{from_}2{to}", str(path.with_suffix("")), cwd=path.parent)
 
-        out = path.with_suffix(f".{to}")
         if out.exists():
             LOG.debug("Created %s: %s\n%s\n%s", to, out, *msg_data)
         else:
@@ -481,13 +489,16 @@ class UFMConverter:
             raise FileNotFoundError(f"error creating: {out}")
         return out
 
-    def ufm_to_omx(self, ufm: pathlib.Path) -> pathlib.Path:
+    def ufm_to_omx(self, ufm: pathlib.Path, *, overwrite: bool = False) -> pathlib.Path:
         """Convert a UFM file to the OMX format.
 
         Parameters
         ----------
         ufm
             Path to existing UFM file.
+        overwrite
+            If False (default) will raise error
+            if output OMX already exists.
 
         Returns
         -------
@@ -498,16 +509,21 @@ class UFMConverter:
         ------
         FileNotFoundError
             If `ufm` doesn't exist or OMX file isn't created.
+        FileExistsError
+            If `overwrite` is False and output OMX already exists.
         """
-        return self._ufm_omx_conversion(ufm, "UFM", "OMX")
+        return self._ufm_omx_conversion(ufm, "UFM", "OMX", overwrite=overwrite)
 
-    def omx_to_ufm(self, omx: pathlib.Path) -> pathlib.Path:
+    def omx_to_ufm(self, omx: pathlib.Path, *, overwrite: bool = False) -> pathlib.Path:
         """Convert a OMX file to a UFM file.
 
         Parameters
         ----------
         omx
             Path to existing UFM file.
+        overwrite
+            If False (default) will raise error
+            if output UFM already exists.
 
         Returns
         -------
@@ -518,8 +534,10 @@ class UFMConverter:
         ------
         FileNotFoundError
             If `omx` doesn't exist or UFM file isn't created.
+        FileExistsError
+            If `overwrite` is False and output UFM already exists.
         """
-        return self._ufm_omx_conversion(omx, "OMX", "UFM")
+        return self._ufm_omx_conversion(omx, "OMX", "UFM", overwrite=overwrite)
 
 
 ##### FUNCTIONS #####
