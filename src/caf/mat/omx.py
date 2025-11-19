@@ -84,7 +84,7 @@ class OMXFile(tables.File):
     ) -> None:
         self.mode = str(mode).strip().lower()
         if "filters" not in kwargs:
-            kwargs["filters"] = tables.Filters(complevel=4, complib="zlib", shuffle=False)
+            kwargs["filters"] = tables.Filters(complevel=1, complib="zlib", shuffle=False)
         super().__init__(filename, mode=self.mode, **kwargs)
 
         self._path = Path(filename)
@@ -110,7 +110,6 @@ class OMXFile(tables.File):
             self.omx_version = omx_version
             self.shape = shape
             self._create_omx_nodes()
-            self._clear_attributes(self.root)
 
         else:
             raise ValueError(f"unknown mode '{mode}' should be one of 'r', 'a', 'r+' or 'w'")
@@ -175,21 +174,8 @@ class OMXFile(tables.File):
             """Remove starting slash from nodes."""
             return value.removeprefix("/")
 
-        group = self.create_group("/", remove_slash(self._LOOKUP_NODE))
-        self._clear_attributes(group)
-        group = self.create_group("/", remove_slash(self._DATA_NODE))
-        self._clear_attributes(group)
-
-    @staticmethod
-    def _clear_attributes(node: tables.File | tables.Group | tables.Node):
-        """Clear system attributes from given `node`."""
-        for name in node._v_attrs._f_list("sys"):
-            node._f_delattr(name)
-
-    def _create_omx_array(self, where: str, name: str, obj: np.ndarray):
-        self.create_carray(where, name, obj=obj)
-        node = self.get_node(where, name)
-        self._clear_attributes(node)
+        self.create_group("/", remove_slash(self._LOOKUP_NODE))
+        self.create_group("/", remove_slash(self._DATA_NODE))
 
     @property
     def omx_version(self) -> str:
@@ -239,7 +225,7 @@ class OMXFile(tables.File):
         value = self._check_zones(value)
         if np.any(value != self._zones):
             self._zones = value
-            self._create_omx_array(self._LOOKUP_NODE, self._KEYS["zones"], self._zones)
+            self.create_carray(self._LOOKUP_NODE, self._KEYS["zones"], obj=self._zones)
 
     @property
     def matrix_levels(self) -> list[str]:
@@ -292,7 +278,7 @@ class OMXFile(tables.File):
             matrix = matrix.reindex(index=self.zones, columns=self.zones).to_numpy()
 
         with warnings.catch_warnings(action="ignore", category=tables.NaturalNameWarning):
-            self._create_omx_array(self._DATA_NODE, str(name), obj=matrix)
+            self.create_carray(self._DATA_NODE, str(name), obj=matrix)
 
     def get_matrix_level(self, name: str) -> pd.DataFrame:
         """Return a single matrix level as an DataFrame.
