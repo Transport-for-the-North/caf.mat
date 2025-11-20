@@ -23,7 +23,7 @@ from caf.mat.omx import OMXFile
 
 ##### CONSTANTS #####
 
-_NAME = "cube_mat_to_csv"
+_NAME = "caf.mat.cube_mat_to_csv"
 LOG = logging.getLogger(_NAME)
 
 ##### CLASSES & FUNCTIONS #####
@@ -46,12 +46,8 @@ def mat_to_csv(
     LOG.info("Converting %s to CSVs", mat_path.name)
     omx_path = converter.to_omx(mat_path, output_folder / mat_path.stem)
 
-    omx = OMXFile(omx_path)
-
-    for level, data in omx.get_all():
-        out_path = output_folder / f"{mat_path.stem}-{level}.csv"
-        data.to_csv(out_path)
-        LOG.info("Written: %s", out_path.name)
+    with OMXFile(omx_path) as omx:
+        omx.to_csvs(output_folder / f"{mat_path.stem}.csv", "square")
 
 
 def parse_args() -> tuple[pathlib.Path, pathlib.Path]:
@@ -95,7 +91,7 @@ def main():
     log_file = output_folder / f"{_NAME}.log"
     details = ctk.ToolDetails(_NAME, "0.1.0")
 
-    with ctk.LogHelper(_NAME, details, log_file=log_file):
+    with ctk.LogHelper("caf.mat", details, log_file=log_file):
         # Find all .mat files inside given folder and convert each to CSVs separately
         for path in matrix_folder.glob("*.mat"):
             mat_to_csv(converter, path, output_folder)

@@ -5,10 +5,11 @@
 
 # Built-Ins
 import logging
+import pathlib
 import warnings
 from collections.abc import Generator
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 # Third Party
 import numpy as np
@@ -318,3 +319,61 @@ class OMXFile(tables.File):
         """
         for name in self.matrix_levels:
             yield name, self.get_matrix_level(name)
+
+    def to_csvs(
+        self,
+        path: pathlib.Path,
+        format_: Literal["square", "long"] = "square",
+        *,
+        overwrite: bool = False,
+    ) -> list[pathlib.Path]:
+        """Export each matrix level to a CSV.
+
+        Parameters
+        ----------
+        path
+            Base path for outputting CSVs to, actual CSV filenames
+            will be `{path.stem}-{matrix level}{path.suffix}`.
+        format_
+            Format to write all CSVs as, can be "square" or "long".
+        overwrite
+            If False (default) raises a FileExistsError if any
+            of the output CSVs already exists.
+
+        Returns
+        -------
+        list[pathlib.Path]
+            Paths to written CSVs.
+
+        Raises
+        ------
+        ValueError
+            If CSV format is invalid.
+        FileExistsError
+            If overwrite is False and one (or more) of the output
+            CSVs already exists.
+        """
+        filepaths = [
+            (i, path.with_name(path.stem + f"-{i}{path.suffix}")) for i in self.matrix_levels
+        ]
+        LOG.info("Writing %s OMX levels to CSVs", len(filepaths))
+
+        if format_ not in ("square", "long"):
+            raise ValueError(f"unknown CSV format: {format_}")
+
+        if not overwrite:
+            exists = [i for _, i in filepaths if i.is_file()]
+            if len(exists) > 0:
+                raise FileExistsError(", ".join(i.name for i in exists))
+
+        for name, out_path in filepaths:
+            data: pd.DataFrame | pd.Series = self.get_matrix_level(name)
+
+            if format_ == "long":
+                data = data.stack().squeeze()
+                data.name = "value"
+
+            data.to_csv(out_path)
+            LOG.debug("Written: %s", out_path)
+
+        return [i[1] for i in filepaths]
