@@ -13,6 +13,7 @@ from pathlib import Path
 ##### CONSTANTS #####
 
 LOG = logging.getLogger(__name__)
+_SCRIPT_ENCODING = "utf-8"
 
 ##### CLASSES & FUNCTIONS #####
 
@@ -111,38 +112,15 @@ class CUBEMatConverter:
         script_text += ["", "ENDRUN"]
 
         script_path = mat_path.with_name(mat_path.stem + "-CONVERSION.s")
-        with open(script_path, "wt", encoding="utf-8") as file:
-            file.write("\n".join(script_text))
+        script_path.write_text("\n".join(script_text), encoding=_SCRIPT_ENCODING)
         LOG.debug("Written: %s", script_path)
 
-        args = [
-            self.voyager_path.resolve(),
-            script_path.resolve(),
-            "-Pvdmi",
-            "/Start",
-            "/Hide",
-            "/HideScript",
-        ]
-        LOG.info("Running CUBE command: %s", " ".join(str(i) for i in args))
-        comp_proc = subprocess.run([str(a) for a in args], capture_output=True, check=False)
-        LOG.debug(
-            "CSV to CUBE .mat Voyager output:%s%s",
-            _stdout_decode(comp_proc.stdout),
-            _stdout_decode(comp_proc.stderr),
-        )
+        self._run_script(script_path)
 
         if not mat_path.is_file():
             raise CUBEMatConverterError("error converting CSV to CUBE .mat")
 
-        # Cleanup files
-        script_path.unlink()
-        script_path.with_name("TPPL.PRJ").unlink()
-        del_pat = re.compile(r"(vdmi.*)\.(prn|var)", re.I)
-        for path in script_path.parent.iterdir():
-            match = del_pat.match(path.name)
-            if match:
-                path.unlink()
-
+        self._cleanup_script(script_path)
         return mat_path
 
     def to_omx(
@@ -166,45 +144,74 @@ class CUBEMatConverter:
         Path
             Path to created OMX file.
         """
-        if not mat_file.is_file():
-            raise FileNotFoundError(f"file doesn't exist: {mat_file}")
-        if out_path is None:
-            out_path = mat_file.with_suffix(".omx")
-        if out_path.is_dir():
-            out_path = out_path / f"{mat_file.stem}.omx"
-        if out_path.suffix != ".omx":
-            out_path = out_path.with_suffix(".omx")
-        if not overwrite and out_path.is_file():
-            raise FileExistsError(out_path)
+        out_path = self._validate_io_paths(mat_file, out_path, ".omx", overwrite=overwrite)
 
         mat_file = mat_file.resolve()
         out_path = out_path.resolve()
 
         LOG.info("Converting %s to OMX file, outputs writing to %s", mat_file.name, out_path)
-        script_path = Path(out_path.parent / "Mat2OMX.s")
 
-        with open(script_path, "wt", encoding="utf-8") as file:
-            file.write(
-                f'convertmat from="{mat_file}" to="{out_path}" ' "format=omx compression=4"
-            )
+        script_path = out_path.parent / "Mat2OMX.s"
+        script_path.write_text(
+            f'convertmat from="{mat_file}" to="{out_path}" format=omx compression=4',
+            encoding=_SCRIPT_ENCODING,
+        )
         LOG.debug("Written mat2omx CUBE script: %s", script_path)
 
-        command = (
-            f'"{self.voyager_path.resolve()}" "{script_path}" '
-            "-Pvdmi /Start /Hide /HideScript"
-        )
-        LOG.info("Running CUBE voyager command: %s", command)
-        comp_proc = subprocess.run(command, capture_output=True, check=False)
+        self._run_script(script_path)
+
+        if not out_path.is_file():
+            raise CUBEMatConverterError(f"failed creating {out_path.name}")
+
+        self._cleanup_script(script_path)
+
+        return out_path
+
+    def _run_script(self, path: Path) -> None:
+        """Run script with CUBE Voyager."""
+        args = [
+            str(self.voyager_path.resolve()),
+            str(path.resolve()),
+            "-Pvdmi",
+            "/Start",
+            "/Hide",
+            "/HideScript",
+        ]
+
+        LOG.debug("Running CUBE Voyager command: %s", " ".join(args))
+        comp_proc = subprocess.run(args, capture_output=True, check=False)
         LOG.debug(
             "CUBE output:%s%s",
             _stdout_decode(comp_proc.stdout),
             _stdout_decode(comp_proc.stderr),
         )
 
-        if not out_path.is_file():
-            raise CUBEMatConverterError(f"failed creating {out_path.name}")
+    def _validate_io_paths(
+        self, path: Path, out_path: Path | None, suffix: str, *, overwrite: bool = False
+    ) -> Path:
+        """Check `path` exists and validate `out_path`.
 
-        # Cleanup files
+        Will create `out_path` based on `path` if not given.
+        """
+        if not suffix.startswith("."):
+            suffix = "." + suffix
+
+        if not path.is_file():
+            raise FileNotFoundError(path.resolve())
+
+        if out_path is None:
+            out_path = path.with_suffix(suffix)
+        if out_path.is_dir():
+            out_path = out_path / f"{path.stem}{suffix}"
+        if out_path.suffix != suffix:
+            out_path = out_path.with_suffix(suffix)
+        if not overwrite and out_path.is_file():
+            raise FileExistsError(out_path)
+
+        return out_path
+
+    def _cleanup_script(self, script_path: Path) -> None:
+        """Cleanup script file and logs."""
         script_path.unlink()
         script_path.with_name("TPPL.PRJ").unlink()
         del_pat = re.compile(r"(vdmi.*)\.(prn|var)", re.I)
@@ -212,8 +219,6 @@ class CUBEMatConverter:
             match = del_pat.match(path.name)
             if match:
                 path.unlink()
-
-        return out_path
 
     def folder_to_omx(self, folder: Path, glob: str = "*.mat") -> list[Path]:
         """Conver all ".mat" files in `folder` to OMX."""
@@ -225,6 +230,50 @@ class CUBEMatConverter:
             omx_paths.append(out_path)
 
         return omx_paths
+
+    def from_omx(
+        self, omx_file: Path, out_path: Path | None = None, *, overwrite: bool = False
+    ) -> Path:
+        """Convert OMX to Cube .MAT.
+
+        Parameters
+        ----------
+        omx_file : Path
+            Full path to the OMX file.
+        out_path : Path, optional
+            Optional path to save output Cube .MAT to, if
+            None uses `omx_file` with ".mat" extension.
+        overwrite : bool, default False
+            If False and output MAT already exists will
+            raise FileExistsError.
+
+        Returns
+        -------
+        Path
+            Path to created Cube MAT file.
+        """
+        out_path = self._validate_io_paths(omx_file, out_path, ".mat", overwrite=overwrite)
+
+        omx_file = omx_file.resolve()
+        out_path = out_path.resolve()
+
+        LOG.info("Converting %s to MAT file, outputs writing to %s", omx_file.name, out_path)
+
+        script_path = out_path.parent / "OMX2Mat.s"
+        script_path.write_text(
+            f'convertmat from="{omx_file}" to="{out_path}" format=TPP compression=4',
+            encoding=_SCRIPT_ENCODING,
+        )
+        LOG.debug("Written OMX2Mat CUBE script: %s", script_path)
+
+        self._run_script(script_path)
+
+        if not out_path.is_file():
+            raise CUBEMatConverterError(f"failed creating {out_path.name}")
+
+        self._cleanup_script(script_path)
+
+        return out_path
 
 
 def _stdout_decode(stdout: bytes) -> str:

@@ -3,11 +3,11 @@
 
 ##### IMPORTS #####
 
-
 # Built-Ins
 import argparse
 import logging
 import sys
+import warnings
 
 # Third Party
 import caf.toolkit as ctk
@@ -53,14 +53,17 @@ def _create_arg_parser() -> argparse.ArgumentParser:
     )
     _config.add_direction_commands(direction_parser)
 
-    ctk.arguments.ModelArguments(_convert.ConvertArguments).add_subcommands(
-        subparsers,
-        "convert",
-        add_config=False,
-        help="convert matrix file formats",
-        description="Convert between UFM, OMX and CUBE MAT file formats.",
-        formatter_class=ctk.arguments.TidyUsageArgumentDefaultsHelpFormatter,
-    )
+    with warnings.catch_warnings(
+        action="ignore", category=ctk.arguments.TypeAnnotationWarning
+    ):
+        ctk.arguments.ModelArguments(_convert.ConvertArguments).add_subcommands(
+            subparsers,
+            "convert",
+            add_config=False,
+            help="convert matrix file formats",
+            description="Convert between UFM, OMX and CUBE MAT file formats.",
+            formatter_class=ctk.arguments.TidyUsageArgumentDefaultsHelpFormatter,
+        )
 
     return parser
 

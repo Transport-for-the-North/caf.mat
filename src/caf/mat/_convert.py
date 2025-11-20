@@ -89,9 +89,11 @@ def convert(
     # Alias to simplify case statements
     ff = _mat.MatrixFileFormat
 
+    LOG.info("Converting %s from %s to %s", path.name, from_, to)
+
     match from_, to:
         case (ff.UFM, ff.OMX) | (ff.OMX, ff.UFM):
-            return _ufm_omx(
+            out_path = _ufm_omx(
                 path,
                 from_,  # type: ignore[arg-type]
                 to,  # type: ignore[arg-type]
@@ -101,7 +103,7 @@ def convert(
             )
 
         case (ff.CUBE, ff.OMX) | (ff.OMX, ff.CUBE):
-            return _cube_omx(
+            out_path = _cube_omx(
                 path,
                 from_,  # type: ignore[arg-type]
                 to,  # type: ignore[arg-type]
@@ -111,7 +113,7 @@ def convert(
             )
 
         case (ff.UFM, ff.CUBE) | (ff.CUBE, ff.UFM):
-            return _cube_ufm(
+            out_path = _cube_ufm(
                 path,
                 from_,  # type: ignore[arg-type]
                 to,  # type: ignore[arg-type]
@@ -121,7 +123,13 @@ def convert(
                 overwrite=overwrite,
             )
 
-    raise NotImplementedError(f"matrix conversion not implemented from {from_} to {to}")
+        case _:
+            raise NotImplementedError(
+                f"matrix conversion not implemented from {from_} to {to}"
+            )
+
+    LOG.info("Written: %s", out_path)
+    return out_path
 
 
 def _validate_paths(
@@ -216,8 +224,8 @@ def _cube_ufm(
             out_path = out_path.rename(output_path)
 
     else:
-        # OMX to CUBE not implemented yet, therefore UFM to CUBE isn't either
-        raise NotImplementedError("UFM to CUBE conversion")
+        omx_path = ufm_converter.ufm_to_omx(path, overwrite=overwrite)
+        out_path = cube_converter.from_omx(omx_path, out_path, overwrite=overwrite)
 
     return out_path
 

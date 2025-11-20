@@ -8,6 +8,7 @@ import abc
 import enum
 import logging
 import pathlib
+from typing import Self
 
 # Third Party
 import pydantic
@@ -45,6 +46,14 @@ class MatrixFileFormat(enum.StrEnum):
     CUBE = enum.auto()
     SQUARE_CSV = enum.auto()
     LONG_CSV = enum.auto()
+
+    @classmethod
+    def _missing_(cls, value) -> Self | None:
+        value = str(value).lower()
+        for member in cls:
+            if member.value == value:
+                return member
+        return None
 
     @classmethod
     def _suffix_lookup(cls) -> dict["MatrixFileFormat", str]:
