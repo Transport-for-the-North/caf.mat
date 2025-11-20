@@ -98,7 +98,7 @@ def main():
             if _TRACEBACK:
                 raise
             # Switch to raising SystemExit as this doesn't include traceback
-            raise SystemExit(str(exc)) from exc
+            raise SystemExit(f"{exc.__class__.__name__}: {exc}") from exc
 
 
 if __name__ == "__main__":

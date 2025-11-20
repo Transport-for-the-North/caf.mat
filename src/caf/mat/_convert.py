@@ -105,30 +105,27 @@ def convert(
 
     match from_, to:
         case (ff.UFM, ff.OMX) | (ff.OMX, ff.UFM):
-            out_path = _ufm_omx(
+            out_path = _ufm_to_omx(
                 path,
-                from_,  # type: ignore[arg-type]
-                to,  # type: ignore[arg-type]
+                reverse=from_ == ff.OMX,
                 saturn_path=saturn_path,  # type: ignore[arg-type]
                 output_path=output_path,
                 overwrite=overwrite,
             )
 
         case (ff.CUBE, ff.OMX) | (ff.OMX, ff.CUBE):
-            out_path = _cube_omx(
+            out_path = _cube_to_omx(
                 path,
-                from_,  # type: ignore[arg-type]
-                to,  # type: ignore[arg-type]
+                reverse=from_ == ff.OMX,
                 voyager_path=voyager_path,  # type: ignore[arg-type]
                 output_path=output_path,
                 overwrite=overwrite,
             )
 
         case (ff.UFM, ff.CUBE) | (ff.CUBE, ff.UFM):
-            out_path = _cube_ufm(
+            out_path = _cube_to_ufm(
                 path,
-                from_,  # type: ignore[arg-type]
-                to,  # type: ignore[arg-type]
+                reverse=from_ == ff.UFM,
                 saturn_path=saturn_path,  # type: ignore[arg-type]
                 voyager_path=voyager_path,  # type: ignore[arg-type]
                 output_path=output_path,
@@ -164,25 +161,21 @@ def _validate_paths(
             )
 
 
-def _ufm_omx(
+def _ufm_to_omx(
     path: pathlib.Path,
-    from_: Literal[_mat.MatrixFileFormat.UFM, _mat.MatrixFileFormat.OMX],
-    to: Literal[_mat.MatrixFileFormat.UFM, _mat.MatrixFileFormat.OMX],
     *,
+    reverse: bool,
     saturn_path: pathlib.Path,
     output_path: pathlib.Path | None = None,
     overwrite: bool = False,
 ) -> pathlib.Path:
     """Convert between UFM and OMX files."""
-    if from_ == to:
-        raise ValueError("conversion formats are identical")
-
     converter = ufm.UFMConverter(saturn_path)
 
-    if from_ == _mat.MatrixFileFormat.UFM:
-        out_path = converter.ufm_to_omx(path, overwrite=overwrite)
-    else:
+    if reverse:
         out_path = converter.omx_to_ufm(path, overwrite=overwrite)
+    else:
+        out_path = converter.ufm_to_omx(path, overwrite=overwrite)
 
     if output_path is not None:
         out_path = out_path.rename(output_path)
@@ -190,54 +183,47 @@ def _ufm_omx(
     return out_path
 
 
-def _cube_omx(
+def _cube_to_omx(
     path: pathlib.Path,
-    from_: Literal[_mat.MatrixFileFormat.CUBE, _mat.MatrixFileFormat.OMX],
-    to: Literal[_mat.MatrixFileFormat.CUBE, _mat.MatrixFileFormat.OMX],
     *,
+    reverse: bool,
     voyager_path: pathlib.Path,
     output_path: pathlib.Path | None = None,
     overwrite: bool = False,
 ) -> pathlib.Path:
     """Convert between CUBE MAT and OMX files."""
-    if from_ == to:
-        raise ValueError("conversion formats are identical")
-
     converter = cube.CUBEMatConverter(voyager_path)
-    if from_ == _mat.MatrixFileFormat.CUBE:
-        output_path = converter.to_omx(path, output_path, overwrite=overwrite)
+    if reverse:
+        output_path = converter.from_omx(path, output_path, overwrite=overwrite)
     else:
-        raise NotImplementedError("conversion from OMX to CUBE")
+        output_path = converter.to_omx(path, output_path, overwrite=overwrite)
 
     return output_path
 
 
-def _cube_ufm(
+def _cube_to_ufm(
     path: pathlib.Path,
-    from_: Literal[_mat.MatrixFileFormat.CUBE, _mat.MatrixFileFormat.UFM],
-    to: Literal[_mat.MatrixFileFormat.CUBE, _mat.MatrixFileFormat.UFM],
     *,
+    reverse: bool,
     saturn_path: pathlib.Path,
     voyager_path: pathlib.Path,
     output_path: pathlib.Path | None = None,
     overwrite: bool = False,
 ) -> pathlib.Path:
     """Convert between CUBE MAT and UFM files, via OMX."""
-    if from_ == to:
-        raise ValueError("conversion formats are identical")
-
     cube_converter = cube.CUBEMatConverter(voyager_path)
     ufm_converter = ufm.UFMConverter(saturn_path)
-    if from_ == _mat.MatrixFileFormat.CUBE:
+
+    if reverse:
+        omx_path = ufm_converter.ufm_to_omx(path, overwrite=overwrite)
+        out_path = cube_converter.from_omx(omx_path, output_path, overwrite=overwrite)
+
+    else:
         omx_path = cube_converter.to_omx(path, overwrite=overwrite)
         out_path = ufm_converter.omx_to_ufm(omx_path, overwrite=overwrite)
 
         if output_path is not None:
             out_path = out_path.rename(output_path)
-
-    else:
-        omx_path = ufm_converter.ufm_to_omx(path, overwrite=overwrite)
-        out_path = cube_converter.from_omx(omx_path, output_path, overwrite=overwrite)
 
     return out_path
 
