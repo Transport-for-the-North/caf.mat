@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Module containing functionality to convert CSV matrices into
-SATURN's UFM files.
-"""
+"""Module containing functionality to convert CSV matrices into SATURN's UFM files."""
 
 ##### IMPORTS #####
 
@@ -403,7 +400,7 @@ class UFMConverter:
         raise NotImplementedError(f"csv_to_ufm not yet implemented for {format_}")
 
     def stack(self, matrices: list[pathlib.Path], ufm: pathlib.Path) -> pathlib.Path:
-        """Runs SATURN's UFMSTACK to stack `matrices` into a single UFM.
+        """Run SATURN's UFMSTACK to stack `matrices` into a single UFM.
 
         Parameters
         ----------
@@ -458,7 +455,7 @@ class UFMConverter:
         *,
         overwrite: bool = False,
     ) -> pathlib.Path:
-        """Internal method for `ufm_to_omx` and `omx_to_ufm` methods."""
+        """Perform UFM to OMX, and reverse, conversion."""
         LOG.info('Converting "%s" to %s', path.name, to)
 
         def check_from_to(value: str) -> Literal["OMX", "UFM"]:
@@ -541,7 +538,7 @@ class UFMConverter:
 
 ##### FUNCTIONS #####
 def update_env(saturn_path: pathlib.Path) -> dict[str, str]:
-    """Creates a copy of environment variables and adds SATURN path.
+    """Create a copy of environment variables and adds SATURN path.
 
     Parameters
     ----------
