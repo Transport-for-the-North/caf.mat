@@ -16,7 +16,6 @@ import datetime
 import logging
 import os
 import pathlib
-from typing import Literal
 
 import pydantic
 
