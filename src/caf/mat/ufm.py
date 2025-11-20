@@ -329,7 +329,7 @@ class UFMConverter:
             If the output UFM file isn't created.
         """
         # Should be square matrix with zone names in first column and no header rows
-        LOG.debug("Converting CSV in square format to UFM: %s", csv)
+        LOG.debug('Converting CSV in square format to UFM: "%s"', csv)
         if ufm is None:
             ufm = csv.with_suffix(".UFM")
         if title is None:
@@ -425,7 +425,7 @@ class UFMConverter:
             If any files in `matrices` don't exist, or aren't files.
             If their is an error creating the stacked UFM.
         """
-        LOG.debug("Stacking UFMs to %s", ufm)
+        LOG.debug('Stacking UFMs to "%s"', ufm)
         matrices = [pathlib.Path(m) for m in matrices]
         missing = list(filter(lambda p: not p.is_file(), matrices))
         if missing:
@@ -461,6 +461,7 @@ class UFMConverter:
         overwrite: bool = False,
     ) -> pathlib.Path:
         """Internal method for `ufm_to_omx` and `omx_to_ufm` methods."""
+        LOG.info('Converting "%s" to %s', path.name, to)
 
         def check_from_to(value: str) -> Literal["OMX", "UFM"]:
             value = value.upper().strip()

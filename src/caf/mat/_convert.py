@@ -14,8 +14,9 @@ See Also
 
 import datetime
 import logging
+import os
 import pathlib
-from typing import Literal, Protocol
+from typing import Literal
 
 import pydantic
 
@@ -24,6 +25,17 @@ from caf.mat import _mat, cube, ufm
 ##### CONSTANTS #####
 
 LOG = logging.getLogger(__name__)
+
+
+def _get_env_path(name: str) -> pathlib.Path | None:
+    value = os.getenv(name, None)
+    if value is None:
+        return value
+    return pathlib.Path(value).resolve()
+
+
+_VOYAGER_PATH = _get_env_path("CUBE_VOYAGER_PATH")
+_SATURN_PATH = _get_env_path("SATURN_EXES_FOLDER")
 
 
 ##### CLASSES & FUNCTIONS #####
@@ -89,7 +101,7 @@ def convert(
     # Alias to simplify case statements
     ff = _mat.MatrixFileFormat
 
-    LOG.info("Converting %s from %s to %s", path.name, from_, to)
+    LOG.info('Converting "%s" from %s to %s', path.name, from_.upper(), to.upper())
 
     match from_, to:
         case (ff.UFM, ff.OMX) | (ff.OMX, ff.UFM):
@@ -225,7 +237,7 @@ def _cube_ufm(
 
     else:
         omx_path = ufm_converter.ufm_to_omx(path, overwrite=overwrite)
-        out_path = cube_converter.from_omx(omx_path, out_path, overwrite=overwrite)
+        out_path = cube_converter.from_omx(omx_path, output_path, overwrite=overwrite)
 
     return out_path
 
@@ -241,9 +253,9 @@ class ConvertArguments(_mat.ArgumentHandler):
     """Format to convert to."""
     from_: _mat.MatrixFileFormat | None = pydantic.Field(None, alias="from")
     """Format to convert from, if not given inferred from file extension."""
-    saturn_folder: pydantic.DirectoryPath | None = None
+    saturn_folder: pydantic.DirectoryPath | None = _SATURN_PATH
     """Path to folder containing SATURN executables, required when converting to / from UFMs."""
-    voyager_path: pydantic.FilePath | None = None
+    voyager_path: pydantic.FilePath | None = _VOYAGER_PATH
     """Path to CUBE Voyager executable file, required when converting to / from CUBE .MAT files."""
     output: pathlib.Path | None = None
     """Path to save converted matrix to, if not given uses same file name (with new extension)."""

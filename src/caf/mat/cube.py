@@ -149,7 +149,7 @@ class CUBEMatConverter:
         mat_file = mat_file.resolve()
         out_path = out_path.resolve()
 
-        LOG.info("Converting %s to OMX file, outputs writing to %s", mat_file.name, out_path)
+        LOG.info('Converting "%s" to OMX file', mat_file.name)
 
         script_path = out_path.parent / "Mat2OMX.s"
         script_path.write_text(
@@ -172,7 +172,7 @@ class CUBEMatConverter:
         args = [
             str(self.voyager_path.resolve()),
             str(path.resolve()),
-            "-Pvdmi",
+            "-Pcmat",
             "/Start",
             "/Hide",
             "/HideScript",
@@ -214,7 +214,7 @@ class CUBEMatConverter:
         """Cleanup script file and logs."""
         script_path.unlink()
         script_path.with_name("TPPL.PRJ").unlink()
-        del_pat = re.compile(r"(vdmi.*)\.(prn|var)", re.I)
+        del_pat = re.compile(r"(cmat.*)\.(prn|var)", re.I)
         for path in script_path.parent.iterdir():
             match = del_pat.match(path.name)
             if match:
@@ -257,11 +257,15 @@ class CUBEMatConverter:
         omx_file = omx_file.resolve()
         out_path = out_path.resolve()
 
-        LOG.info("Converting %s to MAT file, outputs writing to %s", omx_file.name, out_path)
+        LOG.info(
+            'Converting "%s" to MAT file with Cube Voyager,'
+            " this might take several minutes",
+            omx_file.name,
+        )
 
         script_path = out_path.parent / "OMX2Mat.s"
         script_path.write_text(
-            f'convertmat from="{omx_file}" to="{out_path}" format=TPP compression=4',
+            f'convertmat from="{omx_file}" to="{out_path}" format=TPP',
             encoding=_SCRIPT_ENCODING,
         )
         LOG.debug("Written OMX2Mat CUBE script: %s", script_path)

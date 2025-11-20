@@ -21,7 +21,7 @@ from caf.mat.direction import _config
 ##### CONSTANTS #####
 
 LOG = logging.getLogger(__name__)
-_TRACEBACK = ctk.arguments.getenv_bool("CAF_MAT_TRACEBACK", True)
+_TRACEBACK = ctk.arguments.getenv_bool("CAF_MAT_TRACEBACK", False)
 
 ##### CLASSES & FUNCTIONS #####
 
@@ -81,7 +81,7 @@ def parse_args() -> _mat.ArgumentHandler:
         if _TRACEBACK:
             raise
         # Switch to raising SystemExit as this doesn't include traceback
-        raise SystemExit(str(exc)) from exc
+        raise SystemExit(f"{exc.__class__.__name__}: {exc}") from exc
 
     return params
 
