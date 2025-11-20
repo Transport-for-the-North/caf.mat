@@ -64,13 +64,11 @@ class UFMConverter:
             raise NotADirectoryError(
                 f"saturn_folder isn't an existing folder: {self._saturn_folder}"
             )
-        self._environment = None
+        self._environment: dict[str, str] | None = None
 
     @property
-    def environment(self) -> os._Environ:  # pylint: disable=protected-access
-        """os._Environ : environment variables dictionary with `saturn_folder`
-        added to "PATH".
-        """
+    def environment(self) -> dict[str, str]:
+        """Environment variables dictionary with `saturn_folder` added to "PATH"."""
         if self._environment is None:
             self._environment = update_env(self._saturn_folder)
         return self._environment
@@ -542,9 +540,7 @@ class UFMConverter:
 
 
 ##### FUNCTIONS #####
-def update_env(
-    saturn_path: pathlib.Path,
-) -> os._Environ:  # pylint: disable=protected-access
+def update_env(saturn_path: pathlib.Path) -> dict[str, str]:
     """Creates a copy of environment variables and adds SATURN path.
 
     Parameters
@@ -554,7 +550,7 @@ def update_env(
 
     Returns
     -------
-    os._Environ
+    dict[str, str]
         A copy of `os.environ` with the `saturn_path` added to the
         "PATH" variable.
 
