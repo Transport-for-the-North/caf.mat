@@ -519,8 +519,9 @@ class MatricesBase(abc.ABC):
             other.set_matrix(self.get_matrix(slice).data, slice)
         return other
     
-    def translate_zoning(self, new_zoning: bs.ZoningSystem):
-        translation = self.zoning.translate(new_zoning)
+    def translate_zoning(self, new_zoning: bs.ZoningSystem, translation: pd.DataFrame | None = None):
+        if translation is None:
+            translation = self.zoning.translate(new_zoning)
         translation = ctk.translation.ZoneCorrespondence(translation,
                                                          self.zoning.column_name,
                                                          new_zoning.column_name,
@@ -542,7 +543,7 @@ class MatricesBase(abc.ABC):
         cols = {}
         for slice in self.segmentation.iter_slices():
             mat = self.get_matrix(slice).data
-            column = mat.sum(axis=1)
+            column = mat.sum(axis=0)
             row = mat.sum(axis=1)
             rows[slice.as_tuple()] = row
             cols[slice.as_tuple()] = column
@@ -565,7 +566,7 @@ class MatricesBase(abc.ABC):
                     'D': cols}
         
 
-    def generic_dunder(self, other, method, method_name):
+    def generic_dunder(self, other, mat_method, number_method, method_name):
         """
         Stop telling me to use the imperative mood pydocstyle.
 
@@ -580,19 +581,28 @@ class MatricesBase(abc.ABC):
         method_name: str
             The name of the method used in naming the return object.
         """
-        if self.segmentation != other.segmentation:
-            raise SegmentationError("Segmentations don't match.")
-        if self.zoning != other.zoning:
-            raise ZoningError("Zoning systems don't match.")
-        out = self.new(name=f"{self.name}_{method_name}_{other.name}")
+        
+        # if self.segmentation != other.segmentation:
+        #     raise SegmentationError("Segmentations don't match.")
+        # if self.zoning != other.zoning:
+        #     raise ZoningError("Zoning systems don't match.")
+        if isinstance(other, MatricesBase):
+            out = self.new(name=f"{self.name}_{method_name}_{other.name}")
+        else:
+            out = self.new(name=f"{self.name}_{method_name}_other")
         for slice in self.segmentation.iter_slices():
-            product = method(self.get_matrix(slice).data, other.get_matrix(slice).data)
-            out.set_matrix(product, slice)
+            if isinstance(other, MatricesBase):
+                product = mat_method(self.get_matrix(slice).data, other.get_matrix(slice).data)
+            elif isinstance(other, bs.DVector):
+                product = mat_method(self.get_matrix(slice).data, other.get_slice(slice.aggregate(other.segmentation.naming_order)).squeeze())
+            out.set_matrix(product.fillna(0), slice)
         return out
 
     def __truediv__(self, other):
-        return self.generic_dunder(other, pd.DataFrame.__truediv__, 'divide')
-
+        return self.generic_dunder(other, pd.DataFrame.__truediv__,float.__truediv__, 'divide')
+    
+    def __mul__(self, other):
+        return self.generic_dunder(other, pd.DataFrame.__mul__,float.__mul__, 'multiply')
 
 def _short_list(values: collections.abc.Sequence, length: int = 10) -> str:
     if len(values) <= length:
