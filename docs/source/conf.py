@@ -4,7 +4,9 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
 # Built-Ins
+import os
 import pathlib
+import re
 import sys
 
 dir_path = pathlib.Path(__file__).parents[2]
@@ -33,6 +35,8 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
+    "sphinx.ext.autosectionlabel",
+    "sphinx_gallery.gen_gallery",
 ]
 
 templates_path = ["_templates", "_templates/autosummary"]
@@ -58,6 +62,13 @@ autosummary_generate = True
 
 modindex_common_prefix = ["caf.", "caf.mat."]
 
+# Sphinx gallery settings
+sphinx_gallery_conf = {
+    "examples_dirs": "../../examples",  # path to your example scripts
+    "gallery_dirs": "examples",  # path to where to save gallery generated output
+    # Regex pattern of filenames to be ran so the output can be included
+    "filename_pattern": rf"{re.escape(os.sep)}run_.*\.py",
+}
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

@@ -1,2 +1,4 @@
 sphinx>=7.4
 pydata-sphinx-theme>=0.14
+sphinx-gallery>=0.17.1
+matplotlib # required by sphinx-gallery
