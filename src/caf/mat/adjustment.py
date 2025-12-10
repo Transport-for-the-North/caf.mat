@@ -22,6 +22,7 @@ class MatrixSectorScaling:
     control_ufm: pathlib.Path
     sector_system_path: ctk.translation.ZoneCorrespondencePath
     levels: list[int] | None = None
+    exclude_intras: bool = False
 
     def run(
         self, saturn_path: pathlib.Path, out_path: pathlib.Path, output_working: bool = False
@@ -53,17 +54,27 @@ class MatrixSectorScaling:
 
             LOG.debug("labelling and calculating sector matrices")
             adj_matrix_sectors_labelled = _label_sectors_matrix(adj_matrix, sector_system)
-            adj_sector_matrix = adj_matrix_sectors_labelled.groupby(
+
+            control_matrix = _label_sectors_matrix(control_matrices[level], sector_system)
+            if self.exclude_intras:
+                adj_matrix_scale = adj_matrix_sectors_labelled.copy()
+                adj_matrix_scale.loc[
+                    adj_matrix_scale["origin"] == adj_matrix_scale["destination"], "demand"
+                ] = 0
+                control_matrix.loc[control_matrix["origin"] == control_matrix["destination"], "demand"] = 0
+            else:
+                adj_matrix_scale = adj_matrix_sectors_labelled.copy()
+
+            adj_sector_matrix = adj_matrix_scale.groupby(
                 ["origin_sector", "destination_sector"]
             )["demand"].sum()
-            control_sector_matrix = (
-                _label_sectors_matrix(control_matrices[level], sector_system)
-                .groupby(["origin_sector", "destination_sector"])["demand"]
-                .sum()
-            )
+            control_sector_matrix = control_matrix.groupby(
+                ["origin_sector", "destination_sector"]
+            )["demand"].sum()
 
             LOG.debug("calculating factors")
             sector_factors = control_sector_matrix / adj_sector_matrix
+            sector_factors = sector_factors.fillna(1)
             sector_factors.name = "factors"
             ctk.pandas_utils.long_to_wide_infill(sector_factors).to_csv(
                 out_path / f"{self.name}_{level}_sector_factors.csv"
@@ -103,9 +114,34 @@ class MatrixSectorScaling:
                 ["origin_sector", "destination_sector"]
             )["demand"].sum()
 
-            if not adj_sector_check.round(CHECK_DP_RESOLUTION).equals(
+            if self.exclude_intras:
+                sector_system["factors"] = 1
+                adj_report = ctk.pandas_utils.MatrixReport(
+                    adjusted_matrix,
+                    translation_factors=sector_system,
+                    translation_from_col="from",
+                    translation_to_col="to",
+                    translation_factors_col="factors",
+                )
+                control_report = ctk.pandas_utils.MatrixReport(
+                    control_matrices[level],
+                    translation_factors=sector_system,
+                    translation_from_col="from",
+                    translation_to_col="to",
+                    translation_factors_col="factors",
+                )
+                qa_dir = out_path / "QA"
+                qa_dir.mkdir(exist_ok=True)
+                with pd.ExcelWriter(
+                    qa_dir / f"{self.name}_{level}_matrix_report.xlsx"
+                ) as writer:
+                    ctk.pandas_utils.compare_matrices_and_output(
+                        writer, adj_report, control_report, name_a="adj", name_b="control"
+                    )
+            elif not adj_sector_check.round(CHECK_DP_RESOLUTION).equals(
                 control_sector_matrix.round(CHECK_DP_RESOLUTION)
             ):
+                
                 raise ValueError(
                     "Sector values of the adjusted matrix and control matrix do not match"
                 )
