@@ -519,6 +519,33 @@ class MatricesBase(abc.ABC):
             other.set_matrix(self.get_matrix(slice).data, slice)
         return other
     
+    def convert_type(self, new_type: Self) -> Self:
+        if type(self) == type(new_type):
+            return self
+        converted = new_type(self.segmentation, self.zoning, self.type)
+        for slice in self.segmentation.iter_slices():
+            matrix = self.get_matrix(slice)
+            converted.set_matrix(matrix.data, slice)
+        return converted
+    
+    def remove_intras(self):
+        inters = self.new(name=f"{self.name}_nointras")
+        for slice in self.segmentation.iter_slices():
+            matrix = self.get_matrix(slice).data
+            np.fill_diagonal(matrix.values, 0)
+            inters.set_matrix(matrix, slice)
+        return inters
+    
+    def intras(self) -> bs.DVector:
+        data: dict[tuple[int], pd.Series] = {}
+        for slice in self.segmentation.iter_slices():
+            matrix = self.get_matrix(slice).data
+            intras = np.diagonal(matrix)
+            data[slice.as_tuple()] = pd.Series(intras, index=matrix.index)
+        dvec_data = pd.concat(data, axis=1).T
+        dvec_data.index.names = self.segmentation.naming_order
+        return bs.DVector(segmentation=self.segmentation, import_data=dvec_data, zoning_system=self.zoning)
+    
     def translate_zoning(self, new_zoning: bs.ZoningSystem, translation: pd.DataFrame | None = None):
         if translation is None:
             translation = self.zoning.translate(new_zoning)
