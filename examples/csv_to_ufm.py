@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-    CSVs to SATURN .UFM Files
-    =========================
+CSVs to SATURN .UFM Files
+=========================
 
-    Example code showing how to use caf.mat for converting CSVs
-    to SATURN .UFM files.
+Example code showing how to use caf.mat for converting CSVs
+to SATURN .UFM files.
 """
 
 ##### IMPORTS #####
@@ -18,7 +18,7 @@ import pathlib
 import caf.toolkit as ctk
 
 # Local Imports
-from caf.mat.ufm_converter import UFMConverter
+from caf.mat.ufm import CSVFormat, UFMConverter
 
 ##### CONSTANTS #####
 
@@ -78,10 +78,10 @@ def main():
 
             # Write CSV in format expected by converter
             csv_path = output_folder / f"{path.stem}-square.csv"
-            matrix.to_csv(csv_path, index=True, header=False, float_format="%.10f")
+            matrix.to_csv(csv_path, index=True, header=False, float_format="%.8f")
             LOG.debug("Written CSV in SATURNs square format to: %s", csv_path)
 
-            ufm_path = converter.square_csv_to_ufm(csv_path)
+            ufm_path = converter.csv_to_ufm(csv_path, CSVFormat.SQUARE)
             LOG.info("Written UFM: %s", ufm_path)
 
             LOG.info("Done %s / %s (%s)", i, len(matrices), f"{i / len(matrices):.0%}")

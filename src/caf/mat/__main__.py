@@ -3,11 +3,11 @@
 
 ##### IMPORTS #####
 
-
 # Built-Ins
 import argparse
 import logging
 import sys
+import warnings
 
 # Third Party
 import caf.toolkit as ctk
@@ -15,13 +15,13 @@ import pydantic
 
 # Local Imports
 import caf.mat
-from caf.mat import _mat
+from caf.mat import _convert, _mat
 from caf.mat.direction import _config
 
 ##### CONSTANTS #####
 
 LOG = logging.getLogger(__name__)
-_TRACEBACK = ctk.arguments.getenv_bool("CAF_MAT_TRACEBACK", True)
+_TRACEBACK = ctk.arguments.getenv_bool("CAF_MAT_TRACEBACK", False)
 
 ##### CLASSES & FUNCTIONS #####
 
@@ -53,6 +53,18 @@ def _create_arg_parser() -> argparse.ArgumentParser:
     )
     _config.add_direction_commands(direction_parser)
 
+    with warnings.catch_warnings(
+        action="ignore", category=ctk.arguments.TypeAnnotationWarning
+    ):
+        ctk.arguments.ModelArguments(_convert.ConvertArguments).add_subcommands(
+            subparsers,
+            "convert",
+            add_config=False,
+            help="convert matrix file formats",
+            description="Convert between UFM, OMX and CUBE MAT file formats.",
+            formatter_class=ctk.arguments.TidyUsageArgumentDefaultsHelpFormatter,
+        )
+
     return parser
 
 
@@ -69,7 +81,7 @@ def parse_args() -> _mat.ArgumentHandler:
         if _TRACEBACK:
             raise
         # Switch to raising SystemExit as this doesn't include traceback
-        raise SystemExit(str(exc)) from exc
+        raise SystemExit(f"{exc.__class__.__name__}: {exc}") from exc
 
     return params
 
@@ -86,7 +98,7 @@ def main():
             if _TRACEBACK:
                 raise
             # Switch to raising SystemExit as this doesn't include traceback
-            raise SystemExit(str(exc)) from exc
+            raise SystemExit(f"{exc.__class__.__name__}: {exc}") from exc
 
 
 if __name__ == "__main__":

@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-    Module containing functionality to convert CSV matrices into
-    SATURN's UFM files.
-"""
+"""Module containing functionality to convert CSV matrices into SATURN's UFM files."""
 
 ##### IMPORTS #####
 
@@ -12,6 +9,7 @@ import logging
 import os
 import pathlib
 import subprocess
+from typing import Literal
 
 # Third Party
 import pandas as pd
@@ -58,21 +56,52 @@ class UFMConverter:
     """
 
     def __init__(self, saturn_folder: pathlib.Path) -> None:
-        self._saturn_folder = pathlib.Path(saturn_folder)
+        self._saturn_folder = pathlib.Path(saturn_folder).resolve()
         if not self._saturn_folder.is_dir():
             raise NotADirectoryError(
                 f"saturn_folder isn't an existing folder: {self._saturn_folder}"
             )
-        self._environment = None
+        self._environment: dict[str, str] | None = None
 
     @property
-    def environment(self) -> os._Environ:  # pylint: disable=protected-access
-        """os._Environ : environment variables dictionary with `saturn_folder`
-        added to "PATH".
-        """
+    def environment(self) -> dict[str, str]:
+        """Environment variables dictionary with `saturn_folder` added to "PATH"."""
         if self._environment is None:
             self._environment = update_env(self._saturn_folder)
         return self._environment
+
+    def _run_cmd(
+        self,
+        *args: str | int | pathlib.Path,
+        cwd: pathlib.Path | None = None,
+    ) -> tuple[str, str]:
+        if cwd is None:
+            cwd = pathlib.Path()
+
+        arguments = [str(i.resolve()) if isinstance(i, pathlib.Path) else str(i) for i in args]
+
+        LOG.debug(
+            "Running: %s\nWorking directory: %s", " ".join(i for i in arguments), cwd.resolve()
+        )
+        comp_proc = subprocess.run(
+            arguments,
+            capture_output=True,
+            env=self.environment,
+            cwd=cwd,
+            check=False,
+            shell=True,
+        )
+        stdout = _cmd_strip(comp_proc.stdout)
+        stderr = _cmd_strip(comp_proc.stderr)
+        return stdout, stderr
+
+    @staticmethod
+    def _write_key(path: pathlib.Path, *data: str | int) -> pathlib.Path:
+        """Write `data` to SATURN KEY file."""
+        with path.open("wt", encoding="utf-8") as file:
+            file.writelines(f"{i}\n" for i in data)
+        LOG.debug("Written KEY file: %s", path)
+        return path
 
     def ufm_to_csv(
         self,
@@ -104,6 +133,11 @@ class UFMConverter:
             If the output CSV file isn't created.
         NotImplementedError
             If `csv_format` isn't 'TUBA2' or 'TUBA3'.
+
+        See Also
+        --------
+        :meth:`ufm_to_square_csvs`
+            for conversion to square CSV format.
         """
         ufm = ufm.resolve()
         if csv is None:
@@ -115,20 +149,16 @@ class UFMConverter:
             args = ["UFM2TBA2", str(ufm), str(csv)]
         elif csv_format == CSVFormat.TUBA3:
             args = ["UFM2TBA3", str(ufm), str(csv.with_suffix(""))]
+        elif csv_format == CSVFormat.SQUARE:
+            raise NotImplementedError(
+                f"use `ufm_to_square_csvs` instead of `ufm_to_csv` for {csv_format}"
+            )
         else:
             raise NotImplementedError(f"ufm_to_csv not implemented for {csv_format}")
 
         LOG.debug("Converting UFM to %s CSV: %s", csv_format.value, ufm)
-        comp_proc = subprocess.run(
-            args,
-            capture_output=True,
-            env=self.environment,
-            cwd=ufm.parent,
-            check=False,
-            shell=True,
-        )
+        msg_data = self._run_cmd(*args, cwd=ufm.parent)
 
-        msg_data = (cmd_strip(comp_proc.stdout), cmd_strip(comp_proc.stderr))
         for suff in (csv.suffix, ".CSV", ".TXT"):
             if csv.with_suffix(suff).exists():
                 LOG.debug("Created CSV: %s\n%s\n%s", csv.with_suffix(suff), *msg_data)
@@ -179,7 +209,13 @@ class UFMConverter:
             exported from SATURN.
         FileExistsError
             If the CSV file already exists and overwrite is False.
+
+        See Also
+        --------
+        :meth:`ufm_to_csv`
+            for conversion to other CSV formats.
         """
+        ufm = ufm.resolve()
         if not ufm.is_file():
             raise FileNotFoundError(f"UFM file doesn't exist: {ufm}")
 
@@ -196,7 +232,8 @@ class UFMConverter:
                     f"CSV file already exists and overwrite is False: {csv_path}"
                 )
 
-        key_data = [
+        key_path = self._write_key(
+            ufm.with_suffix(".KEY"),
             13,  # Dump to text file
             5,  # CSV format
             csv_path.name,
@@ -208,26 +245,22 @@ class UFMConverter:
             0,  # Back
             0,  # Exit
             "y",
-        ]
-        key_path = ufm.with_suffix(".KEY")
-        with open(key_path, "wt", encoding="utf-8") as file:
-            file.writelines(f"{l}\n" for l in key_data)
-        LOG.debug("Written KEY file: %s", key_path)
+        )
 
         LOG.info("Exporting UFM (%s) to CSV", ufm.name)
-        comp_proc = subprocess.run(
-            ["MX", ufm, "KEY", str(key_path), "VDU", str(key_path.with_suffix(".VDU"))],
-            capture_output=True,
-            env=self.environment,
+        msg_data = self._run_cmd(
+            "MX",
+            str(ufm),
+            "KEY",
+            str(key_path),
+            "VDU",
+            str(key_path.with_suffix(".VDU")),
             cwd=key_path.parent,
-            check=False,
-            shell=True,
         )
-        msg_data = (csv_path, cmd_strip(comp_proc.stdout), cmd_strip(comp_proc.stderr))
         if ufm.exists():
-            LOG.debug("Created CSV: %s\n%s\n%s", *msg_data)
+            LOG.debug("Created CSV: %s\n%s\n%s", csv_path, *msg_data)
         else:
-            LOG.error("Failed creating UFM: %s\n%s\n%s", *msg_data)
+            LOG.error("Failed creating UFM: %s\n%s\n%s", csv_path, *msg_data)
             raise FileNotFoundError(f"error creating {ufm}")
 
         # Load CSV and split it into chunks for each level
@@ -261,7 +294,7 @@ class UFMConverter:
 
         return level_csvs
 
-    def square_csv_to_ufm(
+    def _square_csv_to_ufm(
         self, csv: pathlib.Path, ufm: pathlib.Path | None = None, title: str | None = None
     ) -> pathlib.Path:
         """Convert CSV in square format to UFM file.
@@ -290,53 +323,84 @@ class UFMConverter:
         FileNotFoundError
             If the output UFM file isn't created.
         """
-        # TODO Change this to a private method and add a csv_to_ufm method which
-        # takes in a CSVFormat and chooses the correct method to run
-
         # Should be square matrix with zone names in first column and no header rows
-        LOG.debug("Converting CSV in square format to UFM: %s", csv)
+        LOG.debug('Converting CSV in square format to UFM: "%s"', csv)
         if ufm is None:
             ufm = csv.with_suffix(".UFM")
         if title is None:
             title = csv.stem
 
-        key_data = [
+        key_path = self._write_key(
+            csv.with_suffix(".KEY"),
             1,  # Select input data
-            csv.resolve(),
+            str(csv.resolve()),
             1,  # Read file with default format (spreadsheet)
             5,  # First column is zone name
             0,  # Read data
             14,  # Dump to UFM file
             1,  # Output as is to UFM
-            ufm.resolve(),
+            str(ufm.resolve()),
             title,  # Matrix title
             1,  # Close output file
             0,  # Exit
             "Y",
-        ]
-        key_path = csv.with_suffix(".KEY")
-        with open(key_path, "wt") as file:
-            file.writelines(f"{l}\n" for l in key_data)
-        LOG.debug("Written KEY file: %s", key_path)
-
-        comp_proc = subprocess.run(
-            ["MX", "I", "KEY", str(key_path), "VDU", str(key_path.with_suffix(".VDU"))],
-            capture_output=True,
-            env=self.environment,
-            cwd=key_path.parent,
-            check=False,
-            shell=True,
         )
-        msg_data = (ufm, cmd_strip(comp_proc.stdout), cmd_strip(comp_proc.stderr))
+
+        msg_data = self._run_cmd(
+            "MX",
+            "I",
+            "KEY",
+            str(key_path),
+            "VDU",
+            str(key_path.with_suffix(".VDU")),
+            cwd=key_path.parent,
+        )
+
         if ufm.exists():
-            LOG.debug("Created UFM: %s\n%s\n%s", *msg_data)
+            LOG.debug("Created UFM: %s\n%s\n%s", ufm, *msg_data)
         else:
-            LOG.error("Failed creating UFM: %s\n%s\n%s", *msg_data)
+            LOG.error("Failed creating UFM: %s\n%s\n%s", ufm, *msg_data)
             raise FileNotFoundError(f"error creating {ufm}")
         return ufm
 
+    def csv_to_ufm(
+        self,
+        csv: pathlib.Path,
+        format_: CSVFormat = CSVFormat.SQUARE,
+        ufm: pathlib.Path | None = None,
+        title: str | None = None,
+    ) -> pathlib.Path:
+        """Conver `csv` file to UFM format.
+
+        Parameters
+        ----------
+        csv : pathlib.Path
+            Path to CSV file to convert
+        format_ : CSVFormat
+            Format of the CSV file, default `CSVFormat.SQUARE`.
+        ufm : pathlib.Path, optional
+            Optional path to UFM to create, defaults to `'{csv}.ufm'`.
+        title : str, optional
+            Optional title of the matrix, used for logging.
+
+        Returns
+        -------
+        pathlib.Path
+            Path to UFM file created.
+
+        Raises
+        ------
+        NotImplementedError
+            Conversion is only implemented for the SQUARE :class:`CSVFormat`,
+            any others will currently raise an error.
+        """
+        csv = csv.resolve()
+        if format_ == CSVFormat.SQUARE:
+            return self._square_csv_to_ufm(csv, ufm, title)
+        raise NotImplementedError(f"csv_to_ufm not yet implemented for {format_}")
+
     def stack(self, matrices: list[pathlib.Path], ufm: pathlib.Path) -> pathlib.Path:
-        """Runs SATURN's UFMSTACK to stack `matrices` into a single UFM.
+        """Run SATURN's UFMSTACK to stack `matrices` into a single UFM.
 
         Parameters
         ----------
@@ -356,7 +420,7 @@ class UFMConverter:
             If any files in `matrices` don't exist, or aren't files.
             If their is an error creating the stacked UFM.
         """
-        LOG.debug("Stacking UFMs to %s", ufm)
+        LOG.debug('Stacking UFMs to "%s"', ufm)
         matrices = [pathlib.Path(m) for m in matrices]
         missing = list(filter(lambda p: not p.is_file(), matrices))
         if missing:
@@ -368,63 +432,69 @@ class UFMConverter:
             *[p.resolve().with_name(p.stem) for p in matrices],
         ]
         control_path = ufm.with_name(ufm.stem + "-STACK.dat")
-        with open(control_path, "wt") as file:
-            file.writelines(f"{l}\n" for l in control_data)
+        with control_path.open("wt") as file:
+            file.writelines(f"{i}\n" for i in control_data)
         LOG.debug("Written control file: %s", control_path)
 
-        comp_proc = subprocess.run(
-            ["UFMSTACK", str(control_path.resolve())],
-            capture_output=True,
-            env=self.environment,
-            cwd=control_path.parent,
-            check=False,
-            shell=True,
+        msg_data = self._run_cmd(
+            "UFMSTACK", str(control_path.resolve()), cwd=control_path.parent
         )
 
-        msg_data = (ufm, cmd_strip(comp_proc.stdout), cmd_strip(comp_proc.stderr))
         if ufm.exists():
-            LOG.debug("Created UFM: %s\n%s\n%s", *msg_data)
+            LOG.debug("Created UFM: %s\n%s\n%s", ufm, *msg_data)
         else:
-            LOG.error("Failed creating UFM: %s\n%s\n%s", *msg_data)
+            LOG.error("Failed creating UFM: %s\n%s\n%s", ufm, *msg_data)
             raise FileNotFoundError(f"error creating {ufm}")
         return ufm
 
-    def _ufm_omx_conversion(self, path: pathlib.Path, from_: str, to: str) -> pathlib.Path:
-        """Internal method for `ufm_to_omx` and `omx_to_ufm` methods."""
-        to = to.upper().strip()
-        if to not in ("OMX", "UFM"):
-            raise ValueError(f"to should be OMX or UFM not '{to}'")
+    def _ufm_omx_conversion(
+        self,
+        path: pathlib.Path,
+        from_: Literal["OMX", "UFM"],
+        to: Literal["OMX", "UFM"],
+        *,
+        overwrite: bool = False,
+    ) -> pathlib.Path:
+        """Perform UFM to OMX, and reverse, conversion."""
+        LOG.info('Converting "%s" to %s', path.name, to)
+
+        def check_from_to(value: str) -> Literal["OMX", "UFM"]:
+            value = value.upper().strip()
+            if value not in ("OMX", "UFM"):
+                raise ValueError(f"from / to should be OMX or UFM not '{value}'")
+            return value  # type: ignore[return-value]
+
+        from_ = check_from_to(from_)
+        to = check_from_to(to)
 
         path = pathlib.Path(path).resolve()
         if not path.is_file():
             raise FileNotFoundError(f"{from_} doesn't exist: {path}")
+        out = path.with_suffix(f".{to}")
+
+        if not overwrite and out.is_file():
+            raise FileExistsError(out)
 
         LOG.debug("Converting %s to %s: %s", from_, to, path)
-        comp_proc = subprocess.run(
-            [f"{from_}2{to}", str(path.with_suffix(""))],
-            capture_output=True,
-            env=self.environment,
-            cwd=path.parent,
-            check=False,
-            shell=True,
-        )
+        msg_data = self._run_cmd(f"{from_}2{to}", str(path.with_suffix("")), cwd=path.parent)
 
-        out = path.with_suffix(f".{to}")
-        msg_data = (to, out, cmd_strip(comp_proc.stdout), cmd_strip(comp_proc.stderr))
         if out.exists():
-            LOG.debug("Created %s: %s\n%s\n%s", *msg_data)
+            LOG.debug("Created %s: %s\n%s\n%s", to, out, *msg_data)
         else:
-            LOG.error("Failed to create %s: %s\n%s\n%s", *msg_data)
+            LOG.error("Failed to create %s: %s\n%s\n%s", to, out, *msg_data)
             raise FileNotFoundError(f"error creating: {out}")
         return out
 
-    def ufm_to_omx(self, ufm: pathlib.Path) -> pathlib.Path:
+    def ufm_to_omx(self, ufm: pathlib.Path, *, overwrite: bool = False) -> pathlib.Path:
         """Convert a UFM file to the OMX format.
 
         Parameters
         ----------
         ufm
             Path to existing UFM file.
+        overwrite
+            If False (default) will raise error
+            if output OMX already exists.
 
         Returns
         -------
@@ -435,16 +505,21 @@ class UFMConverter:
         ------
         FileNotFoundError
             If `ufm` doesn't exist or OMX file isn't created.
+        FileExistsError
+            If `overwrite` is False and output OMX already exists.
         """
-        return self._ufm_omx_conversion(ufm, "UFM", "OMX")
+        return self._ufm_omx_conversion(ufm, "UFM", "OMX", overwrite=overwrite)
 
-    def omx_to_ufm(self, omx: pathlib.Path) -> pathlib.Path:
+    def omx_to_ufm(self, omx: pathlib.Path, *, overwrite: bool = False) -> pathlib.Path:
         """Convert a OMX file to a UFM file.
 
         Parameters
         ----------
         omx
             Path to existing UFM file.
+        overwrite
+            If False (default) will raise error
+            if output UFM already exists.
 
         Returns
         -------
@@ -455,15 +530,15 @@ class UFMConverter:
         ------
         FileNotFoundError
             If `omx` doesn't exist or UFM file isn't created.
+        FileExistsError
+            If `overwrite` is False and output UFM already exists.
         """
-        return self._ufm_omx_conversion(omx, "OMX", "UFM")
+        return self._ufm_omx_conversion(omx, "OMX", "UFM", overwrite=overwrite)
 
 
 ##### FUNCTIONS #####
-def update_env(
-    saturn_path: pathlib.Path,
-) -> os._Environ:  # pylint: disable=protected-access
-    """Creates a copy of environment variables and adds SATURN path.
+def update_env(saturn_path: pathlib.Path) -> dict[str, str]:
+    """Create a copy of environment variables and adds SATURN path.
 
     Parameters
     ----------
@@ -472,7 +547,7 @@ def update_env(
 
     Returns
     -------
-    os._Environ
+    dict[str, str]
         A copy of `os.environ` with the `saturn_path` added to the
         "PATH" variable.
 
@@ -489,6 +564,6 @@ def update_env(
     return new_env
 
 
-def cmd_strip(stdout: bytes) -> str:
+def _cmd_strip(stdout: bytes) -> str:
     """Convert to str and strip newlines from subprocess `stdout` or `stderr`."""
     return stdout.decode().strip().replace("\r\n", "\n")
