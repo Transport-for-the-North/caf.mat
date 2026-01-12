@@ -10,7 +10,7 @@ import enum
 import logging
 import pathlib
 import warnings
-from typing import Iterator, Self
+from typing import Iterator, Self, Type, TypeVar
 
 # Third Party
 import caf.base as bs
@@ -26,6 +26,8 @@ from caf.mat import _mat
 ##### CONSTANTS #####
 
 LOG = logging.getLogger(__name__)
+
+MATRICES = TypeVar("MATRICES", bound="MatricesBase")
 
 
 ##### CLASSES & FUNCTIONS #####
@@ -498,14 +500,14 @@ class MatricesBase(abc.ABC):
 
         return disaggregations
 
-    def copy(self, subsets: dict[str, list[int]], other) -> None:
+    def copy(self, subsets: dict[str, list[int]], other: MATRICES) -> MATRICES:
         """
         Copy a subset of self into other.
         Parameters
         ----------
         subsets : dict[str, list[int]]
             The subset of self to be copied.
-        other : MatrixFiles
+        other : MatricesBase
             The instance of MatrixFiles the subset will be copied into.
 
         Returns
@@ -524,7 +526,7 @@ class MatricesBase(abc.ABC):
             other.set_matrix(self.get_matrix(slice).data, slice_)
         return other
 
-    def convert_type(self, new_type: Self) -> Self:
+    def convert_type(self, new_type: Type[MATRICES]) -> MATRICES:
         """
         Convert from one type inheriting from MatricesBase to another.
 
@@ -539,7 +541,7 @@ class MatricesBase(abc.ABC):
         Self
             Self but with the new type.
         """
-        if isinstance(self, type(new_type)):
+        if isinstance(self, new_type):
             return self
         converted = new_type(self.segmentation, self.zoning, self.type)
         for slice_ in self.segmentation.iter_slices():
@@ -572,7 +574,7 @@ class MatricesBase(abc.ABC):
         bs.DVector
             The intrazonal demand (i.e. leading diagonal) of the matrix.
         """
-        data: dict[tuple[int], pd.Series] = {}
+        data: dict[tuple[int, ...], pd.Series] = {}
         for slice_ in self.segmentation.iter_slices():
             matrix = self.get_matrix(slice_).data
             intras = np.diagonal(matrix)

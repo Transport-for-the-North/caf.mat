@@ -182,7 +182,7 @@ class PhiFactors:
             )
         )
         index = segmentation_.ind()
-        segmentation_, _ = segmentation.Segmentation.validate_segmentation(
+        segmentation_, _, _ = segmentation.Segmentation.validate_segmentation(
             data, segmentation_, cut_read=True
         )
 
