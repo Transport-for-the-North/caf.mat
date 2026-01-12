@@ -198,7 +198,9 @@ def _matrix_multiply(
 ) -> pd.DataFrame:
     data = matrices_.get_matrix(slice_).data
     LOG.debug(
-        "Loading %s matrix for multiplication total = %.0f", slice_, np.sum(data.to_numpy())
+        "Loading %s matrix for multiplication total = %.0f",
+        slice_,
+        np.sum(data.to_numpy()),
     )
 
     if occ_factors is not None:
@@ -241,7 +243,9 @@ def _validate_od_input_outputs(input_: Matrices, output: Matrices) -> None:
         if mat.type != type_:
             raise ValueError(f"{name} matrices should be {type_.name} not {mat.type}")
         if not mat.has_type_segment:
-            raise ValueError(f"{name} matrices doesn't contain the correct direction segment")
+            raise ValueError(
+                f"{name} matrices doesn't contain the correct direction segment"
+            )
 
     if not input_.has_time_periods:
         raise ValueError("inputs matrices don't have time periods")
@@ -293,13 +297,17 @@ def nhb_proportions(
     LOG.info("Producing NHB proportions for %s - %s", input_.name, params)
     _validate_od_input_outputs(input_, output)
 
-    od_params = params | {segments.SegmentsSuper.DIRECTION_OD.value: _DIRECTION_VALUES["nhb"]}
+    od_params = params | {
+        segments.SegmentsSuper.DIRECTION_OD.value: _DIRECTION_VALUES["nhb"]
+    }
 
     tp_matrices: dict[segmentation.SegmentationSlice, pd.DataFrame] = {}
     for slice_ in input_.segmentation.iter_slices(od_params):
         data = _matrix_multiply(slice_, input_, occ_factors, tp_factors)
         tp_matrices[slice_] = data
-        LOG.debug("%s matrix total %.0f (after applying factors)", slice_, data.sum().sum())
+        LOG.debug(
+            "%s matrix total %.0f (after applying factors)", slice_, data.sum().sum()
+        )
 
     if len(tp_matrices) == 0:
         LOG.debug("No NHB matrices in %s for slice = %s", input_.name, params)
@@ -439,7 +447,9 @@ def _balance_fh_th(
             " cells where the total is zero, this shouldn't be possible"
         )
 
-    adjustment = np.divide(original, balanced, out=np.full_like(original, 1), where=mask)
+    adjustment = np.divide(
+        original, balanced, out=np.full_like(original, 1), where=mask
+    )
 
     return from_home, to_home, adjustment
 
@@ -474,7 +484,9 @@ def _od_adjustment_segmentation(input_: Matrices) -> segmentation.Segmentation:
         i for i in input_.segmentation.input.enum_segments if i.value != direction
     ]
     names = [i for i in input_.segmentation.input.naming_order if i != direction]
-    custom = [i for i in input_.segmentation.input.custom_segments if i.name != direction]
+    custom = [
+        i for i in input_.segmentation.input.custom_segments if i.name != direction
+    ]
 
     config = segmentation.SegmentationInput(
         enum_segments=enum_segments, naming_order=names, custom_segments=custom
@@ -520,7 +532,10 @@ def _calculate_tour_proportions(
     *,
     tp_name: str = "{}_tp",
 ):
-    targets = [_normalise_to_xarray(from_home, "from"), _normalise_to_xarray(to_home, "to")]
+    targets = [
+        _normalise_to_xarray(from_home, "from"),
+        _normalise_to_xarray(to_home, "to"),
+    ]
 
     time_periods = phi_factors.index.tolist()
 
@@ -529,7 +544,12 @@ def _calculate_tour_proportions(
     ).stack()
     phi = phi.reindex(
         pd.MultiIndex.from_product(
-            [time_periods, time_periods, output.zoning.zone_ids, output.zoning.zone_ids],
+            [
+                time_periods,
+                time_periods,
+                output.zoning.zone_ids,
+                output.zoning.zone_ids,
+            ],
             names=["from", "to", "origin", "destination"],
         )
     )
@@ -541,7 +561,9 @@ def _calculate_tour_proportions(
         len(time_periods) * (len(output.zoning) ** 2),
     )
     LOG.info(
-        "tour proportions furnessing complete after %s iterations with RMSE=%.0e", iter_, rmse
+        "tour proportions furnessing complete after %s iterations with RMSE=%.0e",
+        iter_,
+        rmse,
     )
 
     tour_props = furness_return_vals.to_series()
@@ -549,7 +571,8 @@ def _calculate_tour_proportions(
         output.set_matrix(
             tour_props.loc[from_tp, to_tp].unstack("destination"),
             segmentation.SegmentationSlice(
-                slice_params | {tp_name.format("from"): from_tp, tp_name.format("to"): to_tp},
+                slice_params
+                | {tp_name.format("from"): from_tp, tp_name.format("to"): to_tp},
                 output.segmentation.naming_order,
             ),
         )
@@ -741,7 +764,9 @@ def _hb_od_to_pa(
     totals.loc["Total", :] = totals.sum()
     totals.index.name = "Time Period"
     LOG.debug(
-        "%s matrix totals\n%s", ", ".join(f"{i}={j}" for i, j in params.items()), totals.T
+        "%s matrix totals\n%s",
+        ", ".join(f"{i}={j}" for i, j in params.items()),
+        totals.T,
     )
 
     return from_home, to_home, adjustments
@@ -804,7 +829,8 @@ def main(parameters: OD2PAParameters):
         period_filter=postme_segmentation.input.subsets[tp_name],
         period_columns=parameters.phi_factors.period_columns,
         translate_segments={
-            i.value: j.value for i, j in parameters.phi_factors.segment_translation.items()
+            i.value: j.value
+            for i, j in parameters.phi_factors.segment_translation.items()
         },
         segment_filters=postme_segmentation.input.subsets,
     )
@@ -823,9 +849,13 @@ def main(parameters: OD2PAParameters):
         if i.value not in [tp_name, "direction_od"]
     ] + [segments.SegmentsSuper.DIRECTION]
     pa_naming = [
-        i for i in postme_segmentation.input.naming_order if i not in [tp_name, "direction_od"]
+        i
+        for i in postme_segmentation.input.naming_order
+        if i not in [tp_name, "direction_od"]
     ] + [segments.SegmentsSuper.DIRECTION.value]
-    pa_subsets = {i: j for i, j in postme_segmentation.input.subsets.items() if i != tp_name}
+    pa_subsets = {
+        i: j for i, j in postme_segmentation.input.subsets.items() if i != tp_name
+    }
 
     pa_matrices = disaggregated.new(
         "pa_postme",

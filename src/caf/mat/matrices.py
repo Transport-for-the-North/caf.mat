@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Handling the PA and OD matrix files."""
 
-
 # Built-Ins
 import abc
 import collections
@@ -20,8 +19,6 @@ import numpy as np
 import pandas as pd
 import tqdm
 from caf.base import segmentation, segments
-from caf.base.segmentation import SegmentationError
-from caf.base.zoning import ZoningError
 
 # Local Imports
 from caf.mat import _mat
@@ -320,7 +317,9 @@ class MatricesBase(abc.ABC):
         if not segmentation_.is_subset(self.segmentation):
             raise ValueError("cannot aggregate to segmentation which isn't a subset")
 
-        output = self.new(output_name.format(name=self.name), segmentation_=segmentation_)
+        output = self.new(
+            output_name.format(name=self.name), segmentation_=segmentation_
+        )
 
         LOG.info(
             "Aggregating %s to segments %s, outputting as %s",
@@ -409,7 +408,9 @@ class MatricesBase(abc.ABC):
                 f" target ({targets.zoning.name}) matrices are different"
             )
 
-        disaggregations = self._validate_disaggregations(targets, from_segment, to_segment)
+        disaggregations = self._validate_disaggregations(
+            targets, from_segment, to_segment
+        )
 
         output = self.new(
             output_name.format(name=self.name), segmentation_=targets.segmentation
@@ -431,12 +432,16 @@ class MatricesBase(abc.ABC):
             return output
 
         LOG.info(
-            "Disaggregating %s to additional segments: %s", self.name, disaggregation_segments
+            "Disaggregating %s to additional segments: %s",
+            self.name,
+            disaggregation_segments,
         )
 
         if progress_bar:
             iterator = tqdm.tqdm(
-                disaggregations.items(), desc=f"Disaggregating {self.name}", dynamic_ncols=True
+                disaggregations.items(),
+                desc=f"Disaggregating {self.name}",
+                dynamic_ncols=True,
             )
         else:
             iterator = disaggregations.items()
@@ -534,7 +539,7 @@ class MatricesBase(abc.ABC):
         Self
             Self but with the new type.
         """
-        if type(self) == type(new_type):
+        if isinstance(self, type(new_type)):
             return self
         converted = new_type(self.segmentation, self.zoning, self.type)
         for slice_ in self.segmentation.iter_slices():
@@ -575,11 +580,15 @@ class MatricesBase(abc.ABC):
         dvec_data = pd.concat(data, axis=1).T
         dvec_data.index.names = self.segmentation.naming_order
         return bs.DVector(
-            segmentation=self.segmentation, import_data=dvec_data, zoning_system=self.zoning
+            segmentation=self.segmentation,
+            import_data=dvec_data,
+            zoning_system=self.zoning,
         )
 
     def translate_zoning(
-        self, new_zoning: bs.ZoningSystem, translation: pd.DataFrame | ctk.translation.ZoneCorrespondence | None = None
+        self,
+        new_zoning: bs.ZoningSystem,
+        translation: pd.DataFrame | ctk.translation.ZoneCorrespondence | None = None,
     ) -> Self:
         """
         Translate zoning of matrices.
@@ -589,7 +598,7 @@ class MatricesBase(abc.ABC):
         new_zoning : bs.ZoningSystem
             The zoning system to translate to.
         translation : pd.DataFrame | ctk.translation.ZoneCorrespondence | None = None
-            The translation vector to use. If this is not provided, an attempt will be made to find it 
+            The translation vector to use. If this is not provided, an attempt will be made to find it
             using the ZoningSystem.translate method.
 
         Returns
@@ -673,7 +682,9 @@ class MatricesBase(abc.ABC):
             out = self.new(name=f"{self.name}_{method_name}_other")
         for slice_ in self.segmentation.iter_slices():
             if isinstance(other, MatricesBase):
-                product = mat_method(self.get_matrix(slice).data, other.get_matrix(slice).data)
+                product = mat_method(
+                    self.get_matrix(slice).data, other.get_matrix(slice).data
+                )
             elif isinstance(other, bs.DVector):
                 product = mat_method(
                     self.get_matrix(slice).data,
@@ -690,7 +701,9 @@ class MatricesBase(abc.ABC):
         )
 
     def __mul__(self, other):
-        return self.generic_dunder(other, pd.DataFrame.__mul__, float.__mul__, "multiply")
+        return self.generic_dunder(
+            other, pd.DataFrame.__mul__, float.__mul__, "multiply"
+        )
 
 
 def _short_list(values: collections.abc.Sequence, length: int = 10) -> str:
@@ -698,7 +711,9 @@ def _short_list(values: collections.abc.Sequence, length: int = 10) -> str:
         return ", ".join(map(str, values))
 
     half = length // 2
-    return ", ".join(map(str, values[:half])) + "..." + ", ".join(map(str, values[-half:]))
+    return (
+        ", ".join(map(str, values[:half])) + "..." + ", ".join(map(str, values[-half:]))
+    )
 
 
 def _get_disaggregation_translation(
@@ -709,7 +724,9 @@ def _get_disaggregation_translation(
 ) -> dict[segmentation.SegmentationSlice, list[segmentation.SegmentationSlice]]:
     """Produce slice disaggregations with a single segment lookup."""
     try:
-        to_segmentation, lookup = from_segmentation.translate_segment(from_segment, to_segment)
+        to_segmentation, lookup = from_segmentation.translate_segment(
+            from_segment, to_segment
+        )
     except FileNotFoundError:
         to_segmentation, lookup = from_segmentation.translate_segment(
             from_segment, to_segment, reverse=True
@@ -722,7 +739,9 @@ def _get_disaggregation_translation(
             f"{to_segmentation.names} not {target_segmentation.names}"
         )
 
-    groupings: dict[int, list[int]] = lookup.groupby(level=0).agg(list).squeeze().to_dict()
+    groupings: dict[int, list[int]] = (
+        lookup.groupby(level=0).agg(list).squeeze().to_dict()
+    )
 
     _validate_disaggregation_translation(from_segment, to_segment, groupings)
 
@@ -844,9 +863,13 @@ class MemoryMatrices(MatricesBase):
         """Name of the matrices."""
         return self._name
 
-    def new(self, name, *, segmentation_=None, zoning=None, type_=None) -> "MemoryMatrices":
+    def new(
+        self, name, *, segmentation_=None, zoning=None, type_=None
+    ) -> "MemoryMatrices":
         return MemoryMatrices(
-            segmentation_=self._segmentation if segmentation_ is None else segmentation_,
+            segmentation_=self._segmentation
+            if segmentation_ is None
+            else segmentation_,
             zoning=self._zoning if zoning is None else zoning,
             type_=self._type if type_ is None else type_,
             name=name,
@@ -955,11 +978,15 @@ class MatrixFiles(MatricesBase):
         """Get filename for given slice, generates it if not already present."""
         if slice_ not in self._filenames:
             slice_name = self._segmentation.generate_slice_name(slice_)
-            self._filenames[slice_] = self._filename_template.format(slice_name=slice_name)
+            self._filenames[slice_] = self._filename_template.format(
+                slice_name=slice_name
+            )
 
         return self._filenames[slice_]
 
-    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:
+    def set_matrix(
+        self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice
+    ) -> None:
         """Save the matrix to a CSV, with a filename based on the slice parameters."""
         self.validate_slice(slice_)
 
@@ -996,7 +1023,9 @@ class MatrixFiles(MatricesBase):
         folder = self._folder.with_name(name)
         folder.mkdir(exist_ok=True)
         return self.__class__(
-            segmentation_=self._segmentation if segmentation_ is None else segmentation_,
+            segmentation_=self._segmentation
+            if segmentation_ is None
+            else segmentation_,
             zoning=self._zoning if zoning is None else zoning,
             type_=self._type if type_ is None else type_,
             folder=folder,
@@ -1094,7 +1123,8 @@ class LongMatrices(MatricesBase):
             -1,
             index=self._segmentation.ind(),
             columns=pd.MultiIndex.from_product(
-                [self._zoning.zone_ids] * 2, names=[self._origin_column, self._dest_column]
+                [self._zoning.zone_ids] * 2,
+                names=[self._origin_column, self._dest_column],
             ),
             dtype=float,
         )
@@ -1122,7 +1152,10 @@ class LongMatrices(MatricesBase):
         index = set(self._index)
         if set(data.index.names) != index:
             # If single index assume segmentation indices are columns
-            if not (isinstance(data.index, pd.Index) and index <= set(data.columns.to_list())):
+            if not (
+                isinstance(data.index, pd.Index)
+                and index <= set(data.columns.to_list())
+            ):
                 raise ValueError(
                     f"expected indices {self._index} not index "
                     f"({data.index.names}) or columns ({data.columns.to_list()})"
@@ -1135,7 +1168,10 @@ class LongMatrices(MatricesBase):
         if not data.index.dtypes.apply(pd.api.types.is_integer_dtype).all():
             try:
                 data.index = pd.MultiIndex.from_arrays(
-                    [data.index.get_level_values(i).astype(int) for i in data.index.names]
+                    [
+                        data.index.get_level_values(i).astype(int)
+                        for i in data.index.names
+                    ]
                 )
             except ValueError as exc:
                 raise ValueError(
@@ -1155,7 +1191,9 @@ class LongMatrices(MatricesBase):
         if columns is None:
             columns = data.columns.to_list()
         elif set(data.columns.to_list()) != set(columns):
-            raise ValueError(f"expected columns {columns} but given {data.columns.to_list()}")
+            raise ValueError(
+                f"expected columns {columns} but given {data.columns.to_list()}"
+            )
 
         seg_data = data.reset_index()[self.segmentation.naming_order].drop_duplicates(
             keep="first"
@@ -1173,7 +1211,9 @@ class LongMatrices(MatricesBase):
         """Return a copy of the underlying DataFrame."""
         return self._data.copy(deep)
 
-    def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix | pd.DataFrame:
+    def get_matrix(
+        self, slice_: segmentation.SegmentationSlice
+    ) -> Matrix | pd.DataFrame:
         self.validate_slice(slice_)
         data: pd.DataFrame = self._data.loc[slice_.as_tuple()].copy()
         if len(data.columns) > 1:
@@ -1222,7 +1262,9 @@ class LongMatrices(MatricesBase):
 
         self._data = updated[self._data.columns]
 
-    def new(self, name: str, *, segmentation_=None, zoning=None, type_=None) -> "LongMatrices":
+    def new(
+        self, name: str, *, segmentation_=None, zoning=None, type_=None
+    ) -> "LongMatrices":
         return LongMatrices(
             segmentation_=self.segmentation if segmentation_ is None else segmentation_,
             zoning=self.zoning if zoning is None else zoning,

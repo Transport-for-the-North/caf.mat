@@ -108,7 +108,9 @@ class CUBEMatConverter:
             f"zones={num_zones}",
             "fillmw",
         ]
-        script_text += [f"mw[{n}]=mi.{n}.1/{mat_factor}" for n in range(1, len(csv_paths) + 1)]
+        script_text += [
+            f"mw[{n}]=mi.{n}.1/{mat_factor}" for n in range(1, len(csv_paths) + 1)
+        ]
         script_text += ["", "ENDRUN"]
 
         script_path = mat_path.with_name(mat_path.stem + "-CONVERSION.s")
@@ -144,7 +146,9 @@ class CUBEMatConverter:
         Path
             Path to created OMX file.
         """
-        out_path = self._validate_io_paths(mat_file, out_path, ".omx", overwrite=overwrite)
+        out_path = self._validate_io_paths(
+            mat_file, out_path, ".omx", overwrite=overwrite
+        )
 
         mat_file = mat_file.resolve()
         out_path = out_path.resolve()
@@ -252,7 +256,9 @@ class CUBEMatConverter:
         Path
             Path to created Cube MAT file.
         """
-        out_path = self._validate_io_paths(omx_file, out_path, ".mat", overwrite=overwrite)
+        out_path = self._validate_io_paths(
+            omx_file, out_path, ".mat", overwrite=overwrite
+        )
 
         omx_file = omx_file.resolve()
         out_path = out_path.resolve()

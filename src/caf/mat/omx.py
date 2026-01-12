@@ -85,7 +85,9 @@ class OMXFile(tables.File):
     ) -> None:
         self.mode = str(mode).strip().lower()
         if "filters" not in kwargs:
-            kwargs["filters"] = tables.Filters(complevel=1, complib="zlib", shuffle=False)
+            kwargs["filters"] = tables.Filters(
+                complevel=1, complib="zlib", shuffle=False
+            )
         super().__init__(filename, mode=self.mode, **kwargs)
 
         self._path = Path(filename)
@@ -113,7 +115,9 @@ class OMXFile(tables.File):
             self._create_omx_nodes()
 
         else:
-            raise ValueError(f"unknown mode '{mode}' should be one of 'r', 'a', 'r+' or 'w'")
+            raise ValueError(
+                f"unknown mode '{mode}' should be one of 'r', 'a', 'r+' or 'w'"
+            )
 
     def __enter__(self) -> Self:
         """Enter context and return the same OMXFile."""
@@ -139,7 +143,9 @@ class OMXFile(tables.File):
         """Raise ValueError if shape isn't valid."""
         value = tuple(int(i) for i in value)
         if len(value) != 2:
-            raise ValueError(f"shape should be a tuple of lenght 2 not length {len(value)}")
+            raise ValueError(
+                f"shape should be a tuple of lenght 2 not length {len(value)}"
+            )
         if value[0] != value[1]:
             raise ValueError(
                 f"matrix should have the same number of rows and columns not {value}"
@@ -210,7 +216,9 @@ class OMXFile(tables.File):
         if value != self._shape:
             self._shape = value
             # pylint: disable=protected-access
-            self.root._v_attrs[self._KEYS["shape"]] = np.array(self._shape, dtype=np.int32)
+            self.root._v_attrs[self._KEYS["shape"]] = np.array(
+                self._shape, dtype=np.int32
+            )
 
     @property
     def zones(self) -> np.ndarray:
@@ -274,11 +282,15 @@ class OMXFile(tables.File):
         if not isinstance(matrix, np.ndarray):
             if not matrix.index.equals(matrix.columns):
                 raise ValueError("matrix columns and index aren't equal")
-            if not np.array_equal(np.sort(matrix.index.to_numpy()), np.sort(self.zones)):
+            if not np.array_equal(
+                np.sort(matrix.index.to_numpy()), np.sort(self.zones)
+            ):
                 raise ValueError("matrix index doesn't equal OMX zones")
             matrix = matrix.reindex(index=self.zones, columns=self.zones).to_numpy()
 
-        with warnings.catch_warnings(action="ignore", category=tables.NaturalNameWarning):
+        with warnings.catch_warnings(
+            action="ignore", category=tables.NaturalNameWarning
+        ):
             self.create_carray(self._DATA_NODE, str(name), obj=matrix)
 
     def get_matrix_level(self, name: str) -> pd.DataFrame:
@@ -354,7 +366,8 @@ class OMXFile(tables.File):
             CSVs already exists.
         """
         filepaths = [
-            (i, path.with_name(path.stem + f"-{i}{path.suffix}")) for i in self.matrix_levels
+            (i, path.with_name(path.stem + f"-{i}{path.suffix}"))
+            for i in self.matrix_levels
         ]
         LOG.info("Writing %s OMX levels to CSVs", len(filepaths))
 

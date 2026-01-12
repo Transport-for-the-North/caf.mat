@@ -32,7 +32,6 @@ CONFIG_PATH = pathlib.Path(__file__).with_name("od2pa_comparison.yml")
 
 
 class MatrixComparison:
-
     def __init__(self, old: pd.DataFrame, new: pd.DataFrame):
         self._old = old
         self._new = new
@@ -201,7 +200,10 @@ def main() -> None:
             )
 
             compare_matrices(
-                [(folders.old / i, folders.new / j) for i, j in folders.filenames.items()],
+                [
+                    (folders.old / i, folders.new / j)
+                    for i, j in folders.filenames.items()
+                ],
                 output_folder / name,
                 old_format=folders.old_format,
                 new_format=folders.new_format,

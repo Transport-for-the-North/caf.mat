@@ -46,7 +46,9 @@ def parse_args() -> tuple[pathlib.Path, pathlib.Path]:
         description="Converts CUBE .mat files to CSVs",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("saturn_path", help="Path to SATURN executable folder", type=directory)
+    parser.add_argument(
+        "saturn_path", help="Path to SATURN executable folder", type=directory
+    )
     parser.add_argument(
         "matrix_folder",
         help="Folder containing UFM files for conversion",
