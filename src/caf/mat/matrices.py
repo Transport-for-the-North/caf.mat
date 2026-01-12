@@ -492,7 +492,7 @@ class MatricesBase(abc.ABC):
             )
 
         return disaggregations
-    
+
     def copy(self, subsets: dict[str, list[int]], other) -> None:
         """
         Copy a subset of self into other.
@@ -506,92 +506,146 @@ class MatricesBase(abc.ABC):
         Returns
         -------
         MatrixFiles
-            Other updated with the subset from self. 
+            Other updated with the subset from self.
         """
-        for slice in self.segmentation.iter_slices():
+        for slice_ in self.segmentation.iter_slices():
             break_loop = False
             for seg, vals in subsets.items():
-                if slice.data[seg] not in vals:
+                if slice_.data[seg] not in vals:
                     break_loop = True
                     continue
             if break_loop:
                 continue
-            other.set_matrix(self.get_matrix(slice).data, slice)
+            other.set_matrix(self.get_matrix(slice).data, slice_)
         return other
-    
+
     def convert_type(self, new_type: Self) -> Self:
+        """
+        Convert from one type inheriting from MatricesBase to another.
+
+        Converts between the different child classes of MatricesBase.
+        Parameters
+        ----------
+        new_type : Self
+            The type to convert to. This should be different to the type of Self.
+
+        Returns
+        -------
+        Self
+            Self but with the new type.
+        """
         if type(self) == type(new_type):
             return self
         converted = new_type(self.segmentation, self.zoning, self.type)
-        for slice in self.segmentation.iter_slices():
+        for slice_ in self.segmentation.iter_slices():
             matrix = self.get_matrix(slice)
-            converted.set_matrix(matrix.data, slice)
+            converted.set_matrix(matrix.data, slice_)
         return converted
-    
-    def remove_intras(self):
+
+    def remove_intras(self) -> Self:
+        """
+        Remove intrazonals (i.e. the leading diagonal) from the matrix.
+
+        Returns
+        -------
+        Self
+            Self but with the leading diagonal set to zero.
+        """
         inters = self.new(name=f"{self.name}_nointras")
-        for slice in self.segmentation.iter_slices():
-            matrix = self.get_matrix(slice).data
+        for slice_ in self.segmentation.iter_slices():
+            matrix = self.get_matrix(slice_).data
             np.fill_diagonal(matrix.values, 0)
-            inters.set_matrix(matrix, slice)
+            inters.set_matrix(matrix, slice_)
         return inters
-    
+
     def intras(self) -> bs.DVector:
+        """
+        Return intrazonal demand as a DVector.
+
+        Returns
+        -------
+        bs.DVector
+            The intrazonal demand (i.e. leading diagonal) of the matrix.
+        """
         data: dict[tuple[int], pd.Series] = {}
-        for slice in self.segmentation.iter_slices():
-            matrix = self.get_matrix(slice).data
+        for slice_ in self.segmentation.iter_slices():
+            matrix = self.get_matrix(slice_).data
             intras = np.diagonal(matrix)
-            data[slice.as_tuple()] = pd.Series(intras, index=matrix.index)
+            data[slice_.as_tuple()] = pd.Series(intras, index=matrix.index)
         dvec_data = pd.concat(data, axis=1).T
         dvec_data.index.names = self.segmentation.naming_order
-        return bs.DVector(segmentation=self.segmentation, import_data=dvec_data, zoning_system=self.zoning)
-    
-    def translate_zoning(self, new_zoning: bs.ZoningSystem, translation: pd.DataFrame | None = None):
+        return bs.DVector(
+            segmentation=self.segmentation, import_data=dvec_data, zoning_system=self.zoning
+        )
+
+    def translate_zoning(
+        self, new_zoning: bs.ZoningSystem, translation: pd.DataFrame | ctk.translation.ZoneCorrespondence | None = None
+    ) -> Self:
+        """
+        Translate zoning of matrices.
+
+        Parameters
+        ----------
+        new_zoning : bs.ZoningSystem
+            The zoning system to translate to.
+        translation : pd.DataFrame | ctk.translation.ZoneCorrespondence | None = None
+            The translation vector to use. If this is not provided, an attempt will be made to find it 
+            using the ZoningSystem.translate method.
+
+        Returns
+        -------
+        Self
+            The input matrices in the new zone system.
+        """
         if translation is None:
             translation = self.zoning.translate(new_zoning)
-        translation = ctk.translation.ZoneCorrespondence(translation,
-                                                         self.zoning.column_name,
-                                                         new_zoning.column_name,
-                                                         self.zoning.translation_column_name(new_zoning),
-                                                         )
-        translated = self.new(name=f"{self.name}_{new_zoning.name}",
-                              zoning=new_zoning)
-        for slice in self.segmentation.iter_slices():
+        elif isinstance(translation, pd.DataFrame):
+            translation = ctk.translation.ZoneCorrespondence(
+                translation,
+                self.zoning.column_name,
+                new_zoning.column_name,
+                self.zoning.translation_column_name(new_zoning),
+            )
+        translated = self.new(name=f"{self.name}_{new_zoning.name}", zoning=new_zoning)
+        for slice_ in self.segmentation.iter_slices():
             matrix = self.get_matrix(slice)
             translated_matrix = ctk.translation.pandas_matrix_zone_translation(
-                matrix.data,
-                translation
+                matrix.data, translation
             )
-            translated.set_matrix(translated_matrix, slice)
+            translated.set_matrix(translated_matrix, slice_)
         return translated
-    
-    def to_dvector(self):
+
+    def to_dvector(self) -> dict[str, bs.DVector]:
+        """
+        Convert matrices to two DVectors, being sums over rows and columns.
+
+        Returns
+        -------
+        dict[str, bs.DVector]
+            A dictionary of either p/a or o/d to DVectors, depending on the matrices' type.
+        """
         rows = {}
         cols = {}
-        for slice in self.segmentation.iter_slices():
+        for slice_ in self.segmentation.iter_slices():
             mat = self.get_matrix(slice).data
             column = mat.sum(axis=0)
             row = mat.sum(axis=1)
-            rows[slice.as_tuple()] = row
-            cols[slice.as_tuple()] = column
+            rows[slice_.as_tuple()] = row
+            cols[slice_.as_tuple()] = column
         rows = pd.concat(rows, axis=1).T
         rows.index.names = self.segmentation.naming_order
-        rows = bs.DVector(import_data=rows,
-                          segmentation=self.segmentation,
-                          zoning_system=self.zoning)
-        
+        rows = bs.DVector(
+            import_data=rows, segmentation=self.segmentation, zoning_system=self.zoning
+        )
+
         cols = pd.concat(cols, axis=1).T
         cols.index.names = self.segmentation.naming_order
-        cols = bs.DVector(import_data=cols,
-                          segmentation=self.segmentation,
-                          zoning_system=self.zoning)
-        if self.type.name == 'PA':
-            return {'P': rows,
-                    'A': cols}
-        elif self.type.name == 'OD':
-            return {'O': rows,
-                    'D': cols}
-        
+        cols = bs.DVector(
+            import_data=cols, segmentation=self.segmentation, zoning_system=self.zoning
+        )
+        if self.type.name == "PA":
+            return {"P": rows, "A": cols}
+        return {"O": rows, "D": cols}
 
     def generic_dunder(self, other, mat_method, number_method, method_name):
         """
@@ -608,7 +662,7 @@ class MatricesBase(abc.ABC):
         method_name: str
             The name of the method used in naming the return object.
         """
-        
+
         # if self.segmentation != other.segmentation:
         #     raise SegmentationError("Segmentations don't match.")
         # if self.zoning != other.zoning:
@@ -617,19 +671,27 @@ class MatricesBase(abc.ABC):
             out = self.new(name=f"{self.name}_{method_name}_{other.name}")
         else:
             out = self.new(name=f"{self.name}_{method_name}_other")
-        for slice in self.segmentation.iter_slices():
+        for slice_ in self.segmentation.iter_slices():
             if isinstance(other, MatricesBase):
                 product = mat_method(self.get_matrix(slice).data, other.get_matrix(slice).data)
             elif isinstance(other, bs.DVector):
-                product = mat_method(self.get_matrix(slice).data, other.get_slice(slice.aggregate(other.segmentation.naming_order)).squeeze())
-            out.set_matrix(product.fillna(0), slice)
+                product = mat_method(
+                    self.get_matrix(slice).data,
+                    other.get_slice(
+                        slice_.aggregate(other.segmentation.naming_order)
+                    ).squeeze(),
+                )
+            out.set_matrix(product.fillna(0), slice_)
         return out
 
     def __truediv__(self, other):
-        return self.generic_dunder(other, pd.DataFrame.__truediv__,float.__truediv__, 'divide')
-    
+        return self.generic_dunder(
+            other, pd.DataFrame.__truediv__, float.__truediv__, "divide"
+        )
+
     def __mul__(self, other):
-        return self.generic_dunder(other, pd.DataFrame.__mul__,float.__mul__, 'multiply')
+        return self.generic_dunder(other, pd.DataFrame.__mul__, float.__mul__, "multiply")
+
 
 def _short_list(values: collections.abc.Sequence, length: int = 10) -> str:
     if len(values) <= length:
@@ -958,9 +1020,6 @@ class MatrixFiles(MatricesBase):
         except FileNotFoundError:
             return False
         return True
-
-
-
 
 
 class LongMatrices(MatricesBase):

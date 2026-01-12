@@ -156,8 +156,10 @@ def disaggregate_postme(
         synth_folder.name,
     )
     temp = postme_segmentation.copy()
-    if synthetic_tp is not None:  
-        temp.input.subsets['tp'] = [tp for tp in temp.input.subsets['tp'] if tp not in synthetic_tp]
+    if synthetic_tp is not None:
+        temp.input.subsets["tp"] = [
+            tp for tp in temp.input.subsets["tp"] if tp not in synthetic_tp
+        ]
         temp = temp.reinit()
     postme = matrices.MatrixFiles(
         temp,
@@ -183,7 +185,7 @@ def disaggregate_postme(
 
     output = postme.disaggregate(synthetic)
     if synthetic_tp is not None:
-        output = synthetic.copy({'tp': synthetic_tp}, output)
+        output = synthetic.copy({"tp": synthetic_tp}, output)
     LOG.info("Written disaggregated matrices to: %s", output.folder)
     return output
 
@@ -816,11 +818,13 @@ def main(parameters: OD2PAParameters):
     )
 
     pa_segments = [
-        i for i in postme_segmentation.input.enum_segments if i.value not in  [tp_name, 'direction_od']
+        i
+        for i in postme_segmentation.input.enum_segments
+        if i.value not in [tp_name, "direction_od"]
     ] + [segments.SegmentsSuper.DIRECTION]
-    pa_naming = [i for i in postme_segmentation.input.naming_order if i not in [tp_name, 'direction_od']] + [
-        segments.SegmentsSuper.DIRECTION.value
-    ]
+    pa_naming = [
+        i for i in postme_segmentation.input.naming_order if i not in [tp_name, "direction_od"]
+    ] + [segments.SegmentsSuper.DIRECTION.value]
     pa_subsets = {i: j for i, j in postme_segmentation.input.subsets.items() if i != tp_name}
 
     pa_matrices = disaggregated.new(
@@ -842,7 +846,3 @@ def main(parameters: OD2PAParameters):
         tp_factors=parameters.time_period_factors,
         calculate_tour_proportions=parameters.calculate_tour_proportions,
     )
-
-if __name__ == "__main__":
-    params = OD2PAParameters.load_yaml("od2pa_config.yml")
-    main(params)
