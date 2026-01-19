@@ -11,6 +11,7 @@ import logging
 import pathlib
 import warnings
 from typing import Iterator, Self, Type, TypeVar
+from numbers import Real
 
 # Third Party
 import caf.base as bs
@@ -123,21 +124,35 @@ class MatricesBase(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_matrix(
+    def _get_matrix(
         self,
         slice_: "segmentation.SegmentationSlice",  # type: ignore
     ) -> Matrix:
         """Load the data for a single matrix."""
         raise NotImplementedError()
 
+    def get_matrix(
+        self, slice_: "segmentation.SegmentationSlice" | tuple[int] | dict[str, int]
+    ) -> Matrix:
+        slice_ = self.validate_slice(slice_)
+        return self._get_matrix(slice_)
+
     @abc.abstractmethod
-    def set_matrix(
+    def _set_matrix(
         self,
         matrix: pd.DataFrame,
         slice_: "segmentation.SegmentationSlice",  # type: ignore
     ) -> None:
         """Save the data for a single matrix."""
         raise NotImplementedError()
+
+    def set_matrix(
+        self,
+        matrix: pd.DataFrame,
+        slice_: "segmentation.SegmentationSlice" | tuple[int] | dict[str, int],
+    ):
+        slice_ = self.validate_slice(slice_)
+        self._set_matrix(matrix, slice_)
 
     @abc.abstractmethod
     def new(
@@ -208,14 +223,26 @@ class MatricesBase(abc.ABC):
 
     def validate_slice(
         self,
-        slice_: "segmentation.SegmentationSlice",  # type: ignore
-    ) -> None:
+        slice_: "segmentation.SegmentationSlice" | tuple[int] | dict[str, int],  # type: ignore
+    ) -> "segmentation.SegmentationSlice":
         """Raise ValueError if slice not present in segmentation."""
+        if isinstance(slice_, tuple):
+            slice_ = segmentation.SegmentationSlice(
+                {i: j for i, j in zip(self.segmentation.naming_order, slice_)},
+                self.segmentation.naming_order,
+            )
+        elif isinstance(slice_, dict):
+            if list(slice_.keys()) != self.segmentation.naming_order:
+                raise ValueError(
+                    "The order of the input slice does not match the matrices' naming order."
+                )
+            slice_ = segmentation.SegmentationSlice(slice_, self.segmentation.naming_order)
         if slice_ not in self.segmentation.iter_slices():
             raise ValueError(
                 f"Given {slice_} not found in segmentation "
                 + ", ".join(self.segmentation.names)
             )
+        return slice_
 
     def _validate_zones(self, zones: np.ndarray, name: str) -> None:
         """Raise ValueError if zones doesn't contain only all zone IDs."""
@@ -319,9 +346,7 @@ class MatricesBase(abc.ABC):
         if not segmentation_.is_subset(self.segmentation):
             raise ValueError("cannot aggregate to segmentation which isn't a subset")
 
-        output = self.new(
-            output_name.format(name=self.name), segmentation_=segmentation_
-        )
+        output = self.new(output_name.format(name=self.name), segmentation_=segmentation_)
 
         LOG.info(
             "Aggregating %s to segments %s, outputting as %s",
@@ -410,9 +435,7 @@ class MatricesBase(abc.ABC):
                 f" target ({targets.zoning.name}) matrices are different"
             )
 
-        disaggregations = self._validate_disaggregations(
-            targets, from_segment, to_segment
-        )
+        disaggregations = self._validate_disaggregations(targets, from_segment, to_segment)
 
         output = self.new(
             output_name.format(name=self.name), segmentation_=targets.segmentation
@@ -545,7 +568,7 @@ class MatricesBase(abc.ABC):
             return self
         converted = new_type(self.segmentation, self.zoning, self.type)
         for slice_ in self.segmentation.iter_slices():
-            matrix = self.get_matrix(slice)
+            matrix = self.get_matrix(slice_)
             converted.set_matrix(matrix.data, slice_)
         return converted
 
@@ -609,7 +632,13 @@ class MatricesBase(abc.ABC):
             The input matrices in the new zone system.
         """
         if translation is None:
-            translation = self.zoning.translate(new_zoning)
+            translation = ctk.translation.ZoneCorrespondence(
+                self.zoning.translate(new_zoning),
+                self.zoning.column_name,
+                new_zoning.column_name,
+                self.zoning.translation_column_name(new_zoning),
+            )
+
         elif isinstance(translation, pd.DataFrame):
             translation = ctk.translation.ZoneCorrespondence(
                 translation,
@@ -619,7 +648,7 @@ class MatricesBase(abc.ABC):
             )
         translated = self.new(name=f"{self.name}_{new_zoning.name}", zoning=new_zoning)
         for slice_ in self.segmentation.iter_slices():
-            matrix = self.get_matrix(slice)
+            matrix = self.get_matrix(slice_)
             translated_matrix = ctk.translation.pandas_matrix_zone_translation(
                 matrix.data, translation
             )
@@ -658,7 +687,9 @@ class MatricesBase(abc.ABC):
             return {"P": rows, "A": cols}
         return {"O": rows, "D": cols}
 
-    def generic_dunder(self, other, mat_method, number_method, method_name):
+    def _generic_dunder(
+        self, other: MATRICES | bs.DVector | Real, mat_method, number_method, method_name
+    ):
         """
         Stop telling me to use the imperative mood pydocstyle.
 
@@ -685,27 +716,31 @@ class MatricesBase(abc.ABC):
         for slice_ in self.segmentation.iter_slices():
             if isinstance(other, MatricesBase):
                 product = mat_method(
-                    self.get_matrix(slice).data, other.get_matrix(slice).data
+                    self.get_matrix(slice_).data, other.get_matrix(slice_).data
                 )
             elif isinstance(other, bs.DVector):
-                product = mat_method(
-                    self.get_matrix(slice).data,
-                    other.get_slice(
-                        slice_.aggregate(other.segmentation.naming_order)
-                    ).squeeze(),
+                other_slice = other.get_slice(
+                    slice_.aggregate(other.segmentation.naming_order)
                 )
+                if isinstance(other_slice, pd.Series):
+                    product = mat_method(
+                        self.get_matrix(slice_).data,
+                        other_slice.squeeze(),
+                    )
+                else:
+                    product = number_method(self.get_matrix(slice_).data, other_slice)
+            else:
+                product = number_method(self.get_matrix(slice_).data, other)
             out.set_matrix(product.fillna(0), slice_)
         return out
 
     def __truediv__(self, other):
-        return self.generic_dunder(
+        return self._generic_dunder(
             other, pd.DataFrame.__truediv__, float.__truediv__, "divide"
         )
 
     def __mul__(self, other):
-        return self.generic_dunder(
-            other, pd.DataFrame.__mul__, float.__mul__, "multiply"
-        )
+        return self._generic_dunder(other, pd.DataFrame.__mul__, float.__mul__, "multiply")
 
 
 def _short_list(values: collections.abc.Sequence, length: int = 10) -> str:
@@ -713,9 +748,7 @@ def _short_list(values: collections.abc.Sequence, length: int = 10) -> str:
         return ", ".join(map(str, values))
 
     half = length // 2
-    return (
-        ", ".join(map(str, values[:half])) + "..." + ", ".join(map(str, values[-half:]))
-    )
+    return ", ".join(map(str, values[:half])) + "..." + ", ".join(map(str, values[-half:]))
 
 
 def _get_disaggregation_translation(
@@ -726,9 +759,7 @@ def _get_disaggregation_translation(
 ) -> dict[segmentation.SegmentationSlice, list[segmentation.SegmentationSlice]]:
     """Produce slice disaggregations with a single segment lookup."""
     try:
-        to_segmentation, lookup = from_segmentation.translate_segment(
-            from_segment, to_segment
-        )
+        to_segmentation, lookup = from_segmentation.translate_segment(from_segment, to_segment)
     except FileNotFoundError:
         to_segmentation, lookup = from_segmentation.translate_segment(
             from_segment, to_segment, reverse=True
@@ -741,9 +772,7 @@ def _get_disaggregation_translation(
             f"{to_segmentation.names} not {target_segmentation.names}"
         )
 
-    groupings: dict[int, list[int]] = (
-        lookup.groupby(level=0).agg(list).squeeze().to_dict()
-    )
+    groupings: dict[int, list[int]] = lookup.groupby(level=0).agg(list).squeeze().to_dict()
 
     _validate_disaggregation_translation(from_segment, to_segment, groupings)
 
@@ -865,13 +894,9 @@ class MemoryMatrices(MatricesBase):
         """Name of the matrices."""
         return self._name
 
-    def new(
-        self, name, *, segmentation_=None, zoning=None, type_=None
-    ) -> "MemoryMatrices":
+    def new(self, name, *, segmentation_=None, zoning=None, type_=None) -> "MemoryMatrices":
         return MemoryMatrices(
-            segmentation_=self._segmentation
-            if segmentation_ is None
-            else segmentation_,
+            segmentation_=self._segmentation if segmentation_ is None else segmentation_,
             zoning=self._zoning if zoning is None else zoning,
             type_=self._type if type_ is None else type_,
             name=name,
@@ -883,17 +908,15 @@ class MemoryMatrices(MatricesBase):
                 return False
         return True
 
-    def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
+    def _get_matrix(self, slice_: "segmentation.SegmentationSlice") -> Matrix:
         """Get in-memory matrix."""
-        self.validate_slice(slice_)
 
         if slice_ not in self._matrices:
             raise KeyError(f"no matrix found for {slice_}")
         return Matrix(self._matrices[slice_], slice_)
 
-    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice):
+    def _set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice):
         """Store matrix in class (in-memory)."""
-        self.validate_slice(slice_)
         self._matrices[slice_] = matrix
 
 
@@ -980,18 +1003,14 @@ class MatrixFiles(MatricesBase):
         """Get filename for given slice, generates it if not already present."""
         if slice_ not in self._filenames:
             slice_name = self._segmentation.generate_slice_name(slice_)
-            self._filenames[slice_] = self._filename_template.format(
-                slice_name=slice_name
-            )
+            self._filenames[slice_] = self._filename_template.format(slice_name=slice_name)
 
         return self._filenames[slice_]
 
-    def set_matrix(
+    def _set_matrix(
         self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice
     ) -> None:
         """Save the matrix to a CSV, with a filename based on the slice parameters."""
-        self.validate_slice(slice_)
-
         filename = self._get_filename(slice_)
         self.validate_matrix(matrix, filename)
 
@@ -999,10 +1018,8 @@ class MatrixFiles(MatricesBase):
         matrix.to_csv(path)
         LOG.debug("Written: %s", path)
 
-    def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
+    def _get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
         """Load the matrix from a CSV."""
-        self.validate_slice(slice_)
-
         filename = self._get_filename(slice_)
         path = ctk.io.find_file_with_name(self._folder, filename, self._file_suffixes)
 
@@ -1025,9 +1042,7 @@ class MatrixFiles(MatricesBase):
         folder = self._folder.with_name(name)
         folder.mkdir(exist_ok=True)
         return self.__class__(
-            segmentation_=self._segmentation
-            if segmentation_ is None
-            else segmentation_,
+            segmentation_=self._segmentation if segmentation_ is None else segmentation_,
             zoning=self._zoning if zoning is None else zoning,
             type_=self._type if type_ is None else type_,
             folder=folder,
@@ -1154,10 +1169,7 @@ class LongMatrices(MatricesBase):
         index = set(self._index)
         if set(data.index.names) != index:
             # If single index assume segmentation indices are columns
-            if not (
-                isinstance(data.index, pd.Index)
-                and index <= set(data.columns.to_list())
-            ):
+            if not (isinstance(data.index, pd.Index) and index <= set(data.columns.to_list())):
                 raise ValueError(
                     f"expected indices {self._index} not index "
                     f"({data.index.names}) or columns ({data.columns.to_list()})"
@@ -1170,10 +1182,7 @@ class LongMatrices(MatricesBase):
         if not data.index.dtypes.apply(pd.api.types.is_integer_dtype).all():
             try:
                 data.index = pd.MultiIndex.from_arrays(
-                    [
-                        data.index.get_level_values(i).astype(int)
-                        for i in data.index.names
-                    ]
+                    [data.index.get_level_values(i).astype(int) for i in data.index.names]
                 )
             except ValueError as exc:
                 raise ValueError(
@@ -1193,9 +1202,7 @@ class LongMatrices(MatricesBase):
         if columns is None:
             columns = data.columns.to_list()
         elif set(data.columns.to_list()) != set(columns):
-            raise ValueError(
-                f"expected columns {columns} but given {data.columns.to_list()}"
-            )
+            raise ValueError(f"expected columns {columns} but given {data.columns.to_list()}")
 
         seg_data = data.reset_index()[self.segmentation.naming_order].drop_duplicates(
             keep="first"
@@ -1213,10 +1220,7 @@ class LongMatrices(MatricesBase):
         """Return a copy of the underlying DataFrame."""
         return self._data.copy(deep)
 
-    def get_matrix(
-        self, slice_: segmentation.SegmentationSlice
-    ) -> Matrix | pd.DataFrame:
-        self.validate_slice(slice_)
+    def _get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix | pd.DataFrame:
         data: pd.DataFrame = self._data.loc[slice_.as_tuple()].copy()
         if len(data.columns) > 1:
             return data
@@ -1226,9 +1230,7 @@ class LongMatrices(MatricesBase):
         data.name = None
         return Matrix(data.unstack(), slice_)
 
-    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice):
-        self.validate_slice(slice_)
-
+    def _set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice):
         if matrix.index.nlevels == 1:
             self.validate_matrix(matrix, str(slice_))
             matrix.index.name = self._origin_column
@@ -1264,9 +1266,7 @@ class LongMatrices(MatricesBase):
 
         self._data = updated[self._data.columns]
 
-    def new(
-        self, name: str, *, segmentation_=None, zoning=None, type_=None
-    ) -> "LongMatrices":
+    def new(self, name: str, *, segmentation_=None, zoning=None, type_=None) -> "LongMatrices":
         return LongMatrices(
             segmentation_=self.segmentation if segmentation_ is None else segmentation_,
             zoning=self.zoning if zoning is None else zoning,
