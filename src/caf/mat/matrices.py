@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Handling the PA and OD matrix files."""
 
-# Built-Ins
+# Built-InsParty
 import abc
 import collections
 import collections.abc
@@ -14,12 +14,11 @@ from typing import Iterator, Self, Type, TypeVar
 from numbers import Real
 
 # Third Party
-import caf.base as bs
+import caf.base as cb
 import caf.toolkit as ctk
 import numpy as np
 import pandas as pd
 import tqdm
-from caf.base import segmentation, segments
 
 # Local Imports
 from caf.mat import _mat
@@ -49,11 +48,11 @@ class MatrixType(enum.Enum):
     OD = enum.auto()
 
     @property
-    def direction_segment(self) -> segments.Segment:
+    def direction_segment(self) -> cb.segments.Segment:
         """Required direction segment for the matrix type."""
-        lookup: dict[MatrixType, segments.Segment] = {
-            MatrixType.PA: segments.SegmentsSuper.DIRECTION.get_segment(),
-            MatrixType.OD: segments.SegmentsSuper.DIRECTION_OD.get_segment(),
+        lookup: dict[MatrixType, cb.segments.Segment] = {
+            MatrixType.PA: cb.segments.SegmentsSuper.DIRECTION.get_segment(),
+            MatrixType.OD: cb.segments.SegmentsSuper.DIRECTION_OD.get_segment(),
         }
         return lookup[self]
 
@@ -63,7 +62,7 @@ class Matrix:
     """In-memory matrix."""
 
     data: pd.DataFrame
-    slice: segmentation.SegmentationSlice
+    slice: cb.segmentation.SegmentationSlice
 
 
 class MatricesBase(abc.ABC):
@@ -80,7 +79,7 @@ class MatricesBase(abc.ABC):
     """
 
     def __init__(
-        self, segmentation_: bs.Segmentation, zoning: bs.ZoningSystem, type_: MatrixType
+        self, segmentation_: cb.Segmentation, zoning: cb.ZoningSystem, type_: MatrixType
     ):
         self._segmentation = segmentation_
         self._zoning = zoning
@@ -103,12 +102,12 @@ class MatricesBase(abc.ABC):
             yield self.get_matrix(slice_=values)
 
     @property
-    def segmentation(self) -> bs.Segmentation:
+    def segmentation(self) -> cb.Segmentation:
         """Copy of the matrix segmentation."""
         return self._segmentation.copy()
 
     @property
-    def zoning(self) -> bs.ZoningSystem:
+    def zoning(self) -> cb.ZoningSystem:
         """Copy of the matrix zoning system."""
         return self._zoning.copy()
 
@@ -126,13 +125,13 @@ class MatricesBase(abc.ABC):
     @abc.abstractmethod
     def _get_matrix(
         self,
-        slice_: "segmentation.SegmentationSlice",  # type: ignore
+        slice_: cb.segmentation.SegmentationSlice,  # type: ignore
     ) -> Matrix:
         """Load the data for a single matrix."""
         raise NotImplementedError()
 
     def get_matrix(
-        self, slice_: "segmentation.SegmentationSlice" | tuple[int] | dict[str, int]
+        self, slice_: cb.segmentation.SegmentationSlice | tuple[int] | dict[str, int]
     ) -> Matrix:
         slice_ = self.validate_slice(slice_)
         return self._get_matrix(slice_)
@@ -141,7 +140,7 @@ class MatricesBase(abc.ABC):
     def _set_matrix(
         self,
         matrix: pd.DataFrame,
-        slice_: "segmentation.SegmentationSlice",  # type: ignore
+        slice_: cb.segmentation.SegmentationSlice,  # type: ignore
     ) -> None:
         """Save the data for a single matrix."""
         raise NotImplementedError()
@@ -149,7 +148,7 @@ class MatricesBase(abc.ABC):
     def set_matrix(
         self,
         matrix: pd.DataFrame,
-        slice_: "segmentation.SegmentationSlice" | tuple[int] | dict[str, int],
+        slice_: cb.segmentation.SegmentationSlice | tuple[int] | dict[str, int],
     ):
         slice_ = self.validate_slice(slice_)
         self._set_matrix(matrix, slice_)
@@ -159,8 +158,8 @@ class MatricesBase(abc.ABC):
         self,
         name: str,
         *,
-        segmentation_: bs.Segmentation | None = None,
-        zoning: bs.ZoningSystem | None = None,
+        segmentation_: cb.Segmentation | None = None,
+        zoning: cb.ZoningSystem | None = None,
         type_: MatrixType | None = None,
     ) -> Self:
         """Create a new instance of the matrices class with a new name.
@@ -223,11 +222,11 @@ class MatricesBase(abc.ABC):
 
     def validate_slice(
         self,
-        slice_: "segmentation.SegmentationSlice" | tuple[int] | dict[str, int],  # type: ignore
-    ) -> "segmentation.SegmentationSlice":
+        slice_: cb.segmentation.SegmentationSlice | tuple[int] | dict[str, int],  # type: ignore
+    ) -> cb.segmentation.SegmentationSlice:
         """Raise ValueError if slice not present in segmentation."""
         if isinstance(slice_, tuple):
-            slice_ = segmentation.SegmentationSlice(
+            slice_ = cb.segmentation.SegmentationSlice(
                 {i: j for i, j in zip(self.segmentation.naming_order, slice_)},
                 self.segmentation.naming_order,
             )
@@ -236,7 +235,7 @@ class MatricesBase(abc.ABC):
                 raise ValueError(
                     "The order of the input slice does not match the matrices' naming order."
                 )
-            slice_ = segmentation.SegmentationSlice(slice_, self.segmentation.naming_order)
+            slice_ = cb.segmentation.SegmentationSlice(slice_, self.segmentation.naming_order)
         if slice_ not in self.segmentation.iter_slices():
             raise ValueError(
                 f"Given {slice_} not found in segmentation "
@@ -314,7 +313,7 @@ class MatricesBase(abc.ABC):
 
     def aggregate(
         self,
-        segmentation_: "segmentation.Segmentation",  # type: ignore
+        segmentation_: cb.segmentation.Segmentation,  # type: ignore
         output_name: str = "{name}-aggregated",
         progress_bar: bool = True,
     ) -> Self:
@@ -324,7 +323,7 @@ class MatricesBase(abc.ABC):
 
         Parameters
         ----------
-        segmentation_ : segmentation.Segmentation
+        segmentation_ : cb.segmentation.Segmentation
             Segmentation to aggregate to, must be a subset of
             current segmentation.
         output_name : str
@@ -376,8 +375,8 @@ class MatricesBase(abc.ABC):
     def disaggregate(
         self,
         targets: "MatricesBase",
-        from_segment: segments.Segment | None = None,
-        to_segment: segments.Segment | None = None,
+        from_segment: cb.segments.Segment | None = None,
+        to_segment: cb.segments.Segment | None = None,
         *,
         output_name: str = "{name}-disaggregated",
         progress_bar: bool = True,
@@ -396,7 +395,7 @@ class MatricesBase(abc.ABC):
         from_segment
             Optional segment to be removed and replaced by `to_segment`,
             mandatory if `to_segment` is given.
-        to_segment : segments.Segment | None, optional
+        to_segment : cb.segments.Segment | None, optional
             Optional segment to replace the `from_segment`,
             mandatory if `from_segment` is given.
         output_name
@@ -498,9 +497,9 @@ class MatricesBase(abc.ABC):
     def _validate_disaggregations(
         self,
         targets: "MatricesBase",
-        from_segment: segments.Segment | None,
-        to_segment: segments.Segment | None,
-    ) -> dict["segmentation.SegmentationSlice", list["segmentation.SegmentationSlice"]]:  # type: ignore
+        from_segment: cb.segments.Segment | None,
+        to_segment: cb.segments.Segment | None,
+    ) -> dict[cb.segmentation.SegmentationSlice, list[cb.segmentation.SegmentationSlice]]:  # type: ignore
         """Calculate and validate disaggregation slices."""
         if from_segment is not None and to_segment is not None:
             disaggregations = _get_disaggregation_translation(
@@ -588,13 +587,13 @@ class MatricesBase(abc.ABC):
             inters.set_matrix(matrix, slice_)
         return inters
 
-    def intras(self) -> bs.DVector:
+    def intras(self) -> cb.DVector:
         """
         Return intrazonal demand as a DVector.
 
         Returns
         -------
-        bs.DVector
+        cb.DVector
             The intrazonal demand (i.e. leading diagonal) of the matrix.
         """
         data: dict[tuple[int, ...], pd.Series] = {}
@@ -604,7 +603,7 @@ class MatricesBase(abc.ABC):
             data[slice_.as_tuple()] = pd.Series(intras, index=matrix.index)
         dvec_data = pd.concat(data, axis=1).T
         dvec_data.index.names = self.segmentation.naming_order
-        return bs.DVector(
+        return cb.DVector(
             segmentation=self.segmentation,
             import_data=dvec_data,
             zoning_system=self.zoning,
@@ -612,7 +611,7 @@ class MatricesBase(abc.ABC):
 
     def translate_zoning(
         self,
-        new_zoning: bs.ZoningSystem,
+        new_zoning: cb.ZoningSystem,
         translation: pd.DataFrame | ctk.translation.ZoneCorrespondence | None = None,
     ) -> Self:
         """
@@ -620,7 +619,7 @@ class MatricesBase(abc.ABC):
 
         Parameters
         ----------
-        new_zoning : bs.ZoningSystem
+        new_zoning : cb.ZoningSystem
             The zoning system to translate to.
         translation : pd.DataFrame | ctk.translation.ZoneCorrespondence | None = None
             The translation vector to use. If this is not provided, an attempt will be made to find it
@@ -655,13 +654,13 @@ class MatricesBase(abc.ABC):
             translated.set_matrix(translated_matrix, slice_)
         return translated
 
-    def to_dvector(self) -> dict[str, bs.DVector]:
+    def to_dvector(self) -> dict[str, cb.DVector]:
         """
         Convert matrices to two DVectors, being sums over rows and columns.
 
         Returns
         -------
-        dict[str, bs.DVector]
+        dict[str, cb.DVector]
             A dictionary of either p/a or o/d to DVectors, depending on the matrices' type.
         """
         rows = {}
@@ -674,13 +673,13 @@ class MatricesBase(abc.ABC):
             cols[slice_.as_tuple()] = column
         rows = pd.concat(rows, axis=1).T
         rows.index.names = self.segmentation.naming_order
-        rows = bs.DVector(
+        rows = cb.DVector(
             import_data=rows, segmentation=self.segmentation, zoning_system=self.zoning
         )
 
         cols = pd.concat(cols, axis=1).T
         cols.index.names = self.segmentation.naming_order
-        cols = bs.DVector(
+        cols = cb.DVector(
             import_data=cols, segmentation=self.segmentation, zoning_system=self.zoning
         )
         if self.type.name == "PA":
@@ -688,7 +687,7 @@ class MatricesBase(abc.ABC):
         return {"O": rows, "D": cols}
 
     def _generic_dunder(
-        self, other: MATRICES | bs.DVector | Real, mat_method, number_method, method_name
+        self, other: MATRICES | cb.DVector | Real, mat_method, number_method, method_name
     ):
         """
         Stop telling me to use the imperative mood pydocstyle.
@@ -718,7 +717,7 @@ class MatricesBase(abc.ABC):
                 product = mat_method(
                     self.get_matrix(slice_).data, other.get_matrix(slice_).data
                 )
-            elif isinstance(other, bs.DVector):
+            elif isinstance(other, cb.DVector):
                 other_slice = other.get_slice(
                     slice_.aggregate(other.segmentation.naming_order)
                 )
@@ -752,11 +751,11 @@ def _short_list(values: collections.abc.Sequence, length: int = 10) -> str:
 
 
 def _get_disaggregation_translation(
-    from_segmentation: segmentation.Segmentation,
-    from_segment: segments.Segment,
-    to_segment: segments.Segment,
-    target_segmentation: segmentation.Segmentation,
-) -> dict[segmentation.SegmentationSlice, list[segmentation.SegmentationSlice]]:
+    from_segmentation: cb.segmentation.Segmentation,
+    from_segment: cb.segments.Segment,
+    to_segment: cb.segments.Segment,
+    target_segmentation: cb.segmentation.Segmentation,
+) -> dict[cb.segmentation.SegmentationSlice, list[cb.segmentation.SegmentationSlice]]:
     """Produce slice disaggregations with a single segment lookup."""
     try:
         to_segmentation, lookup = from_segmentation.translate_segment(from_segment, to_segment)
@@ -794,8 +793,8 @@ def _get_disaggregation_translation(
 
 
 def _validate_disaggregation_translation(
-    from_segment: segments.Segment,
-    to_segment: segments.Segment,
+    from_segment: cb.segments.Segment,
+    to_segment: cb.segments.Segment,
     groupings: dict[int, list[int]],
 ):
     """Check if any segment values are found in multiple lists.
@@ -817,8 +816,8 @@ def _validate_disaggregation_translation(
 
 
 def _get_slice_disaggregation(
-    from_: segmentation.Segmentation, to: segmentation.Segmentation
-) -> dict[segmentation.SegmentationSlice, list[segmentation.SegmentationSlice]]:
+    from_: cb.segmentation.Segmentation, to: cb.segmentation.Segmentation
+) -> dict[cb.segmentation.SegmentationSlice, list[cb.segmentation.SegmentationSlice]]:
     """Produce slice disaggregations without any segment lookup."""
     disaggregations = collections.defaultdict(list)
     for from_slice in from_.iter_slices():
@@ -871,15 +870,15 @@ class MemoryMatrices(MatricesBase):
 
     def __init__(
         self,
-        segmentation_: bs.Segmentation,
-        zoning: bs.ZoningSystem,
+        segmentation_: cb.Segmentation,
+        zoning: cb.ZoningSystem,
         type_: MatrixType,
         matrices: list[Matrix] | None = None,
         *,
         name: str | None = None,
     ):
         super().__init__(segmentation_, zoning, type_)
-        self._matrices: dict[segmentation.SegmentationSlice, pd.DataFrame] = {}
+        self._matrices: dict[cb.segmentation.SegmentationSlice, pd.DataFrame] = {}
 
         if matrices is not None:
             for matrix in matrices:
@@ -908,14 +907,14 @@ class MemoryMatrices(MatricesBase):
                 return False
         return True
 
-    def _get_matrix(self, slice_: "segmentation.SegmentationSlice") -> Matrix:
+    def _get_matrix(self, slice_: cb.segmentation.SegmentationSlice) -> Matrix:
         """Get in-memory matrix."""
 
         if slice_ not in self._matrices:
             raise KeyError(f"no matrix found for {slice_}")
         return Matrix(self._matrices[slice_], slice_)
 
-    def _set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice):
+    def _set_matrix(self, matrix: pd.DataFrame, slice_: cb.segmentation.SegmentationSlice):
         """Store matrix in class (in-memory)."""
         self._matrices[slice_] = matrix
 
@@ -953,8 +952,8 @@ class MatrixFiles(MatricesBase):
 
     def __init__(
         self,
-        segmentation_: bs.Segmentation,
-        zoning: bs.ZoningSystem,
+        segmentation_: cb.Segmentation,
+        zoning: cb.ZoningSystem,
         type_: MatrixType,
         folder: pathlib.Path,
         *,
@@ -999,7 +998,7 @@ class MatrixFiles(MatricesBase):
         """Path to folder containing the matrices."""
         return self._folder
 
-    def _get_filename(self, slice_: segmentation.SegmentationSlice) -> str:
+    def _get_filename(self, slice_: cb.segmentation.SegmentationSlice) -> str:
         """Get filename for given slice, generates it if not already present."""
         if slice_ not in self._filenames:
             slice_name = self._segmentation.generate_slice_name(slice_)
@@ -1008,7 +1007,7 @@ class MatrixFiles(MatricesBase):
         return self._filenames[slice_]
 
     def _set_matrix(
-        self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice
+        self, matrix: pd.DataFrame, slice_: cb.segmentation.SegmentationSlice
     ) -> None:
         """Save the matrix to a CSV, with a filename based on the slice parameters."""
         filename = self._get_filename(slice_)
@@ -1018,7 +1017,7 @@ class MatrixFiles(MatricesBase):
         matrix.to_csv(path)
         LOG.debug("Written: %s", path)
 
-    def _get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
+    def _get_matrix(self, slice_: cb.segmentation.SegmentationSlice) -> Matrix:
         """Load the matrix from a CSV."""
         filename = self._get_filename(slice_)
         path = ctk.io.find_file_with_name(self._folder, filename, self._file_suffixes)
@@ -1035,8 +1034,8 @@ class MatrixFiles(MatricesBase):
         self,
         name: str,
         *,
-        segmentation_: bs.Segmentation | None = None,
-        zoning: bs.ZoningSystem | None = None,
+        segmentation_: cb.Segmentation | None = None,
+        zoning: cb.ZoningSystem | None = None,
         type_: MatrixType | None = None,
     ) -> Self:
         folder = self._folder.with_name(name)
@@ -1102,8 +1101,8 @@ class LongMatrices(MatricesBase):
 
     def __init__(
         self,
-        segmentation_: bs.Segmentation,
-        zoning: bs.ZoningSystem,
+        segmentation_: cb.Segmentation,
+        zoning: cb.ZoningSystem,
         type_: MatrixType,
         *,
         data: pd.DataFrame | None = None,
@@ -1124,7 +1123,7 @@ class LongMatrices(MatricesBase):
         self._columns = columns
 
     @classmethod
-    def _get_index_names(cls, segmentation_: segmentation.Segmentation) -> list[str]:
+    def _get_index_names(cls, segmentation_: cb.segmentation.Segmentation) -> list[str]:
         return [*segmentation_.naming_order, cls._origin_column, cls._dest_column]
 
     @property
@@ -1220,7 +1219,7 @@ class LongMatrices(MatricesBase):
         """Return a copy of the underlying DataFrame."""
         return self._data.copy(deep)
 
-    def _get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix | pd.DataFrame:
+    def _get_matrix(self, slice_: cb.segmentation.SegmentationSlice) -> Matrix | pd.DataFrame:
         data: pd.DataFrame = self._data.loc[slice_.as_tuple()].copy()
         if len(data.columns) > 1:
             return data
@@ -1230,7 +1229,7 @@ class LongMatrices(MatricesBase):
         data.name = None
         return Matrix(data.unstack(), slice_)
 
-    def _set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice):
+    def _set_matrix(self, matrix: pd.DataFrame, slice_: cb.segmentation.SegmentationSlice):
         if matrix.index.nlevels == 1:
             self.validate_matrix(matrix, str(slice_))
             matrix.index.name = self._origin_column
@@ -1286,8 +1285,8 @@ class LongMatrices(MatricesBase):
     @classmethod
     def from_csv(
         cls,
-        segmentation_: bs.Segmentation,
-        zoning: bs.ZoningSystem,
+        segmentation_: cb.Segmentation,
+        zoning: cb.ZoningSystem,
         type_: MatrixType,
         path: pathlib.Path,
         *,
