@@ -226,15 +226,9 @@ class MatricesBase(abc.ABC):
     ) -> cb.segmentation.SegmentationSlice:
         """Raise ValueError if slice not present in segmentation."""
         if isinstance(slice_, tuple):
-            slice_ = cb.segmentation.SegmentationSlice(
-                {i: j for i, j in zip(self.segmentation.naming_order, slice_)},
-                self.segmentation.naming_order,
-            )
+            slice_ = cb.segmentation.SegmentationSlice.from_tuple(slice_,
+                                                                  self.segmentation.naming_order)
         elif isinstance(slice_, dict):
-            if list(slice_.keys()) != self.segmentation.naming_order:
-                raise ValueError(
-                    "The order of the input slice does not match the matrices' naming order."
-                )
             slice_ = cb.segmentation.SegmentationSlice(
                 slice_, self.segmentation.naming_order
             )
