@@ -791,6 +791,42 @@ class OD2PAParameters(ctk.BaseConfig):
     synthetic_filename_template: str | None = None
     calculate_tour_proportions: bool = True
 
+def disagg_and_convert(parameters: OD2PAParameters):
+    zone_system = base.ZoningSystem.get_zoning(parameters.zone_system)
+
+    tp_name = segments.SegmentsSuper.TIMEPERIOD.value
+    postme_segmentation = segmentation.Segmentation(parameters.postme_segmentation)
+
+    if tp_name not in [i.name for i in postme_segmentation.segments]:
+        raise ValueError("postME matrices should contain time period segmentation")
+    
+    disaggregated = disaggregate_postme(
+        parameters.postme_folder,
+        parameters.synthetic_folder,
+        zone_system,
+        postme_segmentation,
+        [segments.SegmentsSuper.DIRECTION_OD.value],
+        synthetic_tp=parameters.synthetic_tp,
+        postme_filename_template=parameters.postme_filename_template,
+        synthetic_filename_template=parameters.synthetic_filename_template,
+    ).convert_type(matrices.MemoryMatrices)
+
+    occupancies = factors.load_occupancies(
+        parameters.occupancy_factors.path,
+        segment_columns=parameters.occupancy_factors.segment_names,
+        driver_column=parameters.occupancy_factors.driver_column,
+        total_column=parameters.occupancy_factors.total_column,
+        occupancy_column=parameters.occupancy_factors.occupancy_column,
+        translate_segments=parameters.occupancy_factors.segment_translation_names,
+    )
+
+    tp_data = pd.Series(parameters.time_period_factors)
+    tp_data.index.name = 'tp'
+    tp_dvec = base.DVector(import_data=tp_data, segmentation=base.Segmentation(base.SegmentationInput(enum_segments=['tp'], naming_order=['tp'], subsets={'tp': tp_data.index.to_list()})))
+
+    comp_factor = occupancies * tp_dvec
+
+    return disaggregated * comp_factor
 
 def main(parameters: OD2PAParameters):
     """Run OD to PA conversion process."""

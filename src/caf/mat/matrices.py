@@ -668,7 +668,7 @@ class MatricesBase(abc.ABC):
         rows = {}
         cols = {}
         for slice_ in self.segmentation.iter_slices():
-            mat = self.get_matrix(slice).data
+            mat = self.get_matrix(slice_).data
             column = mat.sum(axis=0)
             row = mat.sum(axis=1)
             rows[slice_.as_tuple()] = row
@@ -733,7 +733,7 @@ class MatricesBase(abc.ABC):
                         other_slice.squeeze(),
                     )
                 else:
-                    product = number_method(self.get_matrix(slice_).data, other_slice)
+                    product = mat_method(self.get_matrix(slice_).data, other_slice)
             else:
                 product = number_method(self.get_matrix(slice_).data, other)
             out.set_matrix(product.fillna(0), slice_)
