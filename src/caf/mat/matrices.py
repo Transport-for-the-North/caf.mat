@@ -584,7 +584,7 @@ class MatricesBase(abc.ABC):
         """
         inters = self.new(name=f"{self.name}_nointras")
         for slice_ in self.segmentation.iter_slices():
-            matrix = self.get_matrix(slice_).data
+            matrix = self.get_matrix(slice_).data.copy()
             np.fill_diagonal(matrix.values, 0)
             inters.set_matrix(matrix, slice_)
         return inters

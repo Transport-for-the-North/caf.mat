@@ -104,7 +104,7 @@ def tripend_factors(synthetic,
 
     prior_te = {}
     prior_te['O'] = (synthetic_dvecs['O'].filter_segment_value('direction_od', 1) / hb_prod_uc)
-    prior_te['D'] = (synthetic_dvecs['D'] / hb_attr)
+    prior_te['D'] = (synthetic_dvecs['D'].filter_segment_value('direction_od', 1) / hb_attr_uc)
 
     for orig in ['P','A']:
         (prior_te[orig] * post_prior[orig]).save(out_dir / f"tr_factors_{orig}.dvec")
