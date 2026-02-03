@@ -27,13 +27,13 @@ class CUBEMatConverter:
 
     Parameters
     ----------
-    cube_path : Path
+    voyager_path : Path
         Path to the CUBE Voyager executable file.
 
     Raises
     ------
     FileNotFoundError
-        If `cube_voyager_path` doesn't exist, or isn't a file.
+        If `voyager_path` doesn't exist, or isn't a file.
     """
 
     def __init__(self, voyager_path: Path) -> None:
