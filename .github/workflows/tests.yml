@@ -8,11 +8,12 @@ on:
 
 jobs:
   test:
+    timeout-minutes: 3
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ['3.11', '3.12', '3.13']
 
     steps:
     - uses: actions/checkout@v4
@@ -24,7 +25,6 @@ jobs:
         cache-dependency-path: |
           requirements.txt
           requirements_dev.txt
-          requirements_sparse.txt
 
     - name: Install dependencies
       run: |
