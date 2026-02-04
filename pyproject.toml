@@ -100,6 +100,9 @@ ignore = [
     "SIM108", # one line if else (flake8-bandit)
     "S311",   # random.random not allowed (flake8-bandit)
     "DOC502", # docstring-extraneous-exception (sometimes necessary)
+    "PD013",  # pandas.melt preferred over .stack
+    "PD010",  # pandas.pivot_table is preferred to .pivot or .unstack
+    "ANN003", # type annotation for **kwargs
 ]
 unfixable = [
     "T20",  # print-statements (flake8-print)
