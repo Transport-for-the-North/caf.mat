@@ -912,7 +912,7 @@ class LongMatrices(MatricesBase):
 
         return data, columns
 
-    def _validate_index(self, data: pd.DataFrame) -> None:
+    def _validate_index(self, data: pd.DataFrame) -> pd.DataFrame:
         """Validate the data has the correct indices."""
         index = set(self._index)
         if set(data.index.names) != index:
@@ -940,12 +940,13 @@ class LongMatrices(MatricesBase):
 
         if data.index.has_duplicates:
             raise ValueError(f"duplicate indices found in {self.name}")
+        return data
 
     def _validate_data(
         self, data: pd.DataFrame, columns: list[str] | None = None
     ) -> tuple[pd.DataFrame, list[str]]:
         """Validate the data has correct indices and columns."""
-        self._validate_index(data)
+        data = self._validate_index(data)
 
         try:
             data = data.astype(float)
