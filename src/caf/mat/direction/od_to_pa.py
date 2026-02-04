@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from typing import Literal, TypeVar
 
 # Third Party
-import caf.base as base  # isort conflict pylint: disable=consider-using-from-import
+import caf.base as cbase
 import caf.toolkit as ctk
 import numpy as np
 import pandas as pd
@@ -115,8 +115,8 @@ def balance_fh_th_conserve_24hr(
 def disaggregate_postme(
     postme_folder: pathlib.Path,
     synth_folder: pathlib.Path,
-    zone_system: base.ZoningSystem,
-    postme_segmentation: base.Segmentation,
+    zone_system: cbase.ZoningSystem,
+    postme_segmentation: cbase.Segmentation,
     disaggregation_segments: list[str],
     *,
     postme_filename_template: str | None = None,
@@ -164,13 +164,13 @@ def disaggregate_postme(
     )
 
     enum_segments = [segments.SegmentsSuper(i) for i in disaggregation_segments]
-    synth_seg_input = base.SegmentationInput(
+    synth_seg_input = cbase.SegmentationInput(
         enum_segments=postme_segmentation.input.enum_segments + enum_segments,
         naming_order=postme_segmentation.input.naming_order + disaggregation_segments,
         subsets=postme_segmentation.input.subsets,
     )
     synthetic = matrices.MatrixFiles(
-        base.Segmentation(synth_seg_input),
+        cbase.Segmentation(synth_seg_input),
         zone_system,
         matrices.MatrixType.OD,
         synth_folder,
@@ -185,7 +185,7 @@ def disaggregate_postme(
 def _matrix_multiply(
     slice_: segmentation.SegmentationSlice,
     matrices_: Matrices,
-    occ_factors: base.DVector | None = None,
+    occ_factors: cbase.DVector | None = None,
     tp_factors: dict[int, int | float] | None = None,
 ) -> pd.DataFrame:
     data = matrices_.get_matrix(slice_).data
@@ -253,7 +253,7 @@ def nhb_proportions(
     output: Matrices,
     output_proportions: Matrices,
     *,
-    occ_factors: base.DVector | None = None,
+    occ_factors: cbase.DVector | None = None,
     tp_factors: dict[int, int | float] | None = None,
 ):
     """Calculate 24hr NHB and return proportions.
@@ -320,7 +320,7 @@ def nhb_proportions(
 def _get_time_matrices(
     input_: Matrices,
     params: dict[str, int],
-    occ_factors: base.DVector | None = None,
+    occ_factors: cbase.DVector | None = None,
     tp_factors: dict[int, int | float] | None = None,
     *,
     transpose_to_home: bool = False,
@@ -570,7 +570,7 @@ def od_to_pa(
     balancing_method: Literal["op", "24"],
     phi: factors.PhiFactors,
     *,
-    occ_factors: base.DVector | None = None,
+    occ_factors: cbase.DVector | None = None,
     tp_factors: dict[int, int | float] | None = None,
     calculate_tour_proportions: bool = True,
 ):
@@ -702,7 +702,7 @@ def _hb_od_to_pa(
     params: dict[str, int],
     phi_factors: pd.DataFrame,
     *,
-    occ_factors: base.DVector | None = None,
+    occ_factors: cbase.DVector | None = None,
     tp_factors: dict[int, int | float] | None = None,
     tp_segment_name: str = "tp",
     transpose_to_home: bool = True,
@@ -747,7 +747,7 @@ class OD2PAParameters(ctk.BaseConfig):
     balancing_method: Literal["op", "24"]
 
     postme_folder: pydantic.DirectoryPath
-    postme_segmentation: base.SegmentationInput
+    postme_segmentation: cbase.SegmentationInput
     synthetic_folder: pydantic.DirectoryPath
 
     phi_factors: factors.PhiFactorsParameters
@@ -761,7 +761,7 @@ class OD2PAParameters(ctk.BaseConfig):
 def main(parameters: OD2PAParameters):
     """Run OD to PA conversion process."""
     LOG.debug("Run parameters\n%s", parameters.to_yaml())
-    zone_system = base.ZoningSystem.get_zoning(parameters.zone_system)
+    zone_system = cbase.ZoningSystem.get_zoning(parameters.zone_system)
 
     tp_name = segments.SegmentsSuper.TIMEPERIOD.value
     postme_segmentation = segmentation.Segmentation(parameters.postme_segmentation)
@@ -809,8 +809,8 @@ def main(parameters: OD2PAParameters):
 
     pa_matrices = disaggregated.new(
         "pa_postme",
-        segmentation_=base.Segmentation(
-            base.SegmentationInput(
+        segmentation_=cbase.Segmentation(
+            cbase.SegmentationInput(
                 enum_segments=pa_segments, naming_order=pa_naming, subsets=pa_subsets
             )
         ),

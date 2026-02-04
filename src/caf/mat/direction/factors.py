@@ -10,7 +10,7 @@ from collections.abc import Collection, Mapping, Sequence
 from typing import Self
 
 # Third Party
-import caf.base as base  # isort conflict pylint: disable=consider-using-from-import
+import caf.base as cbase
 import caf.toolkit as ctk
 import numpy as np
 import pandas as pd
@@ -365,7 +365,7 @@ def load_occupancies(
     total_column: str | None = "total",
     occupancy_column: str | None = None,
     translate_segments: dict[str, str] | None = None,
-) -> base.DVector:
+) -> cbase.DVector:
     """Load occupancy factors from a CSV.
 
     Parameters
@@ -391,7 +391,7 @@ def load_occupancies(
 
     Returns
     -------
-    base.DVector
+    caf.base.DVector
         Occupancies data as a DVector.
 
     Raises
@@ -454,7 +454,7 @@ def load_occupancies(
     )
 
     try:
-        return base.DVector(segmentation_, data)
+        return cbase.DVector(segmentation_, data)
     except segmentation.SegmentationError:
         LOG.exception("error creating DVector for occupancies, trying cut_read=True")
-        return base.DVector(segmentation_, data, cut_read=True)
+        return cbase.DVector(segmentation_, data, cut_read=True)
