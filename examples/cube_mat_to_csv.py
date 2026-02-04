@@ -77,7 +77,7 @@ def parse_args() -> tuple[pathlib.Path, pathlib.Path]:
 
 
 def main() -> None:
-    """Main function for running converting CUBE .mat to CSVs."""
+    """Convert CUBE .mat to CSVs."""
     voyager_path, matrix_folder = parse_args()
     converter = CUBEMatConverter(voyager_path)
 

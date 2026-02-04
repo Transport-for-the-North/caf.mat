@@ -5,6 +5,7 @@
 # Built-Ins
 import logging
 import pathlib
+import types
 import warnings
 from collections.abc import Generator
 from pathlib import Path
@@ -68,11 +69,14 @@ class OMXFile(tables.File):
     _EXPECTED_OMX_VERSION = "0.2"
     _DATA_NODE = "/data"
     _LOOKUP_NODE = "/lookup"
-    _KEYS = {
-        "version": "OMX_VERSION",
-        "shape": "SHAPE",
-        "zones": "ZoneNames",
-    }
+    _KEYS = types.MappingProxyType(
+        {
+            "version": "OMX_VERSION",
+            "shape": "SHAPE",
+            "zones": "ZoneNames",
+        }
+    )
+    """Read-only lookup for OMX attributes."""
 
     def __init__(
         self,
@@ -138,8 +142,8 @@ class OMXFile(tables.File):
     def _check_shape(value: tuple[int, int]) -> tuple[int, int]:
         """Raise ValueError if shape isn't valid."""
         value = tuple(int(i) for i in value)
-        if len(value) != 2:
-            raise ValueError(f"shape should be a tuple of lenght 2 not length {len(value)}")
+        if len(value) != 2:  # noqa: PLR2004 - matrices are 2D
+            raise ValueError(f"shape should be a tuple of length 2 not length {len(value)}")
         if value[0] != value[1]:
             raise ValueError(
                 f"matrix should have the same number of rows and columns not {value}"

@@ -12,6 +12,7 @@ access the data within Python.
 import os
 import pathlib
 import shutil
+from typing import Any
 
 # %%
 # Import require third-party packages
@@ -43,11 +44,12 @@ print(f"Created OMX file: {omx_path}")
 # Define a function which formats the outputs for the matrix level statistics.
 
 
-def format_numeric(value) -> str:
+def format_numeric(value: Any) -> str:  # noqa: ANN401
     """Format numeric `value`, non-numeric return as `str(value)`."""
     if not isinstance(value, (int, float)):
         return str(value)
-    if value > 10:
+    integer_cutoff = 10
+    if value > integer_cutoff:
         return f"{value:,.0f}"
     if value > 1:
         return f"{value:,.2f}"
@@ -102,14 +104,15 @@ with (
     write.zones = read.zones
     for name, data in read.get_all():
         print(f"Multiplying {name} by {factor}")
-        data *= factor
-        write.set_matrix_level(name, data)
+        factored = data * factor
+        write.set_matrix_level(name, factored)
 
 print(f"Written: {omx_out}")
 
 # %%
 # Convert the both the original and factored OMX files back to UFMs using :class:`UFMFile`.
-# The OMX file is copied to a new folder before conversion to avoid overwriting the original UFM.
+# The OMX file is copied to a new folder before conversion to avoid overwriting the
+# original UFM.
 
 folder = omx_path.parent / "To UFM"
 folder.mkdir(exist_ok=True)

@@ -123,7 +123,7 @@ class MatricesBase(abc.ABC):
     @abc.abstractmethod
     def get_matrix(
         self,
-        slice_: "segmentation.SegmentationSlice",  # type: ignore
+        slice_: "segmentation.SegmentationSlice",  # type: ignore[name-defined]
     ) -> Matrix:
         """Load the data for a single matrix."""
         raise NotImplementedError()
@@ -132,7 +132,7 @@ class MatricesBase(abc.ABC):
     def set_matrix(
         self,
         matrix: pd.DataFrame,
-        slice_: "segmentation.SegmentationSlice",  # type: ignore
+        slice_: "segmentation.SegmentationSlice",  # type: ignore[name-defined]
     ) -> None:
         """Save the data for a single matrix."""
         raise NotImplementedError()
@@ -161,8 +161,8 @@ class MatricesBase(abc.ABC):
     @property
     def has_time_periods(self) -> bool:
         """Return True if the segmentation contains time periods."""
-        # TODO(MB) check this method works correctly with all time periods Segments
-        # TODO(MB) get information about the time format, e.g. avg hour / period
+        # TODO(MB): check this method works correctly with all time periods Segments
+        # TODO(MB): get information about the time format, e.g. avg hour / period
         return self._segmentation.has_time_period_segments()
 
     @property
@@ -188,7 +188,7 @@ class MatricesBase(abc.ABC):
         """Return True if segmentation contains home-based direction only."""
         subset = self._get_direction_subset()
 
-        # TODO(MB) can this hardcoding be removed and instead obtained from caf.base?
+        # TODO(MB): can this hardcoding be removed and instead obtained from caf.base?
         # Does subset contain one, or both (OD), of the home-based directions
         return bool(subset is not None and subset <= {1, 2})
 
@@ -197,12 +197,12 @@ class MatricesBase(abc.ABC):
         """Return True if segmentation contains non-home-based direction only."""
         subset = self._get_direction_subset()
 
-        # TODO(MB) can this hardcoding be removed and instead obtained from caf.base?
+        # TODO(MB): can this hardcoding be removed and instead obtained from caf.base?
         return subset == {0}
 
     def validate_slice(
         self,
-        slice_: "segmentation.SegmentationSlice",  # type: ignore
+        slice_: "segmentation.SegmentationSlice",  # type: ignore[name-defined]
     ) -> None:
         """Raise ValueError if slice not present in segmentation."""
         if slice_ not in self.segmentation.iter_slices():
@@ -281,7 +281,7 @@ class MatricesBase(abc.ABC):
 
     def aggregate(
         self,
-        segmentation_: "segmentation.Segmentation",  # type: ignore
+        segmentation_: "segmentation.Segmentation",  # type: ignore[name-defined]
         output_name: str = "{name}-aggregated",
         progress_bar: bool = True,
     ) -> Self:
@@ -462,7 +462,7 @@ class MatricesBase(abc.ABC):
         targets: "MatricesBase",
         from_segment: segments.Segment | None,
         to_segment: segments.Segment | None,
-    ) -> dict["segmentation.SegmentationSlice", list["segmentation.SegmentationSlice"]]:  # type: ignore
+    ) -> dict["segmentation.SegmentationSlice", list["segmentation.SegmentationSlice"]]:  # type: ignore[name-defined]
         """Calculate and validate disaggregation slices."""
         if from_segment is not None and to_segment is not None:
             disaggregations = _get_disaggregation_translation(
@@ -637,7 +637,14 @@ class MemoryMatrices(MatricesBase):
         """Name of the matrices."""
         return self._name
 
-    def new(self, name, *, segmentation_=None, zoning=None, type_=None) -> "MemoryMatrices":
+    def new(  # noqa: D102
+        self,
+        name: str,
+        *,
+        segmentation_: bs.Segmentation | None = None,
+        zoning: bs.ZoningSystem | None = None,
+        type_: MatrixType | None = None,
+    ) -> "MemoryMatrices":
         return MemoryMatrices(
             segmentation_=self._segmentation if segmentation_ is None else segmentation_,
             zoning=self._zoning if zoning is None else zoning,
@@ -645,7 +652,7 @@ class MemoryMatrices(MatricesBase):
             name=name,
         )
 
-    def exists(self) -> bool:
+    def exists(self) -> bool:  # noqa: D102
         return all(slice_ in self._matrices for slice_ in self.segmentation.iter_slices())
 
     def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
@@ -775,7 +782,7 @@ class MatrixFiles(MatricesBase):
         self.validate_matrix(data, filename)
         return Matrix(data, slice_)
 
-    def new(
+    def new(  # noqa: D102
         self,
         name: str,
         *,
@@ -794,7 +801,7 @@ class MatrixFiles(MatricesBase):
             check_files=False,
         )
 
-    def exists(self) -> bool:
+    def exists(self) -> bool:  # noqa: D102
         try:
             with warnings.catch_warnings():
                 warnings.filterwarnings(
@@ -872,7 +879,7 @@ class LongMatrices(MatricesBase):
         return [*segmentation_.naming_order, cls._origin_column, cls._dest_column]
 
     @property
-    def name(self) -> str:
+    def name(self) -> str:  # noqa: D102
         return self._name
 
     def _create_empty_data(
@@ -905,10 +912,8 @@ class LongMatrices(MatricesBase):
 
         return data, columns
 
-    def _validate_data(
-        self, data: pd.DataFrame, columns: list[str] | None = None
-    ) -> tuple[pd.DataFrame, list[str]]:
-        """Validate the data has correct indices and columns."""
+    def _validate_index(self, data: pd.DataFrame) -> None:
+        """Validate the data has the correct indices."""
         index = set(self._index)
         if set(data.index.names) != index:
             # If single index assume segmentation indices are columns
@@ -920,7 +925,8 @@ class LongMatrices(MatricesBase):
 
             data = data.set_index(self._index)
 
-        assert isinstance(data.index, pd.MultiIndex)
+        if not isinstance(data.index, pd.MultiIndex):
+            raise TypeError(f"data should have a MultiIndex not {type(data.index)}")
 
         if not data.index.dtypes.apply(pd.api.types.is_integer_dtype).all():
             try:
@@ -932,15 +938,21 @@ class LongMatrices(MatricesBase):
                     f"indices should be integers not {data.index.dtype.name}"
                 ) from exc
 
+        if data.index.has_duplicates:
+            raise ValueError(f"duplicate indices found in {self.name}")
+
+    def _validate_data(
+        self, data: pd.DataFrame, columns: list[str] | None = None
+    ) -> tuple[pd.DataFrame, list[str]]:
+        """Validate the data has correct indices and columns."""
+        self._validate_index(data)
+
         try:
             data = data.astype(float)
         except ValueError as exc:
             raise ValueError(
                 f"matrix data should be numeric not {data.dtypes.to_list()}"
             ) from exc
-
-        if data.index.has_duplicates:
-            raise ValueError(f"duplicate indices found in {self.name}")
 
         if columns is None:
             columns = data.columns.to_list()
@@ -963,7 +975,7 @@ class LongMatrices(MatricesBase):
         """Return a copy of the underlying DataFrame."""
         return self._data.copy(deep)
 
-    def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix | pd.DataFrame:
+    def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix | pd.DataFrame:  # noqa: D102
         self.validate_slice(slice_)
         data: pd.DataFrame = self._data.loc[slice_.as_tuple()].copy()
         if len(data.columns) > 1:
@@ -974,7 +986,7 @@ class LongMatrices(MatricesBase):
         data.name = None
         return Matrix(data.unstack(), slice_)
 
-    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:
+    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:  # noqa: D102
         self.validate_slice(slice_)
 
         if matrix.index.nlevels == 1:
@@ -982,7 +994,9 @@ class LongMatrices(MatricesBase):
             matrix.index.name = self._origin_column
             matrix.columns.name = self._dest_column
 
-            assert self._columns is not None
+            if self._columns is None:
+                raise TypeError("columns should be defined")
+
             matrix = matrix.stack().to_frame(name=self._columns[0])
 
         if matrix.index.names != [self._origin_column, self._dest_column]:
@@ -1001,7 +1015,8 @@ class LongMatrices(MatricesBase):
             [(*slice_.as_tuple(), i, j) for i, j in matrix.index]
         )
 
-        # Cannot set multiple rows with index directly, so instead concat new columns and update
+        # Cannot set multiple rows with index directly,
+        # so instead concat new columns and update
         matrix.columns = [f"{i}_set" for i in matrix.columns]
         updated = pd.concat([self._data, matrix], axis=1)
         updated.index.names = self._data.index.names
@@ -1012,7 +1027,14 @@ class LongMatrices(MatricesBase):
 
         self._data = updated[self._data.columns]
 
-    def new(self, name: str, *, segmentation_=None, zoning=None, type_=None) -> "LongMatrices":
+    def new(  # noqa: D102
+        self,
+        name: str,
+        *,
+        segmentation_: bs.Segmentation | None = None,
+        zoning: bs.ZoningSystem | None = None,
+        type_: MatrixType | None = None,
+    ) -> "LongMatrices":
         return LongMatrices(
             segmentation_=self.segmentation if segmentation_ is None else segmentation_,
             zoning=self.zoning if zoning is None else zoning,
@@ -1021,7 +1043,7 @@ class LongMatrices(MatricesBase):
             columns=self._columns,
         )
 
-    def exists(self) -> bool:
+    def exists(self) -> bool:  # noqa: D102
         try:
             self._validate_data(self._data)
         except ValueError:

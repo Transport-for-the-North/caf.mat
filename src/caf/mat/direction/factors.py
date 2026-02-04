@@ -30,7 +30,7 @@ class UnexpectedPhiFactorsWarning(UserWarning):
     """Warning for unexpected input for PhiFactors, which can be handled."""
 
 
-class InvalidPhiFactors(ValueError):
+class InvalidPhiFactorsError(ValueError):
     """Error for invalid input for PhiFactors."""
 
 
@@ -123,7 +123,7 @@ class PhiFactors:
         # Segmentation with time period remove for validating get method
         self._segmentation_no_tp = self._segmentation.remove_segment(self._tp_segment.name)
 
-        # TODO(MB) This could be a parameter which warns user if not already sums to 1
+        # TODO(MB): This could be a parameter which warns user if not already sums to 1
         # Normalise time period factors, so time period from sums to 1
         # i.e. all trips leaving in 1 time period must return at some point
         self._data = self._data.div(self._data.sum(axis=1), axis=0)
@@ -143,12 +143,14 @@ class PhiFactors:
 
             missing = expected_columns - columns
             if len(missing) > 0:
-                raise InvalidPhiFactors(f"{len(missing)} expected columns missing {missing}")
+                raise InvalidPhiFactorsError(
+                    f"{len(missing)} expected columns missing {missing}"
+                )
 
         data = data[list(expected_columns)]
 
         if len(data.columns) == 0:
-            raise InvalidPhiFactors("no time period columns")
+            raise InvalidPhiFactorsError("no time period columns")
 
         return data
 
@@ -162,7 +164,7 @@ class PhiFactors:
             enum_segments = [self._tp_segment_enum]
             naming = [self._tp_segment.name]
         else:
-            enum_segments = [*list(additional_segments), self._tp_segment.name]
+            enum_segments = [*list(additional_segments), self._tp_segment.name]  # type: ignore[list-item]
             naming = enum_segments
 
         mask = np.full(len(data), True)
@@ -248,7 +250,8 @@ class PhiFactors:
             path, "Tour Proportions", dtype=dtypes, usecols=list(dtypes.keys())
         )
         data = data.rename(
-            columns=segment_columns | dict(zip(period_columns, cls._period_columns))
+            columns=segment_columns
+            | dict(zip(period_columns, cls._period_columns, strict=True))
         )
 
         if translate_segments is not None:
@@ -401,7 +404,7 @@ def load_occupancies(
         when translating) and `total_column` or `driver_column` isn't
         provided to recalculate the occupancies.
     """
-    # TODO(MB) Reimplement this as a class which supports matrices (LongMatrices)
+    # TODO(MB): Reimplement this as a class which supports matrices (LongMatrices)
     _validate_occupancy_columns(driver_column, total_column, occupancy_column)
 
     dtypes = {
@@ -448,7 +451,7 @@ def load_occupancies(
 
     segmentation_ = segmentation.Segmentation(
         segmentation.SegmentationInput(
-            enum_segments=columns,  # type: ignore
+            enum_segments=columns,  # type: ignore[arg-type]
             naming_order=columns,
         )
     )

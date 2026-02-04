@@ -179,7 +179,7 @@ class CUBEMatConverter:
         ]
 
         LOG.debug("Running CUBE Voyager command: %s", " ".join(args))
-        comp_proc = subprocess.run(args, capture_output=True, check=False)
+        comp_proc = subprocess.run(args, capture_output=True, check=False)  # noqa: S603 - executable defined by user
         LOG.debug(
             "CUBE output:%s%s",
             _stdout_decode(comp_proc.stdout),
@@ -221,7 +221,7 @@ class CUBEMatConverter:
                 path.unlink()
 
     def folder_to_omx(self, folder: Path, glob: str = "*.mat") -> list[Path]:
-        """Conver all ".mat" files in `folder` to OMX."""
+        """Convert all ".mat" files in `folder` to OMX."""
         # TODO(MB): This could be made more efficient by writing a single script
         # to convert all files instead of iteratively calling to_omx
         omx_paths = []

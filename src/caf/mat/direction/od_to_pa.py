@@ -313,8 +313,8 @@ def nhb_proportions(
                 " cells where the total is zero, this shouldn't be possible"
             )
 
-        data = np.divide(data, nhb_24hr, out=np.full_like(nhb_24hr, 0), where=mask)
-        output_proportions.set_matrix(data, slice_)
+        proportions = np.divide(data, nhb_24hr, out=np.full_like(nhb_24hr, 0), where=mask)
+        output_proportions.set_matrix(proportions, slice_)
 
 
 def _get_time_matrices(
@@ -625,8 +625,8 @@ def od_to_pa(
         columns=[input_.type.direction_segment.name, tp_name]
     ).drop_duplicates()
 
-    for params in slices_iter.itertuples(index=False):
-        params = params._asdict()
+    for params in map(lambda x: x._asdict(), slices_iter.itertuples(index=False)):
+        assert isinstance(params, dict)  # noqa: S101 - type hint
         if not input_.is_home_based_only:
             nhb_proportions(
                 input_,

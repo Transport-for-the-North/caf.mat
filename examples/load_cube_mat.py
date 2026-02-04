@@ -64,20 +64,21 @@ with omx.OMXFile(omx_paths[0]) as omx_file:
 out_path = omx_paths[0].with_name(omx_paths[0].stem + "-factored.omx")
 print(f"Factoring {omx_paths[0].name}")
 
-# Open file to read from
-with omx.OMXFile(omx_paths[0]) as input_:
-    # Open file to write to
-    with omx.OMXFile(
+# Open file to read from and file to write to
+with (
+    omx.OMXFile(omx_paths[0]) as read,
+    omx.OMXFile(
         out_path,
         mode="w",
-        omx_version=input_.omx_version,
-        shape=input_.shape,
-    ) as output:
-        output.zones = input_.zones
+        omx_version=read.omx_version,
+        shape=read.shape,
+    ) as write,
+):
+    write.zones = read.zones
 
-        for level, data in input_.get_all():
-            output.set_matrix_level(level, data * 2)
-            print(f"\tWritten {level} level to {out_path.name}")
+    for level, data in read.get_all():
+        write.set_matrix_level(level, data * 2)
+        print(f"\tWritten {level} level to {out_path.name}")
 
 print(f"Written: {out_path}")
 

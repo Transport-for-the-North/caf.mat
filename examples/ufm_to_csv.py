@@ -53,7 +53,7 @@ def parse_args() -> tuple[pathlib.Path, pathlib.Path]:
 
 
 def main() -> None:
-    """Main function for running converting SATURN UFMs to CSVs."""
+    """Convert SATURN UFMs to CSVs."""
     saturn_path, matrix_folder = parse_args()
     converter = UFMConverter(saturn_path)
 
