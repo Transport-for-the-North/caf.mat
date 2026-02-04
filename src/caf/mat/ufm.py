@@ -82,7 +82,7 @@ class UFMConverter:
         LOG.debug(
             "Running: %s\nWorking directory: %s", " ".join(i for i in arguments), cwd.resolve()
         )
-        # TODO(MB): check if this can be ran with shell = False
+        # TODO(MB): check if this can be ran with shell = False #23
         comp_proc = subprocess.run(  # noqa: S602
             arguments,
             capture_output=True,

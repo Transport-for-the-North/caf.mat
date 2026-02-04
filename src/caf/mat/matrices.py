@@ -161,8 +161,8 @@ class MatricesBase(abc.ABC):
     @property
     def has_time_periods(self) -> bool:
         """Return True if the segmentation contains time periods."""
-        # TODO(MB): check this method works correctly with all time periods Segments
-        # TODO(MB): get information about the time format, e.g. avg hour / period
+        # TODO(MB): check this method works correctly with all time periods Segments #25
+        # TODO(MB): get information about the time format, e.g. avg hour / period #24
         return self._segmentation.has_time_period_segments()
 
     @property
@@ -188,7 +188,7 @@ class MatricesBase(abc.ABC):
         """Return True if segmentation contains home-based direction only."""
         subset = self._get_direction_subset()
 
-        # TODO(MB): can this hardcoding be removed and instead obtained from caf.base?
+        # TODO(MB): can this hardcoding be removed and instead obtained from caf.base? #24
         # Does subset contain one, or both (OD), of the home-based directions
         return bool(subset is not None and subset <= {1, 2})
 
@@ -197,7 +197,7 @@ class MatricesBase(abc.ABC):
         """Return True if segmentation contains non-home-based direction only."""
         subset = self._get_direction_subset()
 
-        # TODO(MB): can this hardcoding be removed and instead obtained from caf.base?
+        # TODO(MB): can this hardcoding be removed and instead obtained from caf.base? #24
         return subset == {0}
 
     def validate_slice(

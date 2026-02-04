@@ -123,7 +123,7 @@ class PhiFactors:
         # Segmentation with time period remove for validating get method
         self._segmentation_no_tp = self._segmentation.remove_segment(self._tp_segment.name)
 
-        # TODO(MB): This could be a parameter which warns user if not already sums to 1
+        # TODO(MB): This could be a parameter which warns user if not already sums to 1 #27
         # Normalise time period factors, so time period from sums to 1
         # i.e. all trips leaving in 1 time period must return at some point
         self._data = self._data.div(self._data.sum(axis=1), axis=0)
@@ -404,7 +404,7 @@ def load_occupancies(
         when translating) and `total_column` or `driver_column` isn't
         provided to recalculate the occupancies.
     """
-    # TODO(MB): Reimplement this as a class which supports matrices (LongMatrices)
+    # TODO(MB): Reimplement this as a class which supports matrices (LongMatrices) #26
     _validate_occupancy_columns(driver_column, total_column, occupancy_column)
 
     dtypes = {

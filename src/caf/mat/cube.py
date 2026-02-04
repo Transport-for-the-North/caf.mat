@@ -222,8 +222,7 @@ class CUBEMatConverter:
 
     def folder_to_omx(self, folder: Path, glob: str = "*.mat") -> list[Path]:
         """Convert all ".mat" files in `folder` to OMX."""
-        # TODO(MB): This could be made more efficient by writing a single script
-        # to convert all files instead of iteratively calling to_omx
+        # TODO(MB): This could be made more efficient by writing a single script #28
         omx_paths = []
         for path in folder.glob(glob):
             out_path = self.to_omx(path)
