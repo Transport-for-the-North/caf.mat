@@ -255,7 +255,7 @@ def nhb_proportions(
     *,
     occ_factors: cbase.DVector | None = None,
     tp_factors: dict[int, int | float] | None = None,
-):
+) -> None:
     """Calculate 24hr NHB and return proportions.
 
     Parameters
@@ -368,7 +368,7 @@ def _get_time_matrices(
     to_home = pd.concat(unstacked_matrices["to"], axis=1)
     if transpose_to_home:
         # Switch origins and destinations to transpose
-        to_home.index.rename(list(reversed(to_home.index.names)), inplace=True)
+        to_home.index = to_home.index.rename(list(reversed(to_home.index.names)))
         to_home = to_home.reorder_levels(from_home.index.names).sort_index()
 
     if len(unstacked_matrices["nhb"]) > 0:
@@ -441,7 +441,7 @@ def _set_matrices_by_time_period(
     data: pd.DataFrame,
     params: dict[str, int],
     column_segment: str = segments.SegmentsSuper.TIMEPERIOD.value,
-):
+) -> None:
     """Output each column as a separate matrix."""
     for column in data.columns:
         slice_ = segmentation.SegmentationSlice(
@@ -511,7 +511,7 @@ def _calculate_tour_proportions(
     output: Matrices,
     *,
     tp_name: str = "{}_tp",
-):
+) -> None:
     targets = [_normalise_to_xarray(from_home, "from"), _normalise_to_xarray(to_home, "to")]
 
     time_periods = phi_factors.index.tolist()
@@ -553,7 +553,7 @@ def _save_hb_return_factors(
     output: Matrices,
     params: dict[str, int],
     column_segment: str,
-):
+) -> None:
     """Output normalised from / to home factors."""
     for name, data in (("from", from_home), ("to", to_home)):
         _set_matrices_by_time_period(
@@ -573,7 +573,7 @@ def od_to_pa(
     occ_factors: cbase.DVector | None = None,
     tp_factors: dict[int, int | float] | None = None,
     calculate_tour_proportions: bool = True,
-):
+) -> None:
     """Convert OD matrices to PA and generate tour proportions.
 
     Parameters
@@ -639,7 +639,8 @@ def od_to_pa(
 
         if input_.is_non_home_based_only:
             warnings.warn(
-                "input matrices are NHB only, so OD to PA conversion is ignored for HB"
+                "input matrices are NHB only, so OD to PA conversion is ignored for HB",
+                stacklevel=2,
             )
             continue
 
@@ -758,7 +759,7 @@ class OD2PAParameters(ctk.BaseConfig):
     calculate_tour_proportions: bool = True
 
 
-def main(parameters: OD2PAParameters):
+def main(parameters: OD2PAParameters) -> None:
     """Run OD to PA conversion process."""
     LOG.debug("Run parameters\n%s", parameters.to_yaml())
     zone_system = cbase.ZoningSystem.get_zoning(parameters.zone_system)

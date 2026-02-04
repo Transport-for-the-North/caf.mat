@@ -96,7 +96,7 @@ class PhiFactors:
         period_filter: Collection[int] | None = None,
         additional_segments: Sequence[str] | None = None,
         segment_filters: Mapping[str, Sequence[int]] | None = None,
-    ):
+    ) -> None:
 
         self._tp_segment = self._tp_segment_enum.get_segment()
 
@@ -162,7 +162,7 @@ class PhiFactors:
             enum_segments = [self._tp_segment_enum]
             naming = [self._tp_segment.name]
         else:
-            enum_segments = list(additional_segments) + [self._tp_segment.name]
+            enum_segments = [*list(additional_segments), self._tp_segment.name]
             naming = enum_segments
 
         mask = np.full(len(data), True)
@@ -345,7 +345,7 @@ class OccupanciesParameters:
 
 def _validate_occupancy_columns(
     driver_column: str | None, total_column: str | None, occupancy_column: str | None
-):
+) -> None:
     if occupancy_column is None and (total_column is None or driver_column is None):
         raise ValueError(
             "if occupancy column isn't given then total_column and"

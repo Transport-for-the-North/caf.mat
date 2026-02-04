@@ -144,7 +144,7 @@ def _validate_paths(
     *formats: _mat.MatrixFileFormat,
     saturn_path: pathlib.Path | None = None,
     voyager_path: pathlib.Path | None = None,
-):
+) -> None:
     """Raise error if paths are None when required by `formats`."""
     if _mat.MatrixFileFormat.UFM in formats:
         if saturn_path is None:

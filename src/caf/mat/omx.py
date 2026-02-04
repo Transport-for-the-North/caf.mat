@@ -129,7 +129,8 @@ class OMXFile(tables.File):
         if value != self._EXPECTED_OMX_VERSION:
             warnings.warn(
                 f"OMXFile expects OMX version {self._EXPECTED_OMX_VERSION} "
-                f"but got {value}, which may be incompatible"
+                f"but got {value}, which may be incompatible",
+                stacklevel=2,
             )
         return value
 

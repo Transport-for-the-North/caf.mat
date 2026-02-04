@@ -31,7 +31,7 @@ CONFIG_PATH = pathlib.Path(__file__).with_name("od2pa_comparison.yml")
 
 
 class MatrixComparison:
-    def __init__(self, old: pd.DataFrame, new: pd.DataFrame):
+    def __init__(self, old: pd.DataFrame, new: pd.DataFrame) -> None:
         self._old = old
         self._new = new
         self._difference = None
@@ -119,7 +119,7 @@ def compare_matrices(
     output_folder: pathlib.Path,
     old_format: Literal["square", "long", "tp"] = "square",
     new_format: Literal["square", "long"] = "square",
-):
+) -> None:
     output_folder.mkdir(exist_ok=True)
 
     summary_data = {}
@@ -133,7 +133,8 @@ def compare_matrices(
 
             new = ctk.io.read_csv_matrix(new_path, format_=new_format)
         except FileNotFoundError as exc:
-            LOG.error("File doesn't exist: %s", exc)
+            # Not logging the full traceback
+            LOG.error("File doesn't exist: %s", exc)  # noqa: TRY400
             continue
 
         if not old.index.equals(new.index):

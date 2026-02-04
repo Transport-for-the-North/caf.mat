@@ -85,7 +85,7 @@ def parse_args() -> _mat.ArgumentHandler:
     return params
 
 
-def main():
+def main() -> None:
     """Parser command-line arguments and run CAF.mat functionality."""
     args = parse_args()
     details = ctk.ToolDetails(__package__, caf.mat.__version__)

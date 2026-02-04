@@ -78,7 +78,7 @@ class MatricesBase(abc.ABC):
 
     def __init__(
         self, segmentation_: bs.Segmentation, zoning: bs.ZoningSystem, type_: MatrixType
-    ):
+    ) -> None:
         self._segmentation = segmentation_
         self._zoning = zoning
         self._type = type_
@@ -190,9 +190,7 @@ class MatricesBase(abc.ABC):
 
         # TODO(MB) can this hardcoding be removed and instead obtained from caf.base?
         # Does subset contain one, or both (OD), of the home-based directions
-        if subset is not None and subset <= {1, 2}:
-            return True
-        return False
+        return bool(subset is not None and subset <= {1, 2})
 
     @property
     def is_non_home_based_only(self) -> bool:
@@ -200,9 +198,7 @@ class MatricesBase(abc.ABC):
         subset = self._get_direction_subset()
 
         # TODO(MB) can this hardcoding be removed and instead obtained from caf.base?
-        if subset == {0}:
-            return True
-        return False
+        return subset == {0}
 
     def validate_slice(
         self,
@@ -544,7 +540,7 @@ def _validate_disaggregation_translation(
     from_segment: segments.Segment,
     to_segment: segments.Segment,
     groupings: dict[int, list[int]],
-):
+) -> None:
     """Check if any segment values are found in multiple lists.
 
     Raises
@@ -579,7 +575,7 @@ def _disaggregate_matrix(
     aggregate: Matrix,
     targets: list[Matrix],
     output: MatricesBase,
-):
+) -> None:
     """Disaggregate a single matrix and save outputs."""
     total = sum(i.data for i in targets).to_numpy()
     mask = total != 0
@@ -624,7 +620,7 @@ class MemoryMatrices(MatricesBase):
         matrices: list[Matrix] | None = None,
         *,
         name: str | None = None,
-    ):
+    ) -> None:
         super().__init__(segmentation_, zoning, type_)
         self._matrices: dict[segmentation.SegmentationSlice, pd.DataFrame] = {}
 
@@ -650,10 +646,7 @@ class MemoryMatrices(MatricesBase):
         )
 
     def exists(self) -> bool:
-        for slice_ in self.segmentation.iter_slices():
-            if slice_ not in self._matrices:
-                return False
-        return True
+        return all(slice_ in self._matrices for slice_ in self.segmentation.iter_slices())
 
     def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
         """Get in-memory matrix."""
@@ -663,7 +656,7 @@ class MemoryMatrices(MatricesBase):
             raise KeyError(f"no matrix found for {slice_}")
         return Matrix(self._matrices[slice_], slice_)
 
-    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice):
+    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:
         """Store matrix in class (in-memory)."""
         self.validate_slice(slice_)
         self._matrices[slice_] = matrix
@@ -709,7 +702,7 @@ class MatrixFiles(MatricesBase):
         *,
         filename_template: str | None = None,
         check_files: bool = True,
-    ):
+    ) -> None:
         super().__init__(segmentation_, zoning, type_)
 
         if filename_template is None:
@@ -860,7 +853,7 @@ class LongMatrices(MatricesBase):
         data: pd.DataFrame | None = None,
         name: str = "LongMatrix",
         columns: list[str] | None = None,
-    ):
+    ) -> None:
         super().__init__(segmentation_, zoning, type_)
         self._name = name
         self._index = self._get_index_names(segmentation_)
@@ -981,7 +974,7 @@ class LongMatrices(MatricesBase):
         data.name = None
         return Matrix(data.unstack(), slice_)
 
-    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice):
+    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:
         self.validate_slice(slice_)
 
         if matrix.index.nlevels == 1:
@@ -1005,7 +998,7 @@ class LongMatrices(MatricesBase):
 
         matrix = matrix.copy()
         matrix.index = pd.MultiIndex.from_tuples(
-            [slice_.as_tuple() + (i, j) for i, j in matrix.index]
+            [(*slice_.as_tuple(), i, j) for i, j in matrix.index]
         )
 
         # Cannot set multiple rows with index directly, so instead concat new columns and update

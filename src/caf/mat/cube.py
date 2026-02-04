@@ -43,7 +43,8 @@ class CUBEMatConverter:
         if self.voyager_path.name.lower().strip() != "voyager.exe":
             warnings.warn(
                 "CUBE Voyager executable is usually named "
-                f"'VOYAGER.exe', is '{self.voyager_path.name}' correct?"
+                f"'VOYAGER.exe', is '{self.voyager_path.name}' correct?",
+                stacklevel=2,
             )
 
     def from_csv(

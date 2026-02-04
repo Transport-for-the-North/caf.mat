@@ -150,7 +150,7 @@ class TestLongMatrices:
         for tests on the methods implemented in :class:`MatricesBase`.
     """
 
-    def test_init(self, long_data: LongMatricesData):
+    def test_init(self, long_data: LongMatricesData) -> None:
         """Test initialising LongMatrices class with a dataframe."""
         answer = matrices.LongMatrices(
             long_data.segmentation,
@@ -265,7 +265,7 @@ def _produce_long_matrices(
         df.index = pd.MultiIndex.from_arrays(
             [[i] * len(df) for i in slice_.as_tuple()]
             + [df.index.get_level_values(i) for i in (0, 1)],
-            names=slice_.naming_order + ("origin", "destination"),
+            names=(*slice_.naming_order, "origin", "destination"),
         )
         df.name = "trips"
         datasets.append(df)
@@ -734,15 +734,15 @@ def fix_disaggregate_replace_datasets(
     subsets = {"m": [3]}
     from_segmentation = cbase.Segmentation(
         cbase.SegmentationInput(
-            enum_segments=segments + ["userclass", "direction_od"],
-            naming_order=["direction_od", "userclass"] + segments,
+            enum_segments=[*segments, "userclass", "direction_od"],
+            naming_order=["direction_od", "userclass", *segments],
             subsets=subsets,
         )
     )
     to_segmentation = cbase.Segmentation(
         cbase.SegmentationInput(
-            enum_segments=segments + ["p", "direction_od"],
-            naming_order=["direction_od", "p"] + segments,
+            enum_segments=[*segments, "p", "direction_od"],
+            naming_order=["direction_od", "p", *segments],
             subsets=subsets,
         )
     )
@@ -907,15 +907,15 @@ def fix_disaggregate_and_replace_datasets(zone_system: cbase.ZoningSystem):
     subsets = {"m": [3]}
     from_segmentation = cbase.Segmentation(
         cbase.SegmentationInput(
-            enum_segments=segments + ["userclass", "direction_od"],
-            naming_order=["direction_od", "userclass"] + segments,
+            enum_segments=[*segments, "userclass", "direction_od"],
+            naming_order=["direction_od", "userclass", *segments],
             subsets=subsets,
         )
     )
     to_segmentation = cbase.Segmentation(
         cbase.SegmentationInput(
-            enum_segments=segments + ["p", "direction_od", "tp"],
-            naming_order=["direction_od", "p"] + segments + ["tp"],
+            enum_segments=[*segments, "p", "direction_od", "tp"],
+            naming_order=["direction_od", "p", *segments, "tp"],
             subsets=subsets | {"tp": time_periods},
         )
     )
@@ -1310,7 +1310,7 @@ class TestMatrices:
         """Test `validate_matrix` correctly raises error."""
         result: MatricesResults = request.getfixturevalue(matrices_)
 
-        zones = pd.DataFrame({"zone_id": result.zoning_.zone_ids.tolist() + [-1]})
+        zones = pd.DataFrame({"zone_id": [*result.zoning_.zone_ids.tolist(), -1]})
         zoning_ = zoning.ZoningSystem(
             "invalid zones", zones, zoning.ZoningSystemMetaData(name="invalid zones")
         )
