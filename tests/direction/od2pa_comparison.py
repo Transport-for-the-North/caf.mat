@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Compare OD to PA outputs from CAF.mat to original process."""
 
 ##### IMPORTS #####
@@ -32,7 +31,6 @@ CONFIG_PATH = pathlib.Path(__file__).with_name("od2pa_comparison.yml")
 
 
 class MatrixComparison:
-
     def __init__(self, old: pd.DataFrame, new: pd.DataFrame):
         self._old = old
         self._new = new

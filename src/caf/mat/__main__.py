@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Front-end module for running caf.mat functionality from command-line."""
 
 ##### IMPORTS #####

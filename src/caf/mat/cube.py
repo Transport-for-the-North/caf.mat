@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Module for converting matrices to/from CUBE's .mat format."""
 
 ##### IMPORTS #####
@@ -214,7 +213,7 @@ class CUBEMatConverter:
         """Cleanup script file and logs."""
         script_path.unlink()
         script_path.with_name("TPPL.PRJ").unlink()
-        del_pat = re.compile(r"(cmat.*)\.(prn|var)", re.I)
+        del_pat = re.compile(r"(cmat.*)\.(prn|var)", re.IGNORECASE)
         for path in script_path.parent.iterdir():
             match = del_pat.match(path.name)
             if match:
@@ -258,8 +257,7 @@ class CUBEMatConverter:
         out_path = out_path.resolve()
 
         LOG.info(
-            'Converting "%s" to MAT file with Cube Voyager,'
-            " this might take several minutes",
+            'Converting "%s" to MAT file with Cube Voyager, this might take several minutes',
             omx_file.name,
         )
 

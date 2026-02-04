@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """OD to PA conversion functionality."""
 
 ##### IMPORTS #####
@@ -8,7 +7,8 @@ import itertools
 import logging
 import pathlib
 import warnings
-from typing import Literal, Sequence, TypeVar
+from collections.abc import Sequence
+from typing import Literal, TypeVar
 
 # Third Party
 import caf.base as base  # isort conflict pylint: disable=consider-using-from-import

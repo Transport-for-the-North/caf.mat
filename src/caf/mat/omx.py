@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Module for reading from and writing to OMX files."""
 
 ##### IMPORTS #####

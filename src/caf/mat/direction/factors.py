@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Time period and from / to home factors required for PA and OD conversions."""
 
 ##### IMPORTS #####

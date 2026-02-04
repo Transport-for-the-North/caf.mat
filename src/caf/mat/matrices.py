@@ -1,6 +1,4 @@
-# -*- coding: utf-8 -*-
 """Handling the PA and OD matrix files."""
-
 
 # Built-Ins
 import abc
@@ -11,7 +9,8 @@ import enum
 import logging
 import pathlib
 import warnings
-from typing import Iterator, Self
+from collections.abc import Iterator
+from typing import Self
 
 # Third Party
 import caf.base as bs
@@ -397,8 +396,7 @@ class MatricesBase(abc.ABC):
         """
         if targets.type != self.type:
             raise ValueError(
-                f"targets should be the same type as aggregate"
-                f"({self.type}) not {targets.type}"
+                f"targets should be the same type as aggregate({self.type}) not {targets.type}"
             )
 
         if self.zoning != targets.zoning:

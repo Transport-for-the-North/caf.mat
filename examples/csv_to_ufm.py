@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 CSVs to SATURN .UFM Files
 =========================

@@ -95,15 +95,15 @@ with omx.OMXFile(omx_path) as omx_file:
 omx_out = omx_path.with_name(omx_path.stem + "-factored.omx")
 factor = 2.5
 
-with omx.OMXFile(omx_path) as read:
-    with omx.OMXFile(
-        omx_out, mode="w", omx_version=read.omx_version, shape=read.shape
-    ) as write:
-        write.zones = read.zones
-        for name, data in read.get_all():
-            print(f"Multiplying {name} by {factor}")
-            data *= factor
-            write.set_matrix_level(name, data)
+with (
+    omx.OMXFile(omx_path) as read,
+    omx.OMXFile(omx_out, mode="w", omx_version=read.omx_version, shape=read.shape) as write,
+):
+    write.zones = read.zones
+    for name, data in read.get_all():
+        print(f"Multiplying {name} by {factor}")
+        data *= factor
+        write.set_matrix_level(name, data)
 
 print(f"Written: {omx_out}")
 

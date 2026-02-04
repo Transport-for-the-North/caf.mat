@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for `matrices` module."""
 
 ##### IMPORTS #####
@@ -8,7 +7,7 @@ import dataclasses
 import functools
 import pathlib
 import warnings
-from typing import Generator
+from collections.abc import Generator
 
 # Third Party
 import caf.base as base
