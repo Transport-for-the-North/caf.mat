@@ -91,6 +91,9 @@ def tripend_factors(synthetic,
     synthetic_dvecs = synthetic_sector.to_dvector()
 
     postme_sector_inter =  postme.remove_intras().translate_zoning(NOHAM_SECTOR)
+    postme_dvecs = postme.translate_zoning(NOHAM_SECTOR).to_dvector()
+    postme_dvecs['O'].save(out_dir / "dvecs" / "postme_o.dvec")
+    postme_dvecs['D'].save(out_dir / "dvecs" / "postme_d.dvec")
     postme_dvecs_inter = postme_sector_inter.to_dvector()
 
     post_prior = {}
@@ -103,8 +106,8 @@ def tripend_factors(synthetic,
     hb_attr_uc = hb_attr.aggregate_comp_zones(NORMITS).translate_zoning(NOHAM_SECTOR, trans_vector=normits_noham_sector).add_segments(['userclass']).aggregate(['m', 'userclass','tp'])
 
     prior_te = {}
-    prior_te['O'] = (synthetic_dvecs['O'].filter_segment_value('direction_od', 1) / hb_prod_uc)
-    prior_te['D'] = (synthetic_dvecs['D'].filter_segment_value('direction_od', 1) / hb_attr_uc)
+    prior_te['O'] = (synthetic_dvecs['O'].filter_segment_value('direction_od', 1, keep_filtered=True) / hb_prod_uc)
+    prior_te['D'] = (synthetic_dvecs['D'].filter_segment_value('direction_od', 1, keep_filtered=True) / hb_attr_uc)
 
     for orig in ['O','D']:
         factor = prior_te[orig] * post_prior[orig]
@@ -116,7 +119,7 @@ def mts_adj_factors(postme_dir: Path,
                     out_dir: Path):
     seg = cb.Segmentation(cb.SegmentationInput(enum_segments=['m', 'userclass', 'direction_od', 'tp'],
                                naming_order=['m', 'tp', 'userclass', 'direction_od'],
-                               subsets={'m':[3], 'tp':[1,2,3,4]}))
+                               subsets={'m':[3], 'tp':[1,2,3]}))
     synth = MatrixFiles(segmentation_=seg,
                         zoning=NOHAM,
                         type_=MatrixType.OD,
