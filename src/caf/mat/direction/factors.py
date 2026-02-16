@@ -98,7 +98,6 @@ class PhiFactors:
         additional_segments: Sequence[str] | None = None,
         segment_filters: Mapping[str, Sequence[int]] | None = None,
     ):
-
         self._tp_segment = self._tp_segment_enum.get_segment()
 
         subsets: dict[str, Sequence[int]] = {}
@@ -122,7 +121,9 @@ class PhiFactors:
             data, self._additional_segments, subsets
         )
         # Segmentation with time period remove for validating get method
-        self._segmentation_no_tp = self._segmentation.remove_segment(self._tp_segment.name)
+        self._segmentation_no_tp = self._segmentation.remove_segment(
+            self._tp_segment.name
+        )
 
         # TODO(MB) This could be a parameter which warns user if not already sums to 1
         # Normalise time period factors, so time period from sums to 1
@@ -144,7 +145,9 @@ class PhiFactors:
 
             missing = expected_columns - columns
             if len(missing) > 0:
-                raise InvalidPhiFactors(f"{len(missing)} expected columns missing {missing}")
+                raise InvalidPhiFactors(
+                    f"{len(missing)} expected columns missing {missing}"
+                )
 
         data = data[list(expected_columns)]
 
@@ -179,7 +182,7 @@ class PhiFactors:
             )
         )
         index = segmentation_.ind()
-        segmentation_, _ = segmentation.Segmentation.validate_segmentation(
+        segmentation_, _, _ = segmentation.Segmentation.validate_segmentation(
             data, segmentation_, cut_read=True
         )
 
@@ -199,7 +202,9 @@ class PhiFactors:
         if self._additional_segments is None and slice_ is None:
             return self._data.copy()
         if self._additional_segments is None:
-            warnings.warn("slice given when phi factors has no segmentation", stacklevel=2)
+            warnings.warn(
+                "slice given when phi factors has no segmentation", stacklevel=2
+            )
             return self._data.copy()
         if slice_ is None:
             raise ValueError("no slice given for getting phi factors with segmentation")
@@ -264,7 +269,9 @@ class PhiFactors:
         if translate_segments is None:
             columns = tuple(segment_columns.values())
         else:
-            columns = tuple(translate_segments.get(i, i) for i in segment_columns.values())
+            columns = tuple(
+                translate_segments.get(i, i) for i in segment_columns.values()
+            )
 
         data = data.groupby([*columns, *cls._period_columns])[data_column].sum()
         data = data.unstack(cls._period_columns[1])
@@ -298,7 +305,9 @@ class OccupanciesParameters:
 
     path: pydantic.FilePath
     segment_columns: dict[str, segments.SegmentsSuper]
-    segment_translation: dict[segments.SegmentsSuper, segments.SegmentsSuper] | None = None
+    segment_translation: dict[segments.SegmentsSuper, segments.SegmentsSuper] | None = (
+        None
+    )
     driver_column: str | None = None
     total_column: str | None = None
     occupancy_column: str | None = None
@@ -407,7 +416,11 @@ def load_occupancies(
 
     dtypes = {
         **dict.fromkeys(tuple(segment_columns), int),
-        **{i: float for i in (driver_column, total_column, occupancy_column) if i is not None},
+        **{
+            i: float
+            for i in (driver_column, total_column, occupancy_column)
+            if i is not None
+        },
     }
     data = ctk.io.read_csv(
         path, "occupancy factors", dtype=dtypes, usecols=list(dtypes.keys())
@@ -433,7 +446,9 @@ def load_occupancies(
 
     elif total_column is not None and driver_column is not None:
         LOG.debug(
-            "Occupancies recalculated after grouping as %s / %s", total_column, driver_column
+            "Occupancies recalculated after grouping as %s / %s",
+            total_column,
+            driver_column,
         )
         data = data.groupby(columns)[[driver_column, total_column]].sum()
         data = data[total_column] / data[driver_column]

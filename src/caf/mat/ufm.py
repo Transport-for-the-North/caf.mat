@@ -78,10 +78,14 @@ class UFMConverter:
         if cwd is None:
             cwd = pathlib.Path()
 
-        arguments = [str(i.resolve()) if isinstance(i, pathlib.Path) else str(i) for i in args]
+        arguments = [
+            str(i.resolve()) if isinstance(i, pathlib.Path) else str(i) for i in args
+        ]
 
         LOG.debug(
-            "Running: %s\nWorking directory: %s", " ".join(i for i in arguments), cwd.resolve()
+            "Running: %s\nWorking directory: %s",
+            " ".join(i for i in arguments),
+            cwd.resolve(),
         )
         comp_proc = subprocess.run(
             arguments,
@@ -279,7 +283,9 @@ class UFMConverter:
 
         level_csvs = []
         level_names = data.index.get_level_values("level").unique()
-        LOG.info("Found %s levels in matrix, writing to separate CSVs", len(level_names))
+        LOG.info(
+            "Found %s levels in matrix, writing to separate CSVs", len(level_names)
+        )
         for level_name in level_names:
             level: pd.DataFrame = data.loc[level_name, :]
 
@@ -295,7 +301,10 @@ class UFMConverter:
         return level_csvs
 
     def _square_csv_to_ufm(
-        self, csv: pathlib.Path, ufm: pathlib.Path | None = None, title: str | None = None
+        self,
+        csv: pathlib.Path,
+        ufm: pathlib.Path | None = None,
+        title: str | None = None,
     ) -> pathlib.Path:
         """Convert CSV in square format to UFM file.
 
@@ -476,7 +485,9 @@ class UFMConverter:
             raise FileExistsError(out)
 
         LOG.debug("Converting %s to %s: %s", from_, to, path)
-        msg_data = self._run_cmd(f"{from_}2{to}", str(path.with_suffix("")), cwd=path.parent)
+        msg_data = self._run_cmd(
+            f"{from_}2{to}", str(path.with_suffix("")), cwd=path.parent
+        )
 
         if out.exists():
             LOG.debug("Created %s: %s\n%s\n%s", to, out, *msg_data)

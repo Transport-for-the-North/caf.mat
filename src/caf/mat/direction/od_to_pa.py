@@ -119,6 +119,7 @@ def disaggregate_postme(
     postme_segmentation: base.Segmentation,
     disaggregation_segments: list[str],
     *,
+    synthetic_tp: list[int] | None = None,
     postme_filename_template: str | None = None,
     synthetic_filename_template: str | None = None,
 ) -> matrices.MatrixFiles:
@@ -154,9 +155,14 @@ def disaggregate_postme(
         postme_folder.name,
         synth_folder.name,
     )
-
+    temp = postme_segmentation.copy()
+    if synthetic_tp is not None:
+        temp.input.subsets["tp"] = [
+            tp for tp in temp.input.subsets["tp"] if tp not in synthetic_tp
+        ]
+        temp = temp.reinit()
     postme = matrices.MatrixFiles(
-        postme_segmentation,
+        temp,
         zone_system,
         matrices.MatrixType.OD,
         postme_folder,
@@ -178,6 +184,8 @@ def disaggregate_postme(
     )
 
     output = postme.disaggregate(synthetic)
+    if synthetic_tp is not None:
+        output = synthetic.copy({"tp": synthetic_tp}, output)
     LOG.info("Written disaggregated matrices to: %s", output.folder)
     return output
 
@@ -190,7 +198,9 @@ def _matrix_multiply(
 ) -> pd.DataFrame:
     data = matrices_.get_matrix(slice_).data
     LOG.debug(
-        "Loading %s matrix for multiplication total = %.0f", slice_, np.sum(data.to_numpy())
+        "Loading %s matrix for multiplication total = %.0f",
+        slice_,
+        np.sum(data.to_numpy()),
     )
 
     if occ_factors is not None:
@@ -233,7 +243,9 @@ def _validate_od_input_outputs(input_: Matrices, output: Matrices) -> None:
         if mat.type != type_:
             raise ValueError(f"{name} matrices should be {type_.name} not {mat.type}")
         if not mat.has_type_segment:
-            raise ValueError(f"{name} matrices doesn't contain the correct direction segment")
+            raise ValueError(
+                f"{name} matrices doesn't contain the correct direction segment"
+            )
 
     if not input_.has_time_periods:
         raise ValueError("inputs matrices don't have time periods")
@@ -285,13 +297,17 @@ def nhb_proportions(
     LOG.info("Producing NHB proportions for %s - %s", input_.name, params)
     _validate_od_input_outputs(input_, output)
 
-    od_params = params | {segments.SegmentsSuper.DIRECTION_OD.value: _DIRECTION_VALUES["nhb"]}
+    od_params = params | {
+        segments.SegmentsSuper.DIRECTION_OD.value: _DIRECTION_VALUES["nhb"]
+    }
 
     tp_matrices: dict[segmentation.SegmentationSlice, pd.DataFrame] = {}
     for slice_ in input_.segmentation.iter_slices(od_params):
         data = _matrix_multiply(slice_, input_, occ_factors, tp_factors)
         tp_matrices[slice_] = data
-        LOG.debug("%s matrix total %.0f (after applying factors)", slice_, data.sum().sum())
+        LOG.debug(
+            "%s matrix total %.0f (after applying factors)", slice_, data.sum().sum()
+        )
 
     if len(tp_matrices) == 0:
         LOG.debug("No NHB matrices in %s for slice = %s", input_.name, params)
@@ -431,7 +447,9 @@ def _balance_fh_th(
             " cells where the total is zero, this shouldn't be possible"
         )
 
-    adjustment = np.divide(original, balanced, out=np.full_like(original, 1), where=mask)
+    adjustment = np.divide(
+        original, balanced, out=np.full_like(original, 1), where=mask
+    )
 
     return from_home, to_home, adjustment
 
@@ -466,7 +484,9 @@ def _od_adjustment_segmentation(input_: Matrices) -> segmentation.Segmentation:
         i for i in input_.segmentation.input.enum_segments if i.value != direction
     ]
     names = [i for i in input_.segmentation.input.naming_order if i != direction]
-    custom = [i for i in input_.segmentation.input.custom_segments if i.name != direction]
+    custom = [
+        i for i in input_.segmentation.input.custom_segments if i.name != direction
+    ]
 
     config = segmentation.SegmentationInput(
         enum_segments=enum_segments, naming_order=names, custom_segments=custom
@@ -512,7 +532,10 @@ def _calculate_tour_proportions(
     *,
     tp_name: str = "{}_tp",
 ):
-    targets = [_normalise_to_xarray(from_home, "from"), _normalise_to_xarray(to_home, "to")]
+    targets = [
+        _normalise_to_xarray(from_home, "from"),
+        _normalise_to_xarray(to_home, "to"),
+    ]
 
     time_periods = phi_factors.index.tolist()
 
@@ -521,7 +544,12 @@ def _calculate_tour_proportions(
     ).stack()
     phi = phi.reindex(
         pd.MultiIndex.from_product(
-            [time_periods, time_periods, output.zoning.zone_ids, output.zoning.zone_ids],
+            [
+                time_periods,
+                time_periods,
+                output.zoning.zone_ids,
+                output.zoning.zone_ids,
+            ],
             names=["from", "to", "origin", "destination"],
         )
     )
@@ -533,7 +561,9 @@ def _calculate_tour_proportions(
         len(time_periods) * (len(output.zoning) ** 2),
     )
     LOG.info(
-        "tour proportions furnessing complete after %s iterations with RMSE=%.0e", iter_, rmse
+        "tour proportions furnessing complete after %s iterations with RMSE=%.0e",
+        iter_,
+        rmse,
     )
 
     tour_props = furness_return_vals.to_series()
@@ -541,7 +571,8 @@ def _calculate_tour_proportions(
         output.set_matrix(
             tour_props.loc[from_tp, to_tp].unstack("destination"),
             segmentation.SegmentationSlice(
-                slice_params | {tp_name.format("from"): from_tp, tp_name.format("to"): to_tp},
+                slice_params
+                | {tp_name.format("from"): from_tp, tp_name.format("to"): to_tp},
                 output.segmentation.naming_order,
             ),
         )
@@ -733,7 +764,9 @@ def _hb_od_to_pa(
     totals.loc["Total", :] = totals.sum()
     totals.index.name = "Time Period"
     LOG.debug(
-        "%s matrix totals\n%s", ", ".join(f"{i}={j}" for i, j in params.items()), totals.T
+        "%s matrix totals\n%s",
+        ", ".join(f"{i}={j}" for i, j in params.items()),
+        totals.T,
     )
 
     return from_home, to_home, adjustments
@@ -748,6 +781,7 @@ class OD2PAParameters(ctk.BaseConfig):
 
     postme_folder: pydantic.DirectoryPath
     postme_segmentation: base.SegmentationInput
+    synthetic_tp: list[int] | None = None
     synthetic_folder: pydantic.DirectoryPath
 
     phi_factors: factors.PhiFactorsParameters
@@ -757,6 +791,42 @@ class OD2PAParameters(ctk.BaseConfig):
     synthetic_filename_template: str | None = None
     calculate_tour_proportions: bool = True
 
+def disagg_and_convert(parameters: OD2PAParameters):
+    zone_system = base.ZoningSystem.get_zoning(parameters.zone_system)
+
+    tp_name = segments.SegmentsSuper.TIMEPERIOD.value
+    postme_segmentation = segmentation.Segmentation(parameters.postme_segmentation)
+
+    if tp_name not in [i.name for i in postme_segmentation.segments]:
+        raise ValueError("postME matrices should contain time period segmentation")
+    
+    disaggregated = disaggregate_postme(
+        parameters.postme_folder,
+        parameters.synthetic_folder,
+        zone_system,
+        postme_segmentation,
+        [segments.SegmentsSuper.DIRECTION_OD.value],
+        synthetic_tp=parameters.synthetic_tp,
+        postme_filename_template=parameters.postme_filename_template,
+        synthetic_filename_template=parameters.synthetic_filename_template,
+    ).convert_type(matrices.MemoryMatrices)
+
+    occupancies = factors.load_occupancies(
+        parameters.occupancy_factors.path,
+        segment_columns=parameters.occupancy_factors.segment_names,
+        driver_column=parameters.occupancy_factors.driver_column,
+        total_column=parameters.occupancy_factors.total_column,
+        occupancy_column=parameters.occupancy_factors.occupancy_column,
+        translate_segments=parameters.occupancy_factors.segment_translation_names,
+    )
+
+    tp_data = pd.Series(parameters.time_period_factors)
+    tp_data.index.name = 'tp'
+    tp_dvec = base.DVector(import_data=tp_data, segmentation=base.Segmentation(base.SegmentationInput(enum_segments=['tp'], naming_order=['tp'], subsets={'tp': tp_data.index.to_list()})))
+
+    comp_factor = occupancies * tp_dvec
+
+    return disaggregated * comp_factor
 
 def main(parameters: OD2PAParameters):
     """Run OD to PA conversion process."""
@@ -769,12 +839,21 @@ def main(parameters: OD2PAParameters):
     if tp_name not in [i.name for i in postme_segmentation.segments]:
         raise ValueError("postME matrices should contain time period segmentation")
 
+    # try:
+    #     disaggregated = matrices.MatrixFiles(
+    #         segmentation_=postme_segmentation,
+    #         zoning=zone_system,
+    #         type_=matrices.MatrixType.OD,
+    #         folder=parameters.postme_folder
+    #     )
+    # except:
     disaggregated = disaggregate_postme(
         parameters.postme_folder,
         parameters.synthetic_folder,
         zone_system,
         postme_segmentation,
         [segments.SegmentsSuper.DIRECTION_OD.value],
+        synthetic_tp=parameters.synthetic_tp,
         postme_filename_template=parameters.postme_filename_template,
         synthetic_filename_template=parameters.synthetic_filename_template,
     )
@@ -786,7 +865,8 @@ def main(parameters: OD2PAParameters):
         period_filter=postme_segmentation.input.subsets[tp_name],
         period_columns=parameters.phi_factors.period_columns,
         translate_segments={
-            i.value: j.value for i, j in parameters.phi_factors.segment_translation.items()
+            i.value: j.value
+            for i, j in parameters.phi_factors.segment_translation.items()
         },
         segment_filters=postme_segmentation.input.subsets,
     )
@@ -800,12 +880,18 @@ def main(parameters: OD2PAParameters):
     )
 
     pa_segments = [
-        i for i in postme_segmentation.input.enum_segments if i.value != tp_name
+        i
+        for i in postme_segmentation.input.enum_segments
+        if i.value not in [tp_name, "direction_od"]
     ] + [segments.SegmentsSuper.DIRECTION]
-    pa_naming = [i for i in postme_segmentation.input.naming_order if i != tp_name] + [
-        segments.SegmentsSuper.DIRECTION.value
-    ]
-    pa_subsets = {i: j for i, j in postme_segmentation.input.subsets.items() if i != tp_name}
+    pa_naming = [
+        i
+        for i in postme_segmentation.input.naming_order
+        if i not in [tp_name, "direction_od"]
+    ] + [segments.SegmentsSuper.DIRECTION.value]
+    pa_subsets = {
+        i: j for i, j in postme_segmentation.input.subsets.items() if i != tp_name
+    }
 
     pa_matrices = disaggregated.new(
         "pa_postme",

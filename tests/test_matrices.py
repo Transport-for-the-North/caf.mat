@@ -78,7 +78,8 @@ def fix_long_data(
     zones = pd.DataFrame(
         {
             "origin": np.repeat(
-                np.repeat(zone_system.zone_ids, len(zone_system)), len(long_segmentation)
+                np.repeat(zone_system.zone_ids, len(zone_system)),
+                len(long_segmentation),
             ),
             "destination": np.repeat(
                 np.tile(zone_system.zone_ids, len(zone_system)), len(long_segmentation)
@@ -88,7 +89,8 @@ def fix_long_data(
     zones = pd.DataFrame(
         {
             "origin": np.tile(
-                np.repeat(zone_system.zone_ids, len(zone_system)), len(long_segmentation)
+                np.repeat(zone_system.zone_ids, len(zone_system)),
+                len(long_segmentation),
             ),
             "destination": np.tile(
                 np.tile(zone_system.zone_ids, len(zone_system)), len(long_segmentation)
@@ -163,7 +165,9 @@ class TestLongMatrices:
 
         pd.testing.assert_frame_equal(long_data.data, answer._data)
 
-    def test_from_csv(self, long_data_csv: tuple[pathlib.Path, LongMatricesData]) -> None:
+    def test_from_csv(
+        self, long_data_csv: tuple[pathlib.Path, LongMatricesData]
+    ) -> None:
         """Test loading data from a CSV with `from_csv`."""
         path, long_matrices = long_data_csv
         answer = matrices.LongMatrices.from_csv(
@@ -242,7 +246,8 @@ def _produce_matrices_files(
 
     for slice_, df in data.items():
         df.to_csv(
-            folder / f"{type_.name}_{slice_.generate_name(segmentation_.seg_dict)}.csv.bz2"
+            folder
+            / f"{type_.name}_{slice_.generate_name(segmentation_.seg_dict)}.csv.bz2"
         )
 
     matrices_ = matrices.MatrixFiles(segmentation_, zone_system, type_, folder)
@@ -498,7 +503,9 @@ def fix_disaggregate_dataset(zone_system: zoning.ZoningSystem) -> DisaggregateDa
         segmentation.SegmentationInput(
             enum_segments=list(filter_tp(to_segmentation.input.naming_order)),  # type: ignore
             naming_order=list(filter_tp(to_segmentation.input.naming_order)),
-            subsets={i: j for i, j in to_segmentation.input.subsets.items() if i != "tp"},
+            subsets={
+                i: j for i, j in to_segmentation.input.subsets.items() if i != "tp"
+            },
         )
     )
 
@@ -768,7 +775,8 @@ def fix_disaggregate_replace_datasets(
 
         for p in purposes:
             slice_ = segmentation.SegmentationSlice(
-                {"direction_od": direction, "p": p, "m": 3}, to_segmentation.naming_order
+                {"direction_od": direction, "p": p, "m": 3},
+                to_segmentation.naming_order,
             )
             total += expected_matrices[slice_]
 
@@ -816,13 +824,19 @@ def fix_disaggregate_replace_memory_matrices(
         disaggregate_replace_datasets.from_segmentation,
         disaggregate_replace_datasets.zone_system,
         disaggregate_replace_datasets.type_,
-        [matrices.Matrix(j, i) for i, j in disaggregate_replace_datasets.input_.items()],
+        [
+            matrices.Matrix(j, i)
+            for i, j in disaggregate_replace_datasets.input_.items()
+        ],
     )
     target_matrices = matrices.MemoryMatrices(
         disaggregate_replace_datasets.to_segmentation,
         disaggregate_replace_datasets.zone_system,
         disaggregate_replace_datasets.type_,
-        [matrices.Matrix(j, i) for i, j in disaggregate_replace_datasets.targets.items()],
+        [
+            matrices.Matrix(j, i)
+            for i, j in disaggregate_replace_datasets.targets.items()
+        ],
     )
 
     return DisaggregateReplaceMatrices(
@@ -977,13 +991,19 @@ def fix_disaggregate_and_replace_memory_matrices(
         disaggregate_and_replace_datasets.from_segmentation,
         disaggregate_and_replace_datasets.zone_system,
         disaggregate_and_replace_datasets.type_,
-        [matrices.Matrix(j, i) for i, j in disaggregate_and_replace_datasets.input_.items()],
+        [
+            matrices.Matrix(j, i)
+            for i, j in disaggregate_and_replace_datasets.input_.items()
+        ],
     )
     target_matrices = matrices.MemoryMatrices(
         disaggregate_and_replace_datasets.to_segmentation,
         disaggregate_and_replace_datasets.zone_system,
         disaggregate_and_replace_datasets.type_,
-        [matrices.Matrix(j, i) for i, j in disaggregate_and_replace_datasets.targets.items()],
+        [
+            matrices.Matrix(j, i)
+            for i, j in disaggregate_and_replace_datasets.targets.items()
+        ],
     )
 
     return DisaggregateReplaceMatrices(
@@ -1181,7 +1201,9 @@ class TestMatrices:
         else:
             new_segmentation = None
 
-        with warnings.catch_warnings(action="ignore", category=matrices.MatricesWarning):
+        with warnings.catch_warnings(
+            action="ignore", category=matrices.MatricesWarning
+        ):
             new = result.test.new(
                 name, segmentation_=new_segmentation, zoning=new_zoning, type_=new_type
             )
@@ -1271,7 +1293,9 @@ class TestMatrices:
         """Test `validate_slice` with valid slices."""
         result: MatricesResults = request.getfixturevalue(matrices_)
 
-        slice_ = segmentation.SegmentationSlice(params, result.segmentation_.naming_order)
+        slice_ = segmentation.SegmentationSlice(
+            params, result.segmentation_.naming_order
+        )
         result.test.validate_slice(slice_)
 
     @pytest.mark.parametrize(
@@ -1287,7 +1311,9 @@ class TestMatrices:
     ) -> None:
         """Test `validate_slice` correctly raises error."""
         result: MatricesResults = request.getfixturevalue(matrices_)
-        slice_ = segmentation.SegmentationSlice(params, result.segmentation_.naming_order)
+        slice_ = segmentation.SegmentationSlice(
+            params, result.segmentation_.naming_order
+        )
 
         with pytest.raises(ValueError):
             result.test.validate_slice(slice_)
@@ -1295,7 +1321,9 @@ class TestMatrices:
     @pytest.mark.parametrize(
         "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
     )
-    def test_validate_matrix(self, request: pytest.FixtureRequest, matrices_: str) -> None:
+    def test_validate_matrix(
+        self, request: pytest.FixtureRequest, matrices_: str
+    ) -> None:
         """Test `validate_matrix` for valid matrix."""
         result: MatricesResults = request.getfixturevalue(matrices_)
 
@@ -1322,7 +1350,11 @@ class TestMatrices:
 
     @pytest.mark.parametrize(
         "matrices_",
-        ["aggregate_memory_matrices", "aggregate_matrices_files", "aggregate_long_matrices"],
+        [
+            "aggregate_memory_matrices",
+            "aggregate_matrices_files",
+            "aggregate_long_matrices",
+        ],
     )
     def test_aggregate(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test aggregating to up a segment."""

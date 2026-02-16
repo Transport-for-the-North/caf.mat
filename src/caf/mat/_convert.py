@@ -12,13 +12,16 @@ See Also
 
 ##### IMPORTS #####
 
+# Built-Ins
 import datetime
 import logging
 import os
 import pathlib
 
+# Third Party
 import pydantic
 
+# Local Imports
 from caf.mat import _mat, cube, ufm
 
 ##### CONSTANTS #####
@@ -150,7 +153,9 @@ def _validate_paths(
         if saturn_path is None:
             raise ValueError("saturn path required for UFM conversions")
         if not saturn_path.is_dir():
-            raise NotADirectoryError(f"SATURN path should point to exes folder: {saturn_path}")
+            raise NotADirectoryError(
+                f"SATURN path should point to exes folder: {saturn_path}"
+            )
     if _mat.MatrixFileFormat.CUBE in formats:
         if voyager_path is None:
             raise ValueError("voyager path required for CUBE MAT conversions")
