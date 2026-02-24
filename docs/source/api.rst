@@ -1,17 +1,16 @@
-.. _api-docs:
+API Reference
+=============
 
-Module API Documentation
-========================
-
-This section shows the detailed code documentation for caf.mat,
+This section shows the detailed documentation for CAF.mat,
 last updated on |today|.
 
 .. note::
+   - For quick start guide see :ref:`quick start`
    - For more in-depth user guide and tutorial see :ref:`user guide`
-   - For code examples see :ref:`examples`
+   - For code examples see :ref:`code examples`
 
 .. autosummary::
-    :toctree: _autosummary/
+    :toctree: _generated/autosummary/
     :recursive:
 
     caf.mat

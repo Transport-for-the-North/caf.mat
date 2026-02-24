@@ -133,3 +133,8 @@ dmypy.json
 
 # VS Code
 .vscode/
+
+# Data Files (avoid accidentally uploading data)
+*.csv
+*.xlsx
+

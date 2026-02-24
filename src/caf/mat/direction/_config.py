@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Configuration files and parameters for running caf.mat direction functionality."""
 
 ##### IMPORTS #####

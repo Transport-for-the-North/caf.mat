@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for `matrices` module."""
 
 ##### IMPORTS #####
@@ -8,10 +7,10 @@ import dataclasses
 import functools
 import pathlib
 import warnings
-from typing import Generator
+from collections.abc import Generator
 
 # Third Party
-import caf.base as base
+import caf.base as cbase
 import numpy as np
 import pandas as pd
 import pytest
@@ -24,9 +23,9 @@ from caf.mat import matrices
 
 
 @pytest.fixture(name="zone_system")
-def fix_zone_system() -> base.ZoningSystem:
+def fix_zone_system() -> cbase.ZoningSystem:
     """Test zoning system with 3 zones."""
-    return base.ZoningSystem(
+    return cbase.ZoningSystem(
         "test",
         pd.DataFrame({"zone_id": [1, 2, 3]}),
         zoning.ZoningSystemMetaData(name="test"),
@@ -34,7 +33,7 @@ def fix_zone_system() -> base.ZoningSystem:
 
 
 def random_matrices(
-    zones: base.ZoningSystem, max_: int = 100, seed: int = 1
+    zones: cbase.ZoningSystem, max_: int = 100, seed: int = 1
 ) -> Generator[pd.DataFrame, None, None]:
     """Generate random square matrices with given zones."""
     rng = np.random.default_rng(seed)
@@ -54,7 +53,7 @@ def random_matrices(
 def fix_long_segmentation() -> segmentation.Segmentation:
     """Segmentation for LongMatrices tests."""
     config = segmentation.SegmentationInput(
-        enum_segments=["p", "tp", "direction"],  # type: ignore
+        enum_segments=["p", "tp", "direction"],
         naming_order=["p", "tp", "direction"],
         subsets={"p": [1, 2], "direction": [1], "tp": [1, 3]},
     )
@@ -72,7 +71,7 @@ class LongMatricesData:
 
 @pytest.fixture(name="long_data")
 def fix_long_data(
-    zone_system: base.ZoningSystem, long_segmentation: base.Segmentation
+    zone_system: cbase.ZoningSystem, long_segmentation: cbase.Segmentation
 ) -> LongMatricesData:
     """Single column of data for LongMatrices tests."""
     zones = pd.DataFrame(
@@ -151,7 +150,7 @@ class TestLongMatrices:
         for tests on the methods implemented in :class:`MatricesBase`.
     """
 
-    def test_init(self, long_data: LongMatricesData):
+    def test_init(self, long_data: LongMatricesData) -> None:
         """Test initialising LongMatrices class with a dataframe."""
         answer = matrices.LongMatrices(
             long_data.segmentation,
@@ -262,11 +261,11 @@ def _produce_long_matrices(
 
     datasets = []
     for slice_, df in data.items():
-        df = df.stack()
+        df = df.stack()  # noqa: PLW2901
         df.index = pd.MultiIndex.from_arrays(
             [[i] * len(df) for i in slice_.as_tuple()]
             + [df.index.get_level_values(i) for i in (0, 1)],
-            names=slice_.naming_order + ("origin", "destination"),
+            names=(*slice_.naming_order, "origin", "destination"),
         )
         df.name = "trips"
         datasets.append(df)
@@ -281,9 +280,9 @@ def _produce_long_matrices(
 
 @pytest.fixture(name="tp_segmentation")
 def fix_tp_segmentation() -> tuple[segmentation.Segmentation, matrices.MatrixType]:
-    """Simple PA segmentation containing time period for testing."""
+    """PA segmentation containing time period for testing."""
     input_ = segmentation.SegmentationInput(
-        enum_segments=["userclass", "direction", "tp"],  # type: ignore
+        enum_segments=["userclass", "direction", "tp"],  # type: ignore[arg-type]
         naming_order=["userclass", "direction", "tp"],
         subsets={"tp": [1, 2, 3]},
     )
@@ -292,10 +291,10 @@ def fix_tp_segmentation() -> tuple[segmentation.Segmentation, matrices.MatrixTyp
 
 @pytest.fixture(name="tp_memory_matrices")
 def fix_tp_memory_matrices(
-    zone_system: base.ZoningSystem,
+    zone_system: cbase.ZoningSystem,
     tp_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
 ) -> MatricesResults:
-    """Simple PA MemoryMatrices containing time period for testing."""
+    """PA MemoryMatrices containing time period for testing."""
     data, matrices_ = _produce_memory_matrices(zone_system, *tp_segmentation)
 
     return MatricesResults(
@@ -310,10 +309,10 @@ def fix_tp_memory_matrices(
 @pytest.fixture(name="tp_matrices_files")
 def fix_tp_matrices_files(
     tmp_path: pathlib.Path,
-    zone_system: base.ZoningSystem,
+    zone_system: cbase.ZoningSystem,
     tp_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
 ) -> MatricesResults:
-    """Simple PA MatricesFile containing time period for testing."""
+    """PA MatricesFile containing time period for testing."""
     data, matrices_ = _produce_matrices_files(tmp_path, zone_system, *tp_segmentation)
 
     return MatricesResults(
@@ -327,10 +326,10 @@ def fix_tp_matrices_files(
 
 @pytest.fixture(name="tp_long_matrices")
 def fix_tp_long_matrices(
-    zone_system: base.ZoningSystem,
+    zone_system: cbase.ZoningSystem,
     tp_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
 ) -> MatricesResults:
-    """Simple PA LongMatrices containing time period for testing."""
+    """PA LongMatrices containing time period for testing."""
     data, matrices_ = _produce_long_matrices(zone_system, *tp_segmentation)
 
     return MatricesResults(
@@ -344,9 +343,9 @@ def fix_tp_long_matrices(
 
 @pytest.fixture(name="hb_segmentation")
 def fix_hb_segmentation() -> tuple[segmentation.Segmentation, matrices.MatrixType]:
-    """Simple PA HB segmentation without time period for testing."""
+    """PA HB segmentation without time period for testing."""
     input_ = segmentation.SegmentationInput(
-        enum_segments=["p", "direction"],  # type: ignore
+        enum_segments=["p", "direction"],  # type: ignore[arg-type]
         naming_order=["p", "direction"],
         subsets={"p": list(range(1, 9)), "direction": [1]},
     )
@@ -355,10 +354,10 @@ def fix_hb_segmentation() -> tuple[segmentation.Segmentation, matrices.MatrixTyp
 
 @pytest.fixture(name="hb_memory_matrices")
 def fix_hb_memory_matrices(
-    zone_system: base.ZoningSystem,
+    zone_system: cbase.ZoningSystem,
     hb_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
 ) -> MatricesResults:
-    """Simple PA HB MemoryMatrices without time period for testing."""
+    """PA HB MemoryMatrices without time period for testing."""
     data, matrices_ = _produce_memory_matrices(zone_system, *hb_segmentation)
 
     return MatricesResults(
@@ -373,10 +372,10 @@ def fix_hb_memory_matrices(
 @pytest.fixture(name="hb_matrices_files")
 def fix_hb_matrices_files(
     tmp_path: pathlib.Path,
-    zone_system: base.ZoningSystem,
+    zone_system: cbase.ZoningSystem,
     hb_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
 ) -> MatricesResults:
-    """Simple PA HB MatricesFiles without time period for testing."""
+    """PA HB MatricesFiles without time period for testing."""
     data, matrices_ = _produce_matrices_files(tmp_path, zone_system, *hb_segmentation)
 
     return MatricesResults(
@@ -390,10 +389,10 @@ def fix_hb_matrices_files(
 
 @pytest.fixture(name="hb_long_matrices")
 def fix_hb_long_matrices(
-    zone_system: base.ZoningSystem,
+    zone_system: cbase.ZoningSystem,
     hb_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
 ) -> MatricesResults:
-    """Simple PA HB LongMatrices without time period for testing."""
+    """PA HB LongMatrices without time period for testing."""
     data, matrices_ = _produce_long_matrices(zone_system, *hb_segmentation)
 
     return MatricesResults(
@@ -407,9 +406,9 @@ def fix_hb_long_matrices(
 
 @pytest.fixture(name="nhb_segmentation")
 def fix_nhb_segmentation() -> tuple[segmentation.Segmentation, matrices.MatrixType]:
-    """Simple PA NHB segmentation without time period for testing."""
+    """PA NHB segmentation without time period for testing."""
     input_ = segmentation.SegmentationInput(
-        enum_segments=["p", "direction"],  # type: ignore
+        enum_segments=["p", "direction"],  # type: ignore[arg-type]
         naming_order=["p", "direction"],
         subsets={"p": [11, 12, 13, 14, 15, 16, 17, 18], "direction": [0]},
     )
@@ -418,10 +417,10 @@ def fix_nhb_segmentation() -> tuple[segmentation.Segmentation, matrices.MatrixTy
 
 @pytest.fixture(name="nhb_memory_matrices")
 def fix_nhb_memory_matrices(
-    zone_system: base.ZoningSystem,
+    zone_system: cbase.ZoningSystem,
     nhb_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
 ) -> MatricesResults:
-    """Simple PA NHB MemoryMatrices without time period for testing."""
+    """PA NHB MemoryMatrices without time period for testing."""
     data, matrices_ = _produce_memory_matrices(zone_system, *nhb_segmentation)
 
     return MatricesResults(
@@ -436,10 +435,10 @@ def fix_nhb_memory_matrices(
 @pytest.fixture(name="nhb_matrices_files")
 def fix_nhb_matrices_files(
     tmp_path: pathlib.Path,
-    zone_system: base.ZoningSystem,
+    zone_system: cbase.ZoningSystem,
     nhb_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
 ) -> MatricesResults:
-    """Simple PA NHB MatricesFiles without time period for testing."""
+    """PA NHB MatricesFiles without time period for testing."""
     data, matrices_ = _produce_matrices_files(tmp_path, zone_system, *nhb_segmentation)
 
     return MatricesResults(
@@ -453,10 +452,10 @@ def fix_nhb_matrices_files(
 
 @pytest.fixture(name="nhb_long_matrices")
 def fix_nhb_long_matrices(
-    zone_system: base.ZoningSystem,
+    zone_system: cbase.ZoningSystem,
     nhb_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
 ) -> MatricesResults:
-    """Simple PA NHB LongMatrices without time period for testing."""
+    """PA NHB LongMatrices without time period for testing."""
     data, matrices_ = _produce_long_matrices(zone_system, *nhb_segmentation)
 
     return MatricesResults(
@@ -486,7 +485,7 @@ def fix_disaggregate_dataset(zone_system: zoning.ZoningSystem) -> DisaggregateDa
     """Dataset for testing disaggregate method."""
     to_segmentation = segmentation.Segmentation(
         segmentation.SegmentationInput(
-            enum_segments=["userclass", "direction_od", "tp"],  # type: ignore
+            enum_segments=["userclass", "direction_od", "tp"],  # type: ignore[arg-type]
             naming_order=["userclass", "direction_od", "tp"],
             subsets={"tp": [1, 2, 3]},
         )
@@ -496,7 +495,7 @@ def fix_disaggregate_dataset(zone_system: zoning.ZoningSystem) -> DisaggregateDa
     filter_tp = functools.partial(filter, lambda x: x != "tp")
     from_segmentation = segmentation.Segmentation(
         segmentation.SegmentationInput(
-            enum_segments=list(filter_tp(to_segmentation.input.naming_order)),  # type: ignore
+            enum_segments=list(filter_tp(to_segmentation.input.naming_order)),  # type: ignore[arg-type]
             naming_order=list(filter_tp(to_segmentation.input.naming_order)),
             subsets={i: j for i, j in to_segmentation.input.subsets.items() if i != "tp"},
         )
@@ -723,7 +722,7 @@ class DisaggregateReplaceDatasets:
     input_: dict[segmentation.SegmentationSlice, pd.DataFrame]
     targets: dict[segmentation.SegmentationSlice, pd.DataFrame]
     expected: dict[segmentation.SegmentationSlice, pd.DataFrame]
-    segments: tuple[base.Segment, base.Segment]
+    segments: tuple[cbase.Segment, cbase.Segment]
 
 
 @pytest.fixture(name="disaggregate_replace_datasets")
@@ -733,17 +732,17 @@ def fix_disaggregate_replace_datasets(
     """Datasets for testing disaggregate replace method."""
     segments = ["m"]
     subsets = {"m": [3]}
-    from_segmentation = base.Segmentation(
-        base.SegmentationInput(
-            enum_segments=segments + ["userclass", "direction_od"],
-            naming_order=["direction_od", "userclass"] + segments,
+    from_segmentation = cbase.Segmentation(
+        cbase.SegmentationInput(
+            enum_segments=[*segments, "userclass", "direction_od"],
+            naming_order=["direction_od", "userclass", *segments],
             subsets=subsets,
         )
     )
-    to_segmentation = base.Segmentation(
-        base.SegmentationInput(
-            enum_segments=segments + ["p", "direction_od"],
-            naming_order=["direction_od", "p"] + segments,
+    to_segmentation = cbase.Segmentation(
+        cbase.SegmentationInput(
+            enum_segments=[*segments, "p", "direction_od"],
+            naming_order=["direction_od", "p", *segments],
             subsets=subsets,
         )
     )
@@ -787,8 +786,8 @@ def fix_disaggregate_replace_datasets(
         targets={i: j / 3 for i, j in expected_matrices.items()},
         expected=expected_matrices,
         segments=(
-            base.segments.SegmentsSuper.USERCLASS.get_segment(),
-            base.segments.SegmentsSuper.PURPOSE.get_segment(),
+            cbase.segments.SegmentsSuper.USERCLASS.get_segment(),
+            cbase.segments.SegmentsSuper.PURPOSE.get_segment(),
         ),
     )
 
@@ -804,7 +803,7 @@ class DisaggregateReplaceMatrices:
     input_: Matrices
     targets: Matrices
     expected: dict[segmentation.SegmentationSlice, pd.DataFrame]
-    segments: tuple[base.Segment, base.Segment]
+    segments: tuple[cbase.Segment, cbase.Segment]
 
 
 @pytest.fixture(name="disaggregate_replace_memory_matrices")
@@ -901,22 +900,24 @@ def fix_disaggregate_replace_long_matrices(
 
 
 @pytest.fixture(name="disaggregate_and_replace_datasets")
-def fix_disaggregate_and_replace_datasets(zone_system: base.ZoningSystem):
+def fix_disaggregate_and_replace_datasets(
+    zone_system: cbase.ZoningSystem,
+) -> DisaggregateReplaceDatasets:
     """Datasets for the disaggregate and replace tests."""
     time_periods = [1, 2, 3]
     segments = ["m"]
     subsets = {"m": [3]}
-    from_segmentation = base.Segmentation(
-        base.SegmentationInput(
-            enum_segments=segments + ["userclass", "direction_od"],
-            naming_order=["direction_od", "userclass"] + segments,
+    from_segmentation = cbase.Segmentation(
+        cbase.SegmentationInput(
+            enum_segments=[*segments, "userclass", "direction_od"],
+            naming_order=["direction_od", "userclass", *segments],
             subsets=subsets,
         )
     )
-    to_segmentation = base.Segmentation(
-        base.SegmentationInput(
-            enum_segments=segments + ["p", "direction_od", "tp"],
-            naming_order=["direction_od", "p"] + segments + ["tp"],
+    to_segmentation = cbase.Segmentation(
+        cbase.SegmentationInput(
+            enum_segments=[*segments, "p", "direction_od", "tp"],
+            naming_order=["direction_od", "p", *segments, "tp"],
             subsets=subsets | {"tp": time_periods},
         )
     )
@@ -962,8 +963,8 @@ def fix_disaggregate_and_replace_datasets(zone_system: base.ZoningSystem):
         targets={i: j / 3 for i, j in expected_matrices.items()},
         expected=expected_matrices,
         segments=(
-            base.segments.SegmentsSuper.USERCLASS.get_segment(),
-            base.segments.SegmentsSuper.PURPOSE.get_segment(),
+            cbase.segments.SegmentsSuper.USERCLASS.get_segment(),
+            cbase.segments.SegmentsSuper.PURPOSE.get_segment(),
         ),
     )
 
@@ -1148,7 +1149,7 @@ class TestMatrices:
         [
             None,
             segmentation.SegmentationInput(
-                enum_segments=["p", "m"],  # type: ignore
+                enum_segments=["p", "m"],  # type: ignore[arg-type]
                 naming_order=["p", "m"],
             ),
         ],
@@ -1311,7 +1312,7 @@ class TestMatrices:
         """Test `validate_matrix` correctly raises error."""
         result: MatricesResults = request.getfixturevalue(matrices_)
 
-        zones = pd.DataFrame({"zone_id": result.zoning_.zone_ids.tolist() + [-1]})
+        zones = pd.DataFrame({"zone_id": [*result.zoning_.zone_ids.tolist(), -1]})
         zoning_ = zoning.ZoningSystem(
             "invalid zones", zones, zoning.ZoningSystemMetaData(name="invalid zones")
         )

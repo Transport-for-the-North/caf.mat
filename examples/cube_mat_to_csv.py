@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 CUBE .mat to CSV
 ================
@@ -77,8 +76,8 @@ def parse_args() -> tuple[pathlib.Path, pathlib.Path]:
     return args.voyager_path, args.matrix_folder
 
 
-def main():
-    """Main function for running converting CUBE .mat to CSVs."""
+def main() -> None:
+    """Convert CUBE .mat to CSVs."""
     voyager_path, matrix_folder = parse_args()
     converter = CUBEMatConverter(voyager_path)
 

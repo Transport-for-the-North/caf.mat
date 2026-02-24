@@ -1,20 +1,17 @@
-.. _user-guide:
-
 User Guide
 ==========
 
-This section provides a guide on using caf.mat.
+This section provides an in-depth guide on using CAF.mat.
 
 .. note::
-   - For details on the package API see :ref:`module api documentation`
-   - For code examples see :ref:`examples`
+   - For quick start guide see :ref:`quick start`
+   - For details on the package API see :ref:`api reference`
+   - For code examples see :ref:`code examples`
 
-Installation
-------------
+.. toctree::
+   :maxdepth: 2
 
-Installation information goes here
+   usage/index
+   tutorial
+   _generated/examples/index
 
-Tutorials
----------
-
-Tutorials and user guides for common functionality.

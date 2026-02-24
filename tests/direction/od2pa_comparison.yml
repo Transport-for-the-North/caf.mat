@@ -1,9 +1,9 @@
-output_folder: C:\Users\Kirkland\Documents\caf.mat tests
+output_folder: tests\outputs
 comparisons:
   final_outputs:
-    old: T:\Matt Buckley\PAOD\od_matrices\factorised
+    old: matrices\old
     old_format: tp
-    new: C:\Users\Kirkland\Documents\caf.mat tests\pa_postme
+    new: matrices\new
     new_format: square
     filenames:
       noham_m3_ts24hr_post_uc1fr.csv: PA_m3_business_hb.csv.bz2

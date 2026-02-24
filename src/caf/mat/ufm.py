@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Module containing functionality to convert CSV matrices into SATURN's UFM files."""
 
 ##### IMPORTS #####
@@ -83,7 +82,8 @@ class UFMConverter:
         LOG.debug(
             "Running: %s\nWorking directory: %s", " ".join(i for i in arguments), cwd.resolve()
         )
-        comp_proc = subprocess.run(
+        # TODO(MB): check if this can be ran with shell = False #23
+        comp_proc = subprocess.run(  # noqa: S602
             arguments,
             capture_output=True,
             env=self.environment,

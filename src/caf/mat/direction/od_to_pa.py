@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """OD to PA conversion functionality."""
 
 ##### IMPORTS #####
@@ -8,10 +7,11 @@ import itertools
 import logging
 import pathlib
 import warnings
-from typing import Literal, Sequence, TypeVar
+from collections.abc import Sequence
+from typing import Literal, TypeVar
 
 # Third Party
-import caf.base as base  # isort conflict pylint: disable=consider-using-from-import
+import caf.base as cbase
 import caf.toolkit as ctk
 import numpy as np
 import pandas as pd
@@ -115,8 +115,8 @@ def balance_fh_th_conserve_24hr(
 def disaggregate_postme(
     postme_folder: pathlib.Path,
     synth_folder: pathlib.Path,
-    zone_system: base.ZoningSystem,
-    postme_segmentation: base.Segmentation,
+    zone_system: cbase.ZoningSystem,
+    postme_segmentation: cbase.Segmentation,
     disaggregation_segments: list[str],
     *,
     postme_filename_template: str | None = None,
@@ -164,13 +164,13 @@ def disaggregate_postme(
     )
 
     enum_segments = [segments.SegmentsSuper(i) for i in disaggregation_segments]
-    synth_seg_input = base.SegmentationInput(
+    synth_seg_input = cbase.SegmentationInput(
         enum_segments=postme_segmentation.input.enum_segments + enum_segments,
         naming_order=postme_segmentation.input.naming_order + disaggregation_segments,
         subsets=postme_segmentation.input.subsets,
     )
     synthetic = matrices.MatrixFiles(
-        base.Segmentation(synth_seg_input),
+        cbase.Segmentation(synth_seg_input),
         zone_system,
         matrices.MatrixType.OD,
         synth_folder,
@@ -185,7 +185,7 @@ def disaggregate_postme(
 def _matrix_multiply(
     slice_: segmentation.SegmentationSlice,
     matrices_: Matrices,
-    occ_factors: base.DVector | None = None,
+    occ_factors: cbase.DVector | None = None,
     tp_factors: dict[int, int | float] | None = None,
 ) -> pd.DataFrame:
     data = matrices_.get_matrix(slice_).data
@@ -253,9 +253,9 @@ def nhb_proportions(
     output: Matrices,
     output_proportions: Matrices,
     *,
-    occ_factors: base.DVector | None = None,
+    occ_factors: cbase.DVector | None = None,
     tp_factors: dict[int, int | float] | None = None,
-):
+) -> None:
     """Calculate 24hr NHB and return proportions.
 
     Parameters
@@ -313,14 +313,14 @@ def nhb_proportions(
                 " cells where the total is zero, this shouldn't be possible"
             )
 
-        data = np.divide(data, nhb_24hr, out=np.full_like(nhb_24hr, 0), where=mask)
-        output_proportions.set_matrix(data, slice_)
+        proportions = np.divide(data, nhb_24hr, out=np.full_like(nhb_24hr, 0), where=mask)
+        output_proportions.set_matrix(proportions, slice_)
 
 
 def _get_time_matrices(
     input_: Matrices,
     params: dict[str, int],
-    occ_factors: base.DVector | None = None,
+    occ_factors: cbase.DVector | None = None,
     tp_factors: dict[int, int | float] | None = None,
     *,
     transpose_to_home: bool = False,
@@ -368,7 +368,7 @@ def _get_time_matrices(
     to_home = pd.concat(unstacked_matrices["to"], axis=1)
     if transpose_to_home:
         # Switch origins and destinations to transpose
-        to_home.index.rename(list(reversed(to_home.index.names)), inplace=True)
+        to_home.index = to_home.index.rename(list(reversed(to_home.index.names)))
         to_home = to_home.reorder_levels(from_home.index.names).sort_index()
 
     if len(unstacked_matrices["nhb"]) > 0:
@@ -441,7 +441,7 @@ def _set_matrices_by_time_period(
     data: pd.DataFrame,
     params: dict[str, int],
     column_segment: str = segments.SegmentsSuper.TIMEPERIOD.value,
-):
+) -> None:
     """Output each column as a separate matrix."""
     for column in data.columns:
         slice_ = segmentation.SegmentationSlice(
@@ -511,7 +511,7 @@ def _calculate_tour_proportions(
     output: Matrices,
     *,
     tp_name: str = "{}_tp",
-):
+) -> None:
     targets = [_normalise_to_xarray(from_home, "from"), _normalise_to_xarray(to_home, "to")]
 
     time_periods = phi_factors.index.tolist()
@@ -553,7 +553,7 @@ def _save_hb_return_factors(
     output: Matrices,
     params: dict[str, int],
     column_segment: str,
-):
+) -> None:
     """Output normalised from / to home factors."""
     for name, data in (("from", from_home), ("to", to_home)):
         _set_matrices_by_time_period(
@@ -570,10 +570,10 @@ def od_to_pa(
     balancing_method: Literal["op", "24"],
     phi: factors.PhiFactors,
     *,
-    occ_factors: base.DVector | None = None,
+    occ_factors: cbase.DVector | None = None,
     tp_factors: dict[int, int | float] | None = None,
     calculate_tour_proportions: bool = True,
-):
+) -> None:
     """Convert OD matrices to PA and generate tour proportions.
 
     Parameters
@@ -625,8 +625,8 @@ def od_to_pa(
         columns=[input_.type.direction_segment.name, tp_name]
     ).drop_duplicates()
 
-    for params in slices_iter.itertuples(index=False):
-        params = params._asdict()
+    for params in map(lambda x: x._asdict(), slices_iter.itertuples(index=False)):
+        assert isinstance(params, dict)  # noqa: S101 - type hint
         if not input_.is_home_based_only:
             nhb_proportions(
                 input_,
@@ -639,7 +639,8 @@ def od_to_pa(
 
         if input_.is_non_home_based_only:
             warnings.warn(
-                "input matrices are NHB only, so OD to PA conversion is ignored for HB"
+                "input matrices are NHB only, so OD to PA conversion is ignored for HB",
+                stacklevel=2,
             )
             continue
 
@@ -702,7 +703,7 @@ def _hb_od_to_pa(
     params: dict[str, int],
     phi_factors: pd.DataFrame,
     *,
-    occ_factors: base.DVector | None = None,
+    occ_factors: cbase.DVector | None = None,
     tp_factors: dict[int, int | float] | None = None,
     tp_segment_name: str = "tp",
     transpose_to_home: bool = True,
@@ -747,7 +748,7 @@ class OD2PAParameters(ctk.BaseConfig):
     balancing_method: Literal["op", "24"]
 
     postme_folder: pydantic.DirectoryPath
-    postme_segmentation: base.SegmentationInput
+    postme_segmentation: cbase.SegmentationInput
     synthetic_folder: pydantic.DirectoryPath
 
     phi_factors: factors.PhiFactorsParameters
@@ -758,10 +759,10 @@ class OD2PAParameters(ctk.BaseConfig):
     calculate_tour_proportions: bool = True
 
 
-def main(parameters: OD2PAParameters):
+def main(parameters: OD2PAParameters) -> None:
     """Run OD to PA conversion process."""
     LOG.debug("Run parameters\n%s", parameters.to_yaml())
-    zone_system = base.ZoningSystem.get_zoning(parameters.zone_system)
+    zone_system = cbase.ZoningSystem.get_zoning(parameters.zone_system)
 
     tp_name = segments.SegmentsSuper.TIMEPERIOD.value
     postme_segmentation = segmentation.Segmentation(parameters.postme_segmentation)
@@ -809,8 +810,8 @@ def main(parameters: OD2PAParameters):
 
     pa_matrices = disaggregated.new(
         "pa_postme",
-        segmentation_=base.Segmentation(
-            base.SegmentationInput(
+        segmentation_=cbase.Segmentation(
+            cbase.SegmentationInput(
                 enum_segments=pa_segments, naming_order=pa_naming, subsets=pa_subsets
             )
         ),
