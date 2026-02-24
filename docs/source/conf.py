@@ -22,7 +22,7 @@ sys.path.insert(0, str(source.absolute()))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "CAF.mat"
-copyright = "2025, Transport for the North"
+copyright = "2026, Transport for the North"
 author = "Transport for the North"
 
 # Third Party
