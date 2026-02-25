@@ -165,7 +165,7 @@ def mts_adj_factors(postme_dir: Path,
                     out_dir: Path):
     seg = cb.Segmentation(cb.SegmentationInput(enum_segments=['m', 'userclass', 'direction_od', 'tp'],
                                naming_order=['m', 'tp', 'userclass', 'direction_od'],
-                               subsets={'m':[3], 'tp':[1,2,3,4]}))
+                               subsets={'m':[3], 'tp':[1,2,3]}))
     synth = MatrixFiles(segmentation_=seg,
                         zoning=NOHAM,
                         type_=MatrixType.OD,
