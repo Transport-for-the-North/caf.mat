@@ -246,12 +246,12 @@ class PipelineConfig:
     noham_sector_zoning_path: Path
 
     # ── Model dimensions ─────────────────────────────────────────────────
-    mode:          str  = "m3"
-    time_periods:  list = field(default_factory=lambda: ["ts1", "ts2", "ts3"])
-    hb_purposes:   list = field(default_factory=lambda: list(range(1, 9)))
-    nhb_purposes:  list = field(default_factory=lambda: [11, 12, 13, 14, 15, 16, 17, 18])
-    directions:    list = field(default_factory=lambda: ["fr", "to"])
-    nhb_direction: str  = "nhb"
+    mode:          str
+    time_periods:  list
+    hb_purposes:   list
+    nhb_purposes:  list
+    directions:    list
+    nhb_direction: str
 
     # ── Raw correspondence CSV column names (col 0-3 in the CSV) ──────────────
     #
@@ -259,26 +259,20 @@ class PipelineConfig:
     #   loaded.  To adapt to a different CSV layout, change only these four
     #   values in main() — no other code needs to change.
     #
-    trans_csv_columns: list = field(default_factory=lambda: [
-        "noham_sector_id",         # col 0: NoHAM sector name string
-        "normits_id",              # col 1: NoRMITS zone ID
-        "noham_sector_to_normits", # col 2: sector→zone weight
-        "normits_to_noham_sector", # col 3: zone→sector weight (used by caf.toolkit)
-    ])
-
+    trans_csv_columns: list
     # ── Internal (caf.toolkit) column names ──────────────────────────────────
     #
     #   Used by caf.toolkit for "from zone", "to zone" and "factor".
     #   trans_from_col must equal trans_csv_columns[1];
     #   trans_factors_col must equal trans_csv_columns[3].
     #
-    trans_from_col:    str = "normits_id"
-    trans_to_col:      str = "noham_sector_id"
-    trans_factors_col: str = "normits_to_noham_sector"
+    trans_from_col:    str
+    trans_to_col:      str
+    trans_factors_col: str
     # ── Metric settings ───────────────────────────────────────────────────
-    demand_floor:  float          = 1e-6
-    sqv_factor:    float          = 1.0
-    metric_config: MetricConfig   = field(default_factory=MetricConfig)
+    demand_floor:  float
+    sqv_factor:    float
+    metric_config: MetricConfig
     log_dir:       Optional[Path] = None
 
     # ── Derived helpers ───────────────────────────────────────────────────
