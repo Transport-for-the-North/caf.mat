@@ -123,9 +123,9 @@ class MetricConfig:
         Compute percentage difference.
         PerDiff = 100*(M-C) / max(C, floor).  Signed, unbounded.
     """
-    sqv:     bool = True
+    sqv:     bool = False
     geh:     bool = True
-    perdiff: bool = True
+    perdiff: bool = False
 
 
 
