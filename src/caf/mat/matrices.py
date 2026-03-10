@@ -369,6 +369,84 @@ class MatricesBase(abc.ABC):
             output.set_matrix(total, to_slice)
 
         return output
+    
+    def compile_highway(self,
+                        occupancies: cb.DVector,
+                        tp_factors: dict[int, int],
+                        output_name: str,
+                        progress_bar: bool = True):
+        """
+        Compile matrices to Saturn format.
+
+        Compile from full purpose and direction, to userclass. Also applies occupancy and time 
+        period factors to go from full time period, person units to average hour pcu.
+
+        Parameters
+        ----------
+        occupancies : cb.DVector
+            DVector containing occupancy factors. This should include direction_od, tp and m segments. 
+            It can either contain p or userclass, but must contain one or the other.
+        tp_factors : dict[int, int]
+            Time period factors.
+        output_name : str
+            Name of output matrix.
+        progress_bar : bool
+            If True display progress bar for aggregation.
+
+        Returns
+        -------
+        Self
+        """
+        new_seg_in = cb.SegmentationInput(
+            enum_segments=['m','userclass','tp'],
+            naming_order=['m','userclass','tp'],
+            subsets={'m': [3], 'tp': self.segmentation.input.subsets['tp']}
+        )
+        new_seg = cb.Segmentation(new_seg_in)
+
+        output = self.new(
+            output_name.format(name=self.name), segmentation_=new_seg
+        )
+
+        # LOG.info(
+        #     "Aggregating %s to segments %s, outputting as %s",
+        #     self.name,
+        #     ", ".join(segmentation_.names),
+        #     output.name,
+        # )
+
+        if progress_bar:
+            iterator = tqdm.tqdm(
+                new_seg.iter_slices(),
+                total=len(new_seg),
+                desc=f"Aggregating {self.name}",
+            )
+        else:
+            iterator = new_seg.iter_slices()
+
+        for to_slice in iterator:
+            total = 0
+            # uc = to_slice.data['userclass']
+            # p_filter = uc_p[uc].to_list()
+            # main_filter = to_slice.data
+            # main_filter.pop('userclass')
+            iter_seg = self.segmentation.add_segment('userclass')
+            for from_slice in iter_seg.iter_slices(to_slice.data):
+                from_slice_p = from_slice.remove('userclass')
+                mat = self.get_matrix(from_slice_p).data
+                if 'p' in occupancies.segmentation.names:
+                    mat /= occupancies.get_slice(from_slice)
+                else:
+                    occ_slice = to_slice.data
+                    occ_slice['direction_od'] = from_slice.data['direction_od']
+                    mat /= occupancies.get_slice(cb.segmentation.SegmentationSlice(occ_slice))
+                if from_slice.data['direction_od'] == 2:
+                    mat = mat.T
+                total += mat
+            total /= tp_factors[to_slice.data['tp']]
+            output.set_matrix(total, to_slice)
+
+        return output
 
     def disaggregate(
         self,
@@ -918,6 +996,11 @@ class MemoryMatrices(MatricesBase):
             type_=self._type if type_ is None else type_,
             name=name,
         )
+
+    def save(self, folder: pathlib.Path):
+        for slice_ in self.segmentation.iter_slices():
+            mat = self.get_matrix(slice_)
+            mat.data.to_csv(folder / f"{self.name}_{slice_.generate_name()}.csv")
 
     def exists(self) -> bool:
         for slice_ in self.segmentation.iter_slices():
