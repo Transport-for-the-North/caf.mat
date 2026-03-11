@@ -118,7 +118,7 @@ def seg_furness(slice, cost_distributions, constraint_area_trans,
 
         reindexer = full_ind.set_index(['o_zon','d_zon'])
         seed_mat = reindexer.join(mat).set_index(['area','band_start','band_end', 'o_sec', 'd_sec'], append=True).squeeze()
-        triple_targ = band_targets
+        triple_targ = band_targets # this is used later in locals()[targ]
         sec_target = sector_target_furnessed.stack()
         sec_target.index.names = ['o_sec', 'd_sec']
 
@@ -179,7 +179,7 @@ def _4d_constraint_gravity_model(
     
     inputs = []
     for slice in row_trip_ends.segmentation.iter_slices():
-        if slice.get('tp') != 1:
+        if slice.get('tp') == 4:
             continue
         row = row_trip_ends.get_slice(slice)
         col = col_trip_ends.get_slice(slice)
@@ -281,7 +281,7 @@ if __name__ == "__main__":
     
     cost_seg = cb.Segmentation(cb.SegmentationInput(enum_segments=['m','tp'],
                                                     naming_order=['m','tp'],
-                                                    subsets={'m':m_subset if isinstance(m_subset, list) else [m_subset],
+                                                    subsets={'m': m_subset if isinstance(m_subset, list) else [m_subset],
                                                              'tp': tp_subset if isinstance(tp_subset, list) else [tp_subset]}))
     
     costs = MatrixFiles(cost_seg, normits, MatrixType.OD, pathlib.Path(r"I:\Prior adjustment\distribution\costs"),
