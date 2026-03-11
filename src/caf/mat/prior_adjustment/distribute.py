@@ -41,16 +41,14 @@ def seg_furness(slice, cost_distributions, constraint_area_trans,
                 out_dir: pathlib.Path,
                 tld_lookup: pd.Series,
                 run_gm: bool,
-                run_adjust: bool,):
+                run_adjust: bool,
+                adj_target_options: dict[str, bool],
+):
     slice_name = slice.generate_name()
     purpose = f"p{slice.get('p')}"
     os.makedirs(os.path.join(out_dir, purpose), exist_ok=True)
     csv_logging_path = out_dir / purpose / f"{slice_name}_log.csv"
     output_path = out_dir / purpose / slice_name
-    # investigate_path = output_path / "0_both_adj" ################################################## NEW LINE
-    # investigate_path = output_path / "1_no_dist_adj" ################################################## NEW LINE
-    # investigate_path = output_path / "2_no_sec_adj" ################################################## NEW LINE
-    # os.makedirs(investigate_path, exist_ok=True) ################################################## NEW LINE
     band_targets, band_lookup = calib_gm.multi_props(cost_distributions.distributions)
     band_targets.index.names=['area','band_start','band_end']
     used = pd.MultiIndex.from_frame(band_lookup.reset_index()[['area','band_start','band_end']].drop_duplicates())
@@ -69,6 +67,43 @@ def seg_furness(slice, cost_distributions, constraint_area_trans,
                                         return_distributions=True
                                         )
     if run_adjust:
+
+        # check which options were set to true and output into the correction folder
+        # also identify which array indices correspond to which targets in the adjust() outputs
+        all_choices = [option[0] for option in adj_target_options.values()]
+        if all_choices == [True, False, False, False]:
+            adjustment_path = output_path / "0_dist_adj"
+            raw_factors_output_dict = {0: adjustment_path / f"{slice_name}_dist_adj_raw.csv"}
+        elif all_choices == [True, True, True, False]:
+            adjustment_path = output_path / "1_dist_od_adj"
+            raw_factors_output_dict = {0: adjustment_path / f"{slice_name}_dist_adj_raw.csv",
+                                       1: adjustment_path / f"{slice_name}_origin_adj_raw.csv",
+                                       2: adjustment_path / f"{slice_name}_dest_adj_raw.csv"}
+        elif all_choices == [True, True, True, True]:
+            adjustment_path = output_path / "2_dist_od_sec_adj"
+            raw_factors_output_dict = {0: adjustment_path / f"{slice_name}_dist_adj_raw.csv",
+                                       1: adjustment_path / f"{slice_name}_origin_adj_raw.csv",
+                                       2: adjustment_path / f"{slice_name}_dest_adj_raw.csv",
+                                       3: adjustment_path / f"{slice_name}_sec_adj_raw.csv"}
+        elif all_choices == [True, False, False, True]:
+            adjustment_path = output_path / "3_dist_sec_adj"
+            raw_factors_output_dict = {0: adjustment_path / f"{slice_name}_dist_adj_raw.csv",
+                                       1: adjustment_path / f"{slice_name}_sec_adj_raw.csv"}
+        elif all_choices == [False, True, True, False]:
+            adjustment_path = output_path / "4_od_adj"
+            raw_factors_output_dict = {0: adjustment_path / f"{slice_name}_origin_adj_raw.csv",
+                                       1: adjustment_path / f"{slice_name}_dest_adj_raw.csv"}
+        elif all_choices == [False, True, True, True]:
+            adjustment_path = output_path / "5_od_sec_adj"
+            raw_factors_output_dict = {0: adjustment_path / f"{slice_name}_origin_adj_raw.csv",
+                                       1: adjustment_path / f"{slice_name}_dest_adj_raw.csv",
+                                       2: adjustment_path / f"{slice_name}_sec_adj_raw.csv"}
+        elif all_choices == [False, False, False, True]:
+            adjustment_path = output_path / "6_sec_adj"
+            raw_factors_output_dict = {0: adjustment_path / f"{slice_name}_sec_adj_raw.csv"}
+        
+        os.makedirs(adjustment_path, exist_ok=True)
+
         if run_gm:
             mat = pd.DataFrame(calib_gm.achieved_distribution)
             mat = mat.set_index(tld_lookup)
@@ -96,10 +131,10 @@ def seg_furness(slice, cost_distributions, constraint_area_trans,
         row_seed = mat.groupby('o_zon').sum()
         col_seed = mat.groupby('d_zon').sum()
         
-        targets = [furness.adj_input(triple_targ, True, 5),
-                   furness.adj_input(o_target, True, 10),
-                   furness.adj_input(d_target, True, 10),
-                   furness.adj_input(sec_target, True, 10)]
+        targets = []
+        for targ, option in adj_target_options.items():
+            if option[0] == True:
+                targets.append(furness.adj_input(locals()[targ], True, option[1]))
         final_mat, adj_factors = furness.adjust(seed_mat,
                                                 targets)
         final_mat = final_mat.reset_index(level=['o_sec','d_sec','band_start','band_end','area'], drop=True).unstack(level='d_zon')
@@ -113,16 +148,12 @@ def seg_furness(slice, cost_distributions, constraint_area_trans,
         col_diff['target'] = d_target
         col_diff['seed'] = col_seed
         te_comp = pd.concat({'rows': row_diff, 'cols': col_diff}, axis=1)
-        te_comp.to_csv(output_path / f"{slice_name}_te_comp.csv")
-        final_mat.to_csv(output_path / f"{slice_name}_matrix.csv")
-        adj_factors[0].to_csv(output_path / f"{slice_name}_dist_adj_raw.csv")
-        adj_factors[1].to_csv(output_path / f"{slice_name}_origin_adj_raw.csv")
-        adj_factors[2].to_csv(output_path / f"{slice_name}_dest_adj_raw.csv")
-        adj_factors[3].to_csv(output_path / f"{slice_name}_sect_adj_raw.csv")
-        # te_comp.to_csv(investigate_path / f"{slice_name}_te_comp.csv") ################################################## NEW LINE
-        # final_mat.to_csv(investigate_path / f"{slice_name}_matrix.csv") ################################################## NEW LINE
-        # # adj_factors[0].to_csv(investigate_path / f"{slice_name}_sect_adj_raw.csv") ################################################## NEW LINE
-        # adj_factors[0].to_csv(investigate_path / f"{slice_name}_dist_adj_raw.csv") ################################################## NEW LINE
+
+        # output files
+        te_comp.to_csv(adjustment_path / f"{slice_name}_te_comp.csv")
+        final_mat.to_csv(adjustment_path / f"{slice_name}_matrix.csv")
+        for i, out_filename in raw_factors_output_dict.items():
+            adj_factors[i].to_csv(out_filename)
 
 
 def _4d_constraint_gravity_model(
@@ -138,8 +169,14 @@ def _4d_constraint_gravity_model(
     out_dir: pathlib.Path,
     run_gm: bool,
     run_adjust: bool,
+    adj_target_options: dict[str, tuple[bool, int]],
+    max_process: int,
 ):
     """Internal function used in `run_gravity_model` for running the GM with calibration."""
+    # check if adjust was set to True and at least one of the adjustment targets was set to True, if not raise error
+    if run_adjust and not any(adj_target_options.values()):
+        raise ValueError("At least one adjustment target must be set to True if run_adjust is True.")
+    
     inputs = []
     for slice in row_trip_ends.segmentation.iter_slices():
         if slice.get('tp') != 1:
@@ -190,12 +227,35 @@ def _4d_constraint_gravity_model(
                          out_dir,
                          tld_zones[";normits_v3.3_id"],
                          run_gm,
-                         run_adjust))
-    seg_furness(*inputs[0])
-    multiprocess(seg_furness, arg_list=inputs, process_count=2)
+                         run_adjust,
+                         adj_target_options))
+    # seg_furness(*inputs[0])
+    multiprocess(seg_furness, arg_list=inputs, process_count=0 if run_gm == False else max_process)
 
 
 if __name__ == "__main__":
+    # choose filter options for m, p, tp, direction_od here, will be used for all matrices to select the relevant slices
+    # can be input as single integer or list of integers if multiple slices are needed
+
+    # full lists are:
+    # m_subset = list(range(1,9))
+    # tp_subset = list(range(1,9))
+    # p_subset = list(range(1,9)) + list(range(11,19))
+    # direction_od_subset = list(range(3))
+    m_subset = 3
+    tp_subset = [1,2,3]
+    p_subset = list(range(1,9)) + list(range(11,19))
+    direction_od_subset = list(range(3))
+
+    # define adjustment target options here
+    adj_target_options = {
+        'triple_targ': (True, 5),
+        'o_target': (True, 10),
+        'd_target': (True, 10),
+        'sec_target': (True, 10)
+    }
+
+
     tld_lookup = pd.read_csv(r"I:\NorMITs Distribution\voa_gb_2023_uni\NorMITs_zone.csv")
     noham = cb.ZoningSystem.get_zoning('noham_v3.8')
     normits = cb.ZoningSystem.get_zoning('normits')
@@ -204,83 +264,229 @@ if __name__ == "__main__":
     normits_noham_sector.columns = ['noham_sector_id','normits_id','noham_sector_to_normits','normits_to_noham_sector']
     normits_noham_sector['noham_sector_id'] = normits_noham_sector['noham_sector_id'].replace(noham_sector.name_to_id)
 
+    # split into HB and NHB purposes
+    hb_p_subset = [p for p in p_subset if p in list(range(1, 9))] if isinstance(p_subset, list) else (p_subset if p_subset in list(range(1, 9)) else None)
+    nhb_p_subset = [p for p in p_subset if p in list(range(11,19))] if isinstance(p_subset, list) else (p_subset if p_subset in list(range(11,19)) else None)
+
     full_seg_p = cb.Segmentation(cb.SegmentationInput(enum_segments=['m', 'p', 'direction_od', 'tp'],
                             naming_order=['m', 'p', 'tp', 'direction_od'],
-                            subsets={'m':[3], 'tp':[1,2,3]}))
+                            subsets={'m': m_subset if isinstance(m_subset, list) else [m_subset],
+                                     'p': p_subset if isinstance(p_subset, list) else [p_subset],
+                                     'tp': tp_subset if isinstance(tp_subset, list) else [tp_subset],
+                                     'direction_od': direction_od_subset if isinstance(direction_od_subset, list) else [direction_od_subset]}))
     
     postme_purpose = MatrixFiles(full_seg_p, noham_sector, MatrixType
                                     .OD, pathlib.Path(r"I:\Prior adjustment\distribution\postme_p\infilled"),
-                                    filename_template="infilled_{type}_{slice_name}.csv") #infilled_OD_m3_p1_tp1_fr.csv
+                                    filename_template="infilled_{type}_{slice_name}.csv")
     
     cost_seg = cb.Segmentation(cb.SegmentationInput(enum_segments=['m','tp'],
                                                     naming_order=['m','tp'],
-                                                    subsets={'m':[3], 'tp': [1,2,3]}))
+                                                    subsets={'m':m_subset if isinstance(m_subset, list) else [m_subset],
+                                                             'tp': tp_subset if isinstance(tp_subset, list) else [tp_subset]}))
+    
     costs = MatrixFiles(cost_seg, normits, MatrixType.OD, pathlib.Path(r"I:\Prior adjustment\distribution\costs"),
                         filename_template="normits_costs_{slice_name}.csv")
 
     tld_seg = cb.Segmentation(cb.SegmentationInput(
         enum_segments=['p','direction_od'],
-        naming_order=['p','direction_od']
-    ))
+        naming_order=['p','direction_od'],
+        subsets={'p': p_subset if isinstance(p_subset, list) else [p_subset],
+                 'direction_od': direction_od_subset if isinstance(direction_od_subset, list) else [direction_od_subset]}))
     tlds = {}
     tld_dir = pathlib.Path(r"I:\Prior adjustment\postme_tlds\v2_run")
     for slice in tld_seg.iter_slices():
         tld_name = slice.generate_name()
         file_name = tld_name.replace('fr', 'hb_fr').replace('to', 'hb_to')
         tlds[tld_name] = tld_dir / f"filled_{file_name}.csv"
-    hb_prod_fr = (
-        cb.DVector.load(
-            r"I:\Prior adjustment\outputs_26_2\Core\hb_productions\hb_normits_tem_segmented_fr_pm_2023.dvec"
+        
+    if 0 in direction_od_subset:
+        prod_nhb = (
+            cb.DVector.load(r"I:\Prior adjustment\outputs_26_2\Core\nhb_productions\nhb_normits_tem_segmented_fr_pm_2023.dvec")
+            .aggregate(['p','m','tp'])
+            .filter_segment_value('p', nhb_p_subset, keep_filtered=True)
+            .filter_segment_value('m', m_subset, keep_filtered=True)
+            .filter_segment_value('tp', tp_subset, keep_filtered=True)
+            .aggregate_comp_zones(normits)
+        )  
+        attr_nhb = (
+            cb.DVector.load(r"I:\Prior adjustment\outputs_26_2\Core\nhb_attractions\nhb_normits_tem_segmented_fr_pm_2023.dvec")
+            .aggregate(['p','m','tp'])
+            .filter_segment_value('p', nhb_p_subset, keep_filtered=True)
+            .filter_segment_value('m', m_subset, keep_filtered=True)
+            .filter_segment_value('tp', tp_subset, keep_filtered=True)
+            .aggregate_comp_zones(normits)
         )
-        .aggregate(['p', 'm', 'tp'])
-        .filter_segment_value('m', 3, keep_filtered=True)
-        .filter_segment_value('tp', [1,2,3], keep_filtered=True)
-        .aggregate_comp_zones(normits)
-    )
-    hb_prod_to = (
-        cb.DVector.load(
-            r"I:\Prior adjustment\outputs_26_2\Core\hb_productions\hb_normits_tem_segmented_to_pm_2023.dvec"
+    if 1 in direction_od_subset:
+        hb_prod_fr = (
+            cb.DVector.load(
+                r"I:\Prior adjustment\outputs_26_2\Core\hb_productions\hb_normits_tem_segmented_fr_pm_2023.dvec"
+            )
+            .aggregate(['p', 'm', 'tp'])
+            .filter_segment_value('p', hb_p_subset, keep_filtered=True)
+            .filter_segment_value('m', m_subset, keep_filtered=True)
+            .filter_segment_value('tp', tp_subset, keep_filtered=True)
+            .aggregate_comp_zones(normits)
         )
-        .aggregate(['p','m','tp'])
-        .filter_segment_value('m', 3, keep_filtered=True)
-        .filter_segment_value('tp', [1,2,3], keep_filtered=True)
-        .aggregate_comp_zones(normits)
-    )  
-    prod_nhb = (
-        cb.DVector.load(r"I:\Prior adjustment\outputs_26_2\Core\nhb_productions\nhb_normits_tem_segmented_fr_pm_2023.dvec")
-        .aggregate(['p','m','tp'])
-        .filter_segment_value('m', 3, keep_filtered=True)
-        .filter_segment_value('tp', [1,2,3], keep_filtered=True)
-        .aggregate_comp_zones(normits)
-    )  
-    hb_attr_fr = (
-        cb.DVector.load(r"I:\Prior adjustment\outputs_26_2\Core\hb_attractions\hb_normits_tem_segmented_fr_pm_2023.dvec")
-        .aggregate(['p','m','tp'])
-        .filter_segment_value('m', 3, keep_filtered=True)
-        .filter_segment_value('tp', [1,2,3], keep_filtered=True)
-        .aggregate_comp_zones(normits)
-    )  
-    hb_attr_to = (
-        cb.DVector.load(r"I:\Prior adjustment\outputs_26_2\Core\hb_attractions\hb_normits_tem_segmented_to_pm_2023.dvec")
-        .aggregate(['p','m','tp'])
-        .filter_segment_value('m', 3, keep_filtered=True)
-        .filter_segment_value('tp', [1,2,3], keep_filtered=True)
-        .aggregate_comp_zones(normits)
-    )  
-    attr_nhb = (
-        cb.DVector.load(r"I:\Prior adjustment\outputs_26_2\Core\nhb_attractions\nhb_normits_tem_segmented_fr_pm_2023.dvec")
-        .aggregate(['p','m','tp'])
-        .filter_segment_value('m', 3, keep_filtered=True)
-        .filter_segment_value('tp', [1,2,3], keep_filtered=True)
-        .aggregate_comp_zones(normits)
-    )  
-    prod = pd.concat({0: prod_nhb.data, 1: hb_prod_fr.data, 2: hb_prod_to.data})
+        hb_attr_fr = (
+            cb.DVector.load(r"I:\Prior adjustment\outputs_26_2\Core\hb_attractions\hb_normits_tem_segmented_fr_pm_2023.dvec")
+            .aggregate(['p','m','tp'])
+            .filter_segment_value('p', hb_p_subset, keep_filtered=True)
+            .filter_segment_value('m', m_subset, keep_filtered=True)
+            .filter_segment_value('tp', tp_subset, keep_filtered=True)
+            .aggregate_comp_zones(normits)
+        )
+    if 2 in direction_od_subset:
+        hb_prod_to = (
+            cb.DVector.load(
+                r"I:\Prior adjustment\outputs_26_2\Core\hb_productions\hb_normits_tem_segmented_to_pm_2023.dvec"
+            )
+            .aggregate(['p','m','tp'])
+            .filter_segment_value('p', hb_p_subset, keep_filtered=True)
+            .filter_segment_value('m', m_subset, keep_filtered=True)
+            .filter_segment_value('tp', tp_subset, keep_filtered=True)
+            .aggregate_comp_zones(normits)
+        )
+        hb_attr_to = (
+            cb.DVector.load(r"I:\Prior adjustment\outputs_26_2\Core\hb_attractions\hb_normits_tem_segmented_to_pm_2023.dvec")
+            .aggregate(['p','m','tp'])
+            .filter_segment_value('p', hb_p_subset, keep_filtered=True)
+            .filter_segment_value('m', m_subset, keep_filtered=True)
+            .filter_segment_value('tp', tp_subset, keep_filtered=True)
+            .aggregate_comp_zones(normits)
+        )
+    
+    if 0 in direction_od_subset and 1 not in direction_od_subset and 2 not in direction_od_subset:      # nhb only
+        prod = pd.concat({0: prod_nhb.data})
+        attr = pd.concat({0: attr_nhb.data})
+    elif 0 in direction_od_subset and 1 in direction_od_subset and 2 not in direction_od_subset:        # nhb and hb fr
+        prod = pd.concat({0: prod_nhb.data, 1: hb_prod_fr.data})
+        attr = pd.concat({0: attr_nhb.data, 1: hb_attr_fr.data})
+    elif 0 in direction_od_subset and 1 not in direction_od_subset and 2 in direction_od_subset:        # nhb and hb to
+        prod = pd.concat({0: prod_nhb.data, 2: hb_prod_to.data})
+        attr = pd.concat({0: attr_nhb.data, 2: hb_attr_to.data})
+    elif 0 in direction_od_subset and 1 in direction_od_subset and 2 in direction_od_subset:            # nhb and hb fr and hb to
+        prod = pd.concat({0: prod_nhb.data, 1: hb_prod_fr.data, 2: hb_prod_to.data})
+        attr = pd.concat({0: attr_nhb.data, 1: hb_attr_fr.data, 2: hb_attr_to.data})
+    elif 0 not in direction_od_subset and 1 in direction_od_subset and 2 in direction_od_subset:        # hb fr and hb to
+        prod = pd.concat({1: hb_prod_fr.data, 2: hb_prod_to.data})
+        attr = pd.concat({1: hb_attr_fr.data, 2: hb_attr_to.data})
+    elif 0 not in direction_od_subset and 1 not in direction_od_subset and 2 in direction_od_subset:    # hb to only
+        prod = pd.concat({2: hb_prod_to.data})
+        attr = pd.concat({2: hb_attr_to.data})
+    elif 0 not in direction_od_subset and 1 in direction_od_subset and 2 not in direction_od_subset:    # hb fr only
+        prod = pd.concat({1: hb_prod_to.data})
+        attr = pd.concat({1: hb_attr_to.data})
+    
     prod.index.names = ['direction_od', 'p','m','tp']
     prod = cb.DVector(import_data=prod, segmentation=full_seg_p, zoning_system=normits)
-    attr = pd.concat({0: attr_nhb.data, 1: hb_attr_fr.data, 2: hb_attr_to.data})
     attr.index.names = ['direction_od', 'p','m','tp']
     attr = cb.DVector(import_data=attr, segmentation=full_seg_p, zoning_system=normits)
 
     _4d_constraint_gravity_model(
-        prod, attr, 'fullrun_06_03_v2', tlds, tld_lookup, costs, normits_noham_sector, postme_purpose, True, pathlib.Path(r'I:\Prior adjustment\distribution\distribute_outputs\am_testrun_05_03_v4'), False, True
+        prod, attr, 'fullrun_06_03_v2', 
+        tlds, tld_lookup, 
+        costs, normits_noham_sector, postme_purpose, 
+        True, 
+        pathlib.Path(r'I:\Prior adjustment\distribution\distribute_outputs\fullrun_06_03_v2'), 
+        False, True, adj_target_options, 2
     )
+
+    # TESTING DIFFERENT ADJUSTMENT COMBINATIONS
+    # _4d_constraint_gravity_model(
+    #     prod, attr, 'fullrun_06_03_v2', 
+    #     tlds, tld_lookup, 
+    #     costs, normits_noham_sector, postme_purpose, 
+    #     True, 
+    #     pathlib.Path(r'I:\Prior adjustment\distribution\distribute_outputs\fullrun_06_03_v2'), 
+    #     False, True, {
+    #         'triple_targ': (True, 5),
+    #         'o_target': (False, 10),
+    #         'd_target': (False, 10),
+    #         'sec_target': (False, 10)
+    #     }, 2
+    # )
+
+    # _4d_constraint_gravity_model(
+    #     prod, attr, 'fullrun_06_03_v2', 
+    #     tlds, tld_lookup, 
+    #     costs, normits_noham_sector, postme_purpose, 
+    #     True, 
+    #     pathlib.Path(r'I:\Prior adjustment\distribution\distribute_outputs\fullrun_06_03_v2'), 
+    #     False, True, {
+    #         'triple_targ': (True, 5),
+    #         'o_target': (True, 10),
+    #         'd_target': (True, 10),
+    #         'sec_target': (False, 10)
+    #     }, 2
+    # )
+
+    # _4d_constraint_gravity_model(
+    #     prod, attr, 'fullrun_06_03_v2', 
+    #     tlds, tld_lookup, 
+    #     costs, normits_noham_sector, postme_purpose, 
+    #     True, 
+    #     pathlib.Path(r'I:\Prior adjustment\distribution\distribute_outputs\fullrun_06_03_v2'), 
+    #     False, True, {
+    #         'triple_targ': (True, 5),
+    #         'o_target': (True, 10),
+    #         'd_target': (True, 10),
+    #         'sec_target': (True, 10)
+    #     }, 2
+    # )
+
+    # _4d_constraint_gravity_model(
+    #     prod, attr, 'fullrun_06_03_v2', 
+    #     tlds, tld_lookup, 
+    #     costs, normits_noham_sector, postme_purpose, 
+    #     True, 
+    #     pathlib.Path(r'I:\Prior adjustment\distribution\distribute_outputs\fullrun_06_03_v2'), 
+    #     False, True, {
+    #         'triple_targ': (True, 5),
+    #         'o_target': (False, 10),
+    #         'd_target': (False, 10),
+    #         'sec_target': (True, 10)
+    #     }, 2
+    # )
+
+    # _4d_constraint_gravity_model(
+    #     prod, attr, 'fullrun_06_03_v2', 
+    #     tlds, tld_lookup, 
+    #     costs, normits_noham_sector, postme_purpose, 
+    #     True, 
+    #     pathlib.Path(r'I:\Prior adjustment\distribution\distribute_outputs\fullrun_06_03_v2'), 
+    #     False, True, {
+    #         'triple_targ': (False, 5),
+    #         'o_target': (True, 10),
+    #         'd_target': (True, 10),
+    #         'sec_target': (False, 10)
+    #     }, 2
+    # )
+
+    # _4d_constraint_gravity_model(
+    #     prod, attr, 'fullrun_06_03_v2', 
+    #     tlds, tld_lookup, 
+    #     costs, normits_noham_sector, postme_purpose, 
+    #     True, 
+    #     pathlib.Path(r'I:\Prior adjustment\distribution\distribute_outputs\fullrun_06_03_v2'), 
+    #     False, True, {
+    #         'triple_targ': (False, 5),
+    #         'o_target': (True, 10),
+    #         'd_target': (True, 10),
+    #         'sec_target': (True, 10)
+    #     }, 2
+    # )
+
+    # _4d_constraint_gravity_model(
+    #     prod, attr, 'fullrun_06_03_v2', 
+    #     tlds, tld_lookup, 
+    #     costs, normits_noham_sector, postme_purpose, 
+    #     True, 
+    #     pathlib.Path(r'I:\Prior adjustment\distribution\distribute_outputs\fullrun_06_03_v2'), 
+    #     False, True, {
+    #         'triple_targ': (False, 5),
+    #         'o_target': (False, 10),
+    #         'd_target': (False, 10),
+    #         'sec_target': (True, 10)
+    #     }, 2
+    # )
+
