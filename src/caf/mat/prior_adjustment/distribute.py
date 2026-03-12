@@ -42,7 +42,7 @@ def seg_furness(slice, cost_distributions, constraint_area_trans,
                 tld_lookup: pd.Series,
                 run_gm: bool,
                 run_adjust: bool,
-                adj_target_options: dict[str, bool],
+                adj_target_options: dict[str, tuple[bool, int]],
 ):
     slice_name = slice.generate_name()
     purpose = f"p{slice.get('p')}"
@@ -229,8 +229,28 @@ def _4d_constraint_gravity_model(
                          run_gm,
                          run_adjust,
                          adj_target_options))
-    # seg_furness(*inputs[0])
+        
     multiprocess(seg_furness, arg_list=inputs, process_count=0 if run_gm == False else max_process)
+
+def _use_as_list(
+        input_list: int | list[int]
+) -> list[int]:
+    """
+    Function to ensure that input is always returned as a list, 
+    even if a single integer is provided. This is because the subsets
+    parameter in SegmentationInput requires a dictionary with list values.
+
+    Parameters
+    ----------
+    input_list : int or list of int
+        The input value(s) to be converted to a list.
+    
+    Returns
+    -------
+    list of int
+        The input value(s) as a list.
+    """
+    return input_list if isinstance(input_list, list) else [input_list]
 
 
 if __name__ == "__main__":
@@ -270,10 +290,10 @@ if __name__ == "__main__":
 
     full_seg_p = cb.Segmentation(cb.SegmentationInput(enum_segments=['m', 'p', 'direction_od', 'tp'],
                             naming_order=['m', 'p', 'tp', 'direction_od'],
-                            subsets={'m': m_subset if isinstance(m_subset, list) else [m_subset],
-                                     'p': p_subset if isinstance(p_subset, list) else [p_subset],
-                                     'tp': tp_subset if isinstance(tp_subset, list) else [tp_subset],
-                                     'direction_od': direction_od_subset if isinstance(direction_od_subset, list) else [direction_od_subset]}))
+                            subsets={'m': _use_as_list(m_subset),
+                                     'p': _use_as_list(p_subset),
+                                     'tp': _use_as_list(tp_subset),
+                                     'direction_od': _use_as_list(direction_od_subset)}))
     
     postme_purpose = MatrixFiles(full_seg_p, noham_sector, MatrixType
                                     .OD, pathlib.Path(r"I:\Prior adjustment\distribution\postme_p\infilled"),
@@ -281,8 +301,8 @@ if __name__ == "__main__":
     
     cost_seg = cb.Segmentation(cb.SegmentationInput(enum_segments=['m','tp'],
                                                     naming_order=['m','tp'],
-                                                    subsets={'m': m_subset if isinstance(m_subset, list) else [m_subset],
-                                                             'tp': tp_subset if isinstance(tp_subset, list) else [tp_subset]}))
+                                                    subsets={'m': _use_as_list(m_subset),
+                                                             'tp': _use_as_list(tp_subset)}))
     
     costs = MatrixFiles(cost_seg, normits, MatrixType.OD, pathlib.Path(r"I:\Prior adjustment\distribution\costs"),
                         filename_template="normits_costs_{slice_name}.csv")
@@ -290,8 +310,8 @@ if __name__ == "__main__":
     tld_seg = cb.Segmentation(cb.SegmentationInput(
         enum_segments=['p','direction_od'],
         naming_order=['p','direction_od'],
-        subsets={'p': p_subset if isinstance(p_subset, list) else [p_subset],
-                 'direction_od': direction_od_subset if isinstance(direction_od_subset, list) else [direction_od_subset]}))
+        subsets={'p': _use_as_list(p_subset),
+                 'direction_od': _use_as_list(direction_od_subset)}))
     tlds = {}
     tld_dir = pathlib.Path(r"I:\Prior adjustment\postme_tlds\v2_run")
     for slice in tld_seg.iter_slices():
