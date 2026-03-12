@@ -44,6 +44,49 @@ def seg_furness(slice, cost_distributions, constraint_area_trans,
                 run_adjust: bool,
                 adj_target_options: dict[str, tuple[bool, int]],
 ):
+    """
+    Execute gravity model calibration and/or Furness adjustment for a given slice,
+    outputs results and relevant diagnostic files to the specified output directory.
+    Designed to be run in parallel across multiple slices.
+    
+    Parameters
+    ----------
+    slice : dict-like
+        Slice object containing slice-specific information. Must have methods
+        generate_name() and get(key) for extracting slice identifier and purpose.
+    cost_distributions : object
+        Cost distribution object with a distributions attribute containing
+        distribution data for gravity model calibration.
+    constraint_area_trans : pd.DataFrame
+        DataFrame mapping zone IDs (normits_id) to sector IDs (noham_sector_id).
+    sector_target_furnessed : pd.DataFrame
+        Sector target matrix containing target values by origin and destination sector
+        for the adjustment algorithm.
+    calib_gm : gravity_model.MultiAreaGravityModelCalibrator
+        Calibrated or pre-configured gravity model object used for calibration
+        and distribution calculations.
+    out_dir : pathlib.Path
+        Root output directory where results will be written. Results are 
+        then organized by purpose subdirectories.
+    tld_lookup : pd.Series
+        Series mapping internal zone indices to zone names/IDs for matrix indexing.
+    run_gm : bool
+        If True, execute gravity model calibration. 
+        If False, load existing overall_matrix.csv from output directory.
+    run_adjust : bool
+        If True, execute Furness adjustment algorithm on seed/gravity model matrix.
+    adj_target_options : dict[str, tuple[bool, int]]
+        Dictionary specifying which adjustment targets to apply. Keys correspond to
+        target names (e.g., 'triple_targ', 'o_target', 'd_target', 'sec_target'),
+        values are tuples of (apply: bool, max_cap: value).
+
+    Returns
+    -------
+    None
+        Results are written directly to disk in output directories organized by
+        purpose, slice and adjustment type.
+    """
+
     slice_name = slice.generate_name()
     purpose = f"p{slice.get('p')}"
     os.makedirs(os.path.join(out_dir, purpose), exist_ok=True)
@@ -172,7 +215,80 @@ def _4d_constraint_gravity_model(
     adj_target_options: dict[str, tuple[bool, int]],
     max_process: int,
 ):
-    """Internal function used in `run_gravity_model` for running the GM with calibration."""
+    """
+    Execute a 4D constraint gravity model with optional calibration and adjustment.
+    This function processes trip distribution data using a gravity model approach,
+    handling multiple time periods and applying sector-level constraints and
+    adjustments. It prepares inputs for parallel processing of gravity model
+    calibration and furness adjustments using seg_furness().
+
+    Parameters
+    ----------
+    row_trip_ends : cb.DVector
+        Origin (row) trip ends vector with segmentation information.
+    col_trip_ends : cb.DVector
+        Destination (column) trip ends vector with segmentation information.
+    name : str
+        Identifier name for the gravity model run.
+    tlds : dict[str, pathlib.Path]
+        Dictionary mapping segment identifiers to Trip Length Distribution (TLD)
+        file paths.
+    tld_zones : pd.Series
+        Series containing TLD zone information indexed by zone identifiers.
+    cost_matrix : MatrixFiles
+        Cost matrix object containing distance file information.
+    constraint_area_trans : pd.DataFrame
+        Translation/mapping dataframe between normits_id and noham_sector_id for
+        spatial constraint areas.
+    sector_target_matrix : MatrixFiles
+        MatrixFiles object for target matrices for sector-level constraint targets.
+    calibrate : bool
+        Flag indicating whether to calibrate the gravity model (currently unused).
+    out_dir : pathlib.Path
+        Output directory path for results.
+    run_gm : bool
+        Flag to execute gravity model; if False, disables multiprocessing.
+    run_adjust : bool
+        Flag to execute post-gravity model adjustments.
+    adj_target_options : dict[str, tuple[bool, int]]
+        Dictionary specifying which adjustment targets to apply. Keys correspond to
+        target names (e.g., 'triple_targ', 'o_target', 'd_target', 'sec_target'),
+        values are tuples of (apply: bool, max_cap: value).
+    max_process : int
+        Maximum number of processes for parallel execution.
+        Will be set to 0 if run_gm is False (no calibrate) as reading multiple files
+        into the same variable causes issues with multiprocessing.
+        Value recommendations:
+            2 is recommended for full runs due to RAM constraints (usage can spike 
+                to 50-60GB), 
+            3-4 can be used for testing individual time periods.
+    
+    Returns
+    -------
+    None
+        Results are written to out_dir through seg_furness() and multiprocessing callback.
+    
+    Raises
+    ------
+    ValueError
+        If run_adjust is True but no adjustment targets are enabled in
+        adj_target_options.
+    
+    Warnings
+    --------
+    - Time period 4 (tp==4) is skipped in processing.
+    - Sector target matrix is rescaled by row sum ratio, potentially overwriting
+      furness adjustment results.
+    - The calibrate parameter is defined but not utilized in function logic.
+    - Empty adj_target_options dict will raise ValueError if run_adjust=True.
+
+    Notes
+    -----
+    - Processing occurs iteratively per segment slice from row_trip_ends.
+    - Distance distributions are calculated using logarithmic normal cost function.
+    - Furness adjustment is applied at sector level before gravity model execution.
+    - Multiprocessing count is conditional on run_gm flag.
+    """
     # check if adjust was set to True and at least one of the adjustment targets was set to True, if not raise error
     if run_adjust and not any(adj_target_options.values()):
         raise ValueError("At least one adjustment target must be set to True if run_adjust is True.")
