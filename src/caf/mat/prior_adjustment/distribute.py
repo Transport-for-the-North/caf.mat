@@ -1,5 +1,5 @@
 """
-Implementation of a self-calibrating multi area gravity model with 
+Implementation of a self-calibrating multi area gravity model with
 post ME furness adjustment.
 """
 
@@ -19,11 +19,11 @@ from caf.mat.matrices import MatrixFiles, MatrixType
 
 _ADJ_CHOICE_CONFIG = {
     (True, False, False, False): ("0_dist_adj", ["dist"]),
-    (True, True, True, False):   ("1_dist_od_adj", ["dist", "origin", "dest"]),
-    (True, True, True, True):    ("2_dist_od_sec_adj", ["dist", "origin", "dest", "sec"]),
-    (True, False, False, True):  ("3_dist_sec_adj", ["dist", "sec"]),
-    (False, True, True, False):  ("4_od_adj", ["origin", "dest"]),
-    (False, True, True, True):   ("5_od_sec_adj", ["origin", "dest", "sec"]),
+    (True, True, True, False): ("1_dist_od_adj", ["dist", "origin", "dest"]),
+    (True, True, True, True): ("2_dist_od_sec_adj", ["dist", "origin", "dest", "sec"]),
+    (True, False, False, True): ("3_dist_sec_adj", ["dist", "sec"]),
+    (False, True, True, False): ("4_od_adj", ["origin", "dest"]),
+    (False, True, True, True): ("5_od_sec_adj", ["origin", "dest", "sec"]),
     (False, False, False, True): ("6_sec_adj", ["sec"]),
 }
 
@@ -67,6 +67,7 @@ def _multi_loop(
         columns=constraint_area_trans["normits_id"],
     )
     matrix.to_csv(out_dir / f"{slice_name}_matrix.csv")
+
 
 # pylint: disable=too-many-locals
 def seg_furness(
@@ -135,7 +136,10 @@ def seg_furness(
         band_lookup.reset_index()[["area", "band_start", "band_end"]].drop_duplicates()
     )
     dropped = band_targets.drop(used).sum()
-    LOG.warning("Total demand dropped from band targets due to missing in band_lookup: %s", dropped.sum())
+    LOG.warning(
+        "Total demand dropped from band targets due to missing in band_lookup: %s",
+        dropped.sum(),
+    )
 
     band_targets = band_targets.loc[used]
     sec_look = constraint_area_trans.sort_values(by="normits_id").set_index("normits_id")[
@@ -150,7 +154,7 @@ def seg_furness(
         columns={"noham_sector_id": "d_sec"}
     )
     if run_gm:
-        gravity_model_results, dists = calib_gm.calibrate( #pylint: disable=unused-variable
+        gravity_model_results, dists = calib_gm.calibrate(  # pylint: disable=unused-variable
             cost_distributions,
             csv_logging_path,
             output_path,
@@ -232,6 +236,7 @@ def seg_furness(
         final_mat.to_csv(adjustment_path / f"{slice_name}_matrix.csv")
         for i, out_filename in raw_factors_output_dict.items():
             adj_factors[i].to_csv(out_filename)
+
 
 # pylint: disable=too-many-arguments
 def _4d_constraint_gravity_model(
@@ -335,7 +340,9 @@ def _4d_constraint_gravity_model(
             continue
         row = row_trip_ends.get_slice(current_slice)
         col = col_trip_ends.get_slice(current_slice)
-        cost = cost_matrix.get_matrix(current_slice.aggregate(cost_matrix.segmentation.naming_order))
+        cost = cost_matrix.get_matrix(
+            current_slice.aggregate(cost_matrix.segmentation.naming_order)
+        )
         sector_target = sector_target_matrix.get_matrix(
             current_slice.aggregate(sector_target_matrix.segmentation.naming_order)
         )
@@ -393,9 +400,7 @@ def _4d_constraint_gravity_model(
             )
         )
 
-    multiprocess(
-        seg_furness, arg_list=inputs, process_count=0 if not run_gm else max_process
-    )
+    multiprocess(seg_furness, arg_list=inputs, process_count=0 if not run_gm else max_process)
 
 
 def _use_as_list(input_list: int | list[int]) -> list[int]:
@@ -712,6 +717,7 @@ def main():
     #         'sec_target': (True, 10)
     #     }, 2
     # )
+
 
 if __name__ == "__main__":
     main()
