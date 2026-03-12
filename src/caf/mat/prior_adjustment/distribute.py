@@ -1,12 +1,18 @@
-import pandas as pd
-import caf.base as cb
-from caf.mat.matrices import MatrixFiles, MatrixType
-from caf.mat.direction.od_to_pa import disaggregate_postme
-from caf.toolkit.concurrency import multiprocess
-import caf.toolkit as ctk
-import pathlib
+# Built-Ins
 import os
-from caf.distribute import gravity_model, cost_functions, furness
+import pathlib
+
+# Third Party
+import caf.base as cb
+import caf.toolkit as ctk
+import pandas as pd
+from caf.distribute import cost_functions, furness, gravity_model
+from caf.toolkit.concurrency import multiprocess
+
+# Local Imports
+from caf.mat.direction.od_to_pa import disaggregate_postme
+from caf.mat.matrices import MatrixFiles, MatrixType
+
 
 def _multi_loop(slice, cost_distributions, constraint_area_trans, sector_target_furnessed, calib_gm: gravity_model.MultiAreaGravityModelCalibrator, out_dir):
     slice_name = slice.generate_name()
