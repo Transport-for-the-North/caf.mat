@@ -46,7 +46,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterator, Optional, Tuple
+from typing import Dict, Iterator, Optional, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -175,11 +175,12 @@ class PipelineConfig:
 
     Required parameters (no defaults — must be supplied explicitly):
         root_dir, target_dir, output_dir, translation_path,
-        noham_sector_zoning_path
+        noham_sector_zoning_path, adjustment_folder, target_prefix, 
+        target_extension, stem_format, 
 
     Optional parameters with defaults:
         mode, time_periods, hb_purposes, nhb_purposes, directions,
-        nhb_direction,
+        nhb_direction, target_period_map,
         trans_csv_columns,
         trans_from_col, trans_to_col, trans_factors_col,
         demand_floor, sqv_factor, metric_config, log_dir
@@ -189,11 +190,21 @@ class PipelineConfig:
     root_dir : Path
         Root folder containing the distribute-output subfolders (p1-p8, p11-p18).
     target_dir : Path
-        Flat folder containing post-ME target matrices (.csv.bz2).
+        Flat folder containing post-ME target matrices.
     output_dir : Path
         Root folder for exported comparison CSVs and statistics.
     translation_path : Path
         Path to the NoRMITS → NoHAM sector spatial correspondence CSV.
+    adjustment_folder : str
+        Folder within the slice/stem where the adjusted matrices are saved.
+    target_prefix : str
+        Prefix in target filenames, 
+        e.g. "OD" for "OD_{mode}_{ts}_p{purpose}_{fr|to}.csv.bz2".
+    target_extension : str
+        Suffix and extension in target filenames after the stem,
+        e.g. ".csv.bz2" for "OD_{mode}_{ts}_p{purpose}_fr.csv.bz2".
+    stem_format : str
+        Format string controlling the order of tokens in folder/file stem names.
     noham_sector_zoning_path : Path
         Path to the NoHAM sector zoning CSV (columns: zone_id, zone_name).
         zone_name must match the noham_sector_id strings in translation_path.
@@ -201,6 +212,10 @@ class PipelineConfig:
         Mode prefix in folder/file names, e.g. "m3".
     time_periods : list[str]
         Time period codes, e.g. ["ts1", "ts2", "ts3"].
+    target_period_map : dict or None
+        Optional mapping from canonical period names in time_periods to the
+        names used in target filenames.  
+        Example: {"ts1": "tp1", "ts2": "tp2", "ts3": "tp3"}.
     hb_purposes : list[int]
         Home-Based purpose IDs.
     nhb_purposes : list[int]
@@ -244,6 +259,19 @@ class PipelineConfig:
     output_dir:               Path
     translation_path:         Path
     noham_sector_zoning_path: Path
+    adjustment_folder:        str
+
+    # ── Filenames ─────────────────────────────────────────────────────────
+    target_prefix:      str
+    target_extension:   str
+
+    # Stem naming format
+    #   Controls the order of tokens in folder/file stem names.
+    #   Available placeholders: {mode}, {purpose}, {period}, {direction}
+    #   Examples:
+    #     "{mode}_p{purpose}_{period}_{direction}"   → m3_p1_ts1_fr
+    #     "{mode}_{period}_p{purpose}_{direction}"   → m3_ts1_p1_fr
+    stem_format:        str
 
     # ── Model dimensions ─────────────────────────────────────────────────
     mode:          str
@@ -274,6 +302,16 @@ class PipelineConfig:
     sqv_factor:    float
     metric_config: MetricConfig
     log_dir:       Optional[Path] = None
+    # ── Period-name remapping ─────────────────────────────────────────────
+    #
+    #   When distribute outputs and target matrices use different time-period
+    #   naming conventions (e.g. "ts1" vs "tp1"), set this dict to map the
+    #   canonical names in ``time_periods`` to the names expected in the
+    #   target filenames.  Leave as None when both use the same names.
+    #
+    #   Example:  target_period_map = {"ts1": "tp1", "ts2": "tp2", "ts3": "tp3"}
+    #
+    target_period_map: Optional[dict] = None
 
     # ── Derived helpers ───────────────────────────────────────────────────
 
@@ -298,26 +336,38 @@ class PipelineConfig:
     # ── Path builders ─────────────────────────────────────────────────────
 
     def _stem(self, purpose: int, period: str, direction: str) -> str:
-        """Shared stem: {mode}_{period}_p{purpose}_{eff_dir}."""
+        """Build the file/folder stem using stem_format."""
         eff = self.effective_direction(purpose, direction)
-        return f"{self.mode}_{period}_p{purpose}_{eff}"
+        return self.stem_format.format(
+            mode=self.mode,
+            purpose=purpose,
+            period=period,
+            direction=eff,
+        )
+    
+    def _resolve_target_period(self, period: str) -> str:
+        """Map a canonical period name to its target-file equivalent."""
+        if self.target_period_map:
+            return self.target_period_map.get(period, period)
+        return period
 
     def distribute_matrix_path(self, purpose: int, period: str, direction: str) -> Path:
         stem = self._stem(purpose, period, direction)
-        return self.root_dir / f"p{purpose}" / stem / f"{stem}_matrix.csv"
+        return self.root_dir / f"p{purpose}" / stem / self.adjustment_folder / f"{stem}_matrix.csv"
 
     def translated_matrix_path(self, purpose: int, period: str, direction: str) -> Path:
         stem = self._stem(purpose, period, direction)
-        return self.root_dir / f"p{purpose}" / stem / f"{stem}_sector_matrix.csv"
+        return self.root_dir / f"p{purpose}" / stem / self.adjustment_folder / f"{stem}_sector_matrix.csv"
 
     def target_matrix_path(self, purpose: int, period: str, direction: str) -> Path:
-        stem  = self._stem(purpose, period, direction)
-        fname = f"OD_{stem}.csv.bz2"
+        mapped_period = self._resolve_target_period(period)
+        stem  = self._stem(purpose, mapped_period, direction)
+        fname = f"{self.target_prefix}_{stem}{self.target_extension}"
         return self.target_dir / fname
 
     def metric_export_path(self, purpose: int, period: str, direction: str, metric: str) -> Path:
         stem = self._stem(purpose, period, direction)
-        return self.output_dir / f"p{purpose}" / stem / f"{stem}_{metric}.csv"
+        return self.output_dir / f"p{purpose}" / stem / self.adjustment_folder / f"{stem}_{metric}.csv"
 
 
 # =============================================================================
@@ -1033,7 +1083,7 @@ class Reporter:
         """Save a DataFrame to output_dir / filename."""
         path = self.config.output_dir / filename
         path.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(path, index=False)
+        df.to_csv(path, index=False, mode="a", header=not path.exists())
         log.info(f"  Saved: {path}")
 
 
@@ -1126,7 +1176,9 @@ class MatrixComparisonPipeline:
             log.info(f"    [{_mark}]  {_field}")
         for attr in (
             "demand_floor sqv_factor mode time_periods "
-            "hb_purposes nhb_purposes"
+            "hb_purposes nhb_purposes directions nhb_direction "
+            "target_period_map adjustment_folder "
+            "target_prefix target_extension stem_format"
         ).split():
             log.info(f"  {attr} = {getattr(self.config, attr)}")
         mc = self.config.metric_config
@@ -1298,13 +1350,13 @@ def main(steps: Optional[StepConfig] = None) -> dict:
     cfg = PipelineConfig(
         # ── Required paths ────────────────────────────────────────────────
         root_dir = Path(
-            r"I:\Prior adjustment\distribution\distribute_outputs\full_run_27_02_v1"
+            r"I:\Prior adjustment\distribution\distribute_outputs\fullrun_06_03_v2"
         ),
         target_dir = Path(
-            r"I:\Prior adjustment\distribution\postme_p"
+            r"I:\Prior adjustment\distribution\postme_p\infilled"
         ),
         output_dir = Path(
-            r"I:\Prior adjustment\distribution\comparison_outputs_v2"
+            r"I:\Prior adjustment\distribution\comparison_outputs_testing"
         ),
         translation_path = Path(
             r"I:\Data\Zone Translations\cache\noham_sector_normits"
@@ -1313,9 +1365,26 @@ def main(steps: Optional[StepConfig] = None) -> dict:
         noham_sector_zoning_path = Path(
             r"I:\Data\Zoning Systems\core_zoning\noham_sector\zoning.csv"
         ),
+        # ── Folder where the adjusted matrices are saved ──────────────────
+        # Options:
+        #   "0_dist_adj"
+        #   "1_dist_od_adj"
+        #   "2_dist_od_sec_adj"  ← current, all adjustments applied
+        #   "3_dist_sec_adj"
+        #   "4_od_adj"
+        #   "5_od_sec_adj"
+        #   "6_sec_adj"
+        adjustment_folder = "2_dist_od_sec_adj",
+        # ── Target matrix prefix before stem ──────────────────────────────
+        # e.g. for a target filename like "infilled_OD_p1_tp1_fr.csv", the prefix is "infilled_OD"
+        target_prefix = "infilled_OD",
+        target_extension = ".csv",
+        # ── Stem naming format ────────────────────────────────────────────
+        stem_format  = "{mode}_p{purpose}_{period}_{direction}",  # → m3_p1_ts1_fr
         # ── Model dimensions (edit if run changes) ────────────────────────
         mode         = "m3",
-        time_periods = ["ts1", "ts2", "ts3"],
+        time_periods = ["ts1", "ts2", "ts3"],   # canonical names used in distribute outputs
+        target_period_map = {"ts1": "tp1", "ts2": "tp2", "ts3": "tp3"},  # remap to target filenames
         hb_purposes  = list(range(1, 9)),
         nhb_purposes = [11, 12, 13, 14, 15, 16, 17, 18],
         directions   = ["fr", "to"],
@@ -1347,7 +1416,10 @@ def main(steps: Optional[StepConfig] = None) -> dict:
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    main(steps=StepConfig(
+        translate=False
+    ))
     # main(steps=StepConfig(
     #     translate=False,       # skip translation (sector CSVs already exist)
     #     export_metrics=False, # skip metric export (already done in a previous run)
