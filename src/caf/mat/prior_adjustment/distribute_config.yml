@@ -1,0 +1,163 @@
+# ============================================================
+# distribute.py - main() configuration
+# ============================================================
+
+# ------------------------------------------------------------------
+# Segment subsets
+# Filters applied to m, tp, p, and direction_od across all inputs.
+# Each value can be a single integer or a list of integers.
+# Full available ranges:
+#   m:            1-8
+#   tp:           1-8
+#   p:            1-8, 11-18
+#   direction_od: 0-2  (0=nhb, 1=hb_fr, 2=hb_to)
+# ------------------------------------------------------------------
+segment_subsets:
+  m: 3
+  tp:
+    - 1
+    - 2
+    - 3
+  p:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+  direction_od:
+    - 0
+    - 1
+    - 2
+
+# ------------------------------------------------------------------
+# TLD lookup file (zone-to-TLD-area mapping)
+# ------------------------------------------------------------------
+tld_lookup_path: I:\NorMITs Distribution\voa_gb_2023_uni\NorMITs_zone.csv
+
+# ------------------------------------------------------------------
+# Zoning systems (names passed to cb.ZoningSystem.get_zoning())
+# ------------------------------------------------------------------
+zone_system: normits
+sector_system: noham_sector
+
+# ------------------------------------------------------------------
+# Zone-to-sector lookup CSV
+# columns: list of column names to assign after loading (in order)
+# ------------------------------------------------------------------
+zone_to_sector_lookup:
+  path: I:\Data\Zone Translations\cache\noham_sector_normits_v3_3\noham_sector_to_normits_spatial_.csv
+  columns:
+    - noham_sector_id
+    - normits_id
+    - noham_sector_to_normits
+    - normits_to_noham_sector
+
+# ------------------------------------------------------------------
+# Post ME matrices (MatrixFiles)
+# naming_order: segment order used to generate filenames
+# ------------------------------------------------------------------
+postme_matrices:
+  naming_order:
+    - m
+    - p
+    - tp
+    - direction_od
+  folder_path: I:\Prior adjustment\distribution\postme_p\infilled
+  filename_template: "infilled_{type}_{slice_name}.csv"
+
+# ------------------------------------------------------------------
+# Cost files (MatrixFiles)
+# ------------------------------------------------------------------
+cost_files:
+  naming_order:
+    - m
+    - tp
+  folder_path: I:\Prior adjustment\distribution\costs
+  filename_template: "normits_costs_{slice_name}.csv"
+
+# ------------------------------------------------------------------
+# Trip Length Distribution files
+# naming_order: segment order used to generate filenames (p, direction_od)
+# filename_template: template for TLD filenames. Note: the generated
+#   slice name has direction strings substituted before use:
+#   "fr" -> "hb_fr", "to" -> "hb_to"  (e.g. p1_fr -> filled_p1_hb_fr.csv)
+# ------------------------------------------------------------------
+tld_files:
+  naming_order:
+    - p
+    - direction_od
+  folder_path: I:\Prior adjustment\postme_tlds\v2_run
+  filename_template: "filled_{slice_name}.csv"
+
+# ------------------------------------------------------------------
+# Trip end input files (.dvec format)
+# Only the paths relevant to the direction_od subsets above are loaded.
+#   direction_od=0 -> prod_nhb / attr_nhb
+#   direction_od=1 -> hb_prod_fr / hb_attr_fr
+#   direction_od=2 -> hb_prod_to / hb_attr_to
+# ------------------------------------------------------------------
+trip_ends:
+  prod_nhb:    I:\Prior adjustment\outputs_26_2\Core\nhb_productions\nhb_normits_tem_segmented_fr_pm_2023.dvec
+  attr_nhb:    I:\Prior adjustment\outputs_26_2\Core\nhb_attractions\nhb_normits_tem_segmented_fr_pm_2023.dvec
+  hb_prod_fr:  I:\Prior adjustment\outputs_26_2\Core\hb_productions\hb_normits_tem_segmented_fr_pm_2023.dvec
+  hb_attr_fr:  I:\Prior adjustment\outputs_26_2\Core\hb_attractions\hb_normits_tem_segmented_fr_pm_2023.dvec
+  hb_prod_to:  I:\Prior adjustment\outputs_26_2\Core\hb_productions\hb_normits_tem_segmented_to_pm_2023.dvec
+  hb_attr_to:  I:\Prior adjustment\outputs_26_2\Core\hb_attractions\hb_normits_tem_segmented_to_pm_2023.dvec
+
+# ------------------------------------------------------------------
+# Gravity model run name (used for output folder naming)
+# ------------------------------------------------------------------
+gm_run_name: test_yaml_setup
+
+# ------------------------------------------------------------------
+# Output directory for all results
+# ------------------------------------------------------------------
+output_path: I:\Prior adjustment\distribution\distribute_outputs\test_yaml_setup
+
+# ------------------------------------------------------------------
+# Run options
+# run_gm:     if false, loads existing overall_matrix.csv instead of calibrating
+# run_adjust: if true, runs the furness adjustment after the GM step
+# ------------------------------------------------------------------
+run_options:
+  run_gm: True
+  run_adjust: True
+
+# ------------------------------------------------------------------
+# Adjustment target options
+# apply:   whether to include this target in the furness adjustment
+# max_cap: maximum cap applied to the adjustment factor
+# ------------------------------------------------------------------
+adj_target_options:
+  triple_targ:
+    apply: True
+    max_cap: 5
+  o_target:
+    apply: True
+    max_cap: 10
+  d_target:
+    apply: True
+    max_cap: 10
+  sec_target:
+    apply: True
+    max_cap: 10
+
+# ------------------------------------------------------------------
+# Maximum number of parallel processes
+# Recommendations:
+#   2 for full runs (RAM can spike to 50-60 GB)
+#   3-4 for testing individual time periods
+# Note: automatically set to 0 (serial) when run_gm is false
+# ------------------------------------------------------------------
+max_process: 2

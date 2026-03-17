@@ -13,6 +13,7 @@ import caf.base as cb
 import pandas as pd
 from caf.distribute import cost_functions, furness, gravity_model
 from caf.toolkit.concurrency import multiprocess
+from caf.toolkit.config_base import BaseConfig
 
 # Local Imports
 from caf.mat.matrices import MatrixFiles, MatrixType
@@ -29,6 +30,22 @@ _ADJ_CHOICE_CONFIG = {
 
 # # # CONSTANTS # # #
 LOG = logging.getLogger(__name__)
+
+class DistributeConf(BaseConfig):
+    segment_subsets: dict[str, int | list[int]]
+    adj_target_options: dict[str, dict[str, bool | int]]
+    tld_lookup_path: pathlib.Path
+    zone_system: str
+    sector_system: str
+    zone_to_sector_lookup: dict[str, pathlib.Path | list[str]]
+    postme_matrices: dict[str, list[str] | pathlib.Path | str]
+    cost_files: dict[str, list[str] | pathlib.Path | str]
+    tld_files: dict[str, list[str] | pathlib.Path | str]
+    trip_ends: dict[str, pathlib.Path]
+    gm_run_name: str
+    output_path: pathlib.Path
+    run_options: dict[str, bool]
+    max_process: int
 
 
 def _multi_loop(
@@ -422,54 +439,39 @@ def _use_as_list(input_list: int | list[int]) -> list[int]:
     return input_list if isinstance(input_list, list) else [input_list]
 
 
-def main():
+def main(cfg: DistributeConf):
     """
     Main function to execute the 4D constraint gravity model with post ME furness adjustment.
-    All data loading, preprocessing, and function calls are contained within this function.
-    Update the Adjust Targets Options as needed before running.
-    Required:
-        - Define your filters/subsets for segmentation, TLDs and trip ends loading.
-        - Update all paths to matrices, TLDs, and lookup files as needed.
-        - Updated filename_template where necessary to match the naming convention of input files.
-        - Update the call for _4d_constraint_gravity_model with the appropriate parameters and options for your run.
+    All inputs are defined in the distribute_config.yml file and loaded into the DistributeConf dataclass.
     """
-    # choose filter options for m, p, tp, direction_od here, will be used for all matrices to select the relevant slices
-    # can be input as single integer or list of integers if multiple slices are needed
-    # full lists are:
-    # m_subset = list(range(1,9))
-    # tp_subset = list(range(1,9))
-    # p_subset = list(range(1,9)) + list(range(11,19))
-    # direction_od_subset = list(range(3))
-    m_subset = 3
-    tp_subset = [1, 2, 3]
-    p_subset = list(range(1, 9)) + list(range(11, 19))
-    direction_od_subset = list(range(3))
 
-    # define adjustment target options here
+    # --- Segment subsets -------------------------------------------------------
+    m_subset = cfg.segment_subsets["m"]
+    tp_subset = cfg.segment_subsets["tp"]
+    p_subset = cfg.segment_subsets["p"]
+    direction_od_subset = cfg.segment_subsets["direction_od"]
+    direction_od_list = _use_as_list(direction_od_subset)
+
+    # --- Adjustment target options ---------------------------------------------
+    # YAML stores each target as {apply: bool, max_cap: int}; convert to (bool, int) tuples
     adj_target_options = {
-        "triple_targ": (True, 5),
-        "o_target": (True, 10),
-        "d_target": (True, 10),
-        "sec_target": (True, 10),
+        k: (v["apply"], v["max_cap"])
+        for k, v in cfg.adj_target_options.items()
     }
 
-    tld_lookup = pd.read_csv(r"I:\NorMITs Distribution\voa_gb_2023_uni\NorMITs_zone.csv")
-    normits = cb.ZoningSystem.get_zoning("normits")
-    noham_sector = cb.ZoningSystem.get_zoning("noham_sector")
-    normits_noham_sector = pd.read_csv(
-        r"I:\Data\Zone Translations\cache\noham_sector_normits_v3_3\noham_sector_to_normits_spatial_.csv"
-    )
-    normits_noham_sector.columns = [
-        "noham_sector_id",
-        "normits_id",
-        "noham_sector_to_normits",
-        "normits_to_noham_sector",
-    ]
+    # --- Lookups and zoning systems --------------------------------------------
+    tld_lookup = pd.read_csv(cfg.tld_lookup_path)
+    normits = cb.ZoningSystem.get_zoning(cfg.zone_system)
+    noham_sector = cb.ZoningSystem.get_zoning(cfg.sector_system)
+
+    z2s_cfg = cfg.zone_to_sector_lookup
+    normits_noham_sector = pd.read_csv(z2s_cfg["path"])
+    normits_noham_sector.columns = z2s_cfg["columns"]
     normits_noham_sector["noham_sector_id"] = normits_noham_sector["noham_sector_id"].replace(
         noham_sector.name_to_id
     )
 
-    # split into HB and NHB purposes
+    # --- Split p into HB and NHB -----------------------------------------------
     hb_p_subset = (
         [p for p in p_subset if p in list(range(1, 9))]
         if isinstance(p_subset, list)
@@ -481,10 +483,12 @@ def main():
         else (p_subset if p_subset in list(range(11, 19)) else None)
     )
 
+    # --- Post-ME matrix segmentation and MatrixFiles ---------------------------
+    postme_cfg = cfg.postme_matrices
     full_seg_p = cb.Segmentation(
         cb.SegmentationInput(
-            enum_segments=["m", "p", "direction_od", "tp"],
-            naming_order=["m", "p", "tp", "direction_od"],
+            enum_segments=postme_cfg["naming_order"],
+            naming_order=postme_cfg["naming_order"],
             subsets={
                 "m": _use_as_list(m_subset),
                 "p": _use_as_list(p_subset),
@@ -493,35 +497,37 @@ def main():
             },
         )
     )
-
     postme_purpose = MatrixFiles(
         full_seg_p,
         noham_sector,
         MatrixType.OD,
-        pathlib.Path(r"I:\Prior adjustment\distribution\postme_p\infilled"),
-        filename_template="infilled_{type}_{slice_name}.csv",
+        pathlib.Path(postme_cfg["folder_path"]),
+        filename_template=postme_cfg["filename_template"],
     )
 
+    # --- Cost files ------------------------------------------------------------
+    cost_cfg = cfg.cost_files
     cost_seg = cb.Segmentation(
         cb.SegmentationInput(
-            enum_segments=["m", "tp"],
-            naming_order=["m", "tp"],
+            enum_segments=cost_cfg["naming_order"],
+            naming_order=cost_cfg["naming_order"],
             subsets={"m": _use_as_list(m_subset), "tp": _use_as_list(tp_subset)},
         )
     )
-
     costs = MatrixFiles(
         cost_seg,
         normits,
         MatrixType.OD,
-        pathlib.Path(r"I:\Prior adjustment\distribution\costs"),
-        filename_template="normits_costs_{slice_name}.csv",
+        pathlib.Path(cost_cfg["folder_path"]),
+        filename_template=cost_cfg["filename_template"],
     )
 
+    # --- TLD files -------------------------------------------------------------
+    tld_cfg = cfg.tld_files
     tld_seg = cb.Segmentation(
         cb.SegmentationInput(
-            enum_segments=["p", "direction_od"],
-            naming_order=["p", "direction_od"],
+            enum_segments=tld_cfg["naming_order"],
+            naming_order=tld_cfg["naming_order"],
             subsets={
                 "p": _use_as_list(p_subset),
                 "direction_od": _use_as_list(direction_od_subset),
@@ -529,18 +535,19 @@ def main():
         )
     )
     tlds = {}
-    tld_dir = pathlib.Path(r"I:\Prior adjustment\postme_tlds\v2_run")
+    tld_dir = pathlib.Path(tld_cfg["folder_path"])
+    tld_template = tld_cfg["filename_template"]
     for tld_slice in tld_seg.iter_slices():
         tld_name = tld_slice.generate_name()
         file_name = tld_name.replace("fr", "hb_fr").replace("to", "hb_to")
-        tlds[tld_name] = tld_dir / f"filled_{file_name}.csv"
+        tlds[tld_name] = tld_dir / tld_template.format(slice_name=file_name)
 
+    # --- Trip ends -------------------------------------------------------------
+    te_cfg = cfg.trip_ends
     dvec_map = {}
-    if 0 in direction_od_subset:
+    if 0 in direction_od_list:
         prod_nhb = (
-            cb.DVector.load(
-                r"I:\Prior adjustment\outputs_26_2\Core\nhb_productions\nhb_normits_tem_segmented_fr_pm_2023.dvec"
-            )
+            cb.DVector.load(te_cfg["prod_nhb"])
             .aggregate(["p", "m", "tp"])
             .filter_segment_value("p", nhb_p_subset, keep_filtered=True)
             .filter_segment_value("m", m_subset, keep_filtered=True)
@@ -548,9 +555,7 @@ def main():
             .aggregate_comp_zones(normits)
         )
         attr_nhb = (
-            cb.DVector.load(
-                r"I:\Prior adjustment\outputs_26_2\Core\nhb_attractions\nhb_normits_tem_segmented_fr_pm_2023.dvec"
-            )
+            cb.DVector.load(te_cfg["attr_nhb"])
             .aggregate(["p", "m", "tp"])
             .filter_segment_value("p", nhb_p_subset, keep_filtered=True)
             .filter_segment_value("m", m_subset, keep_filtered=True)
@@ -558,11 +563,9 @@ def main():
             .aggregate_comp_zones(normits)
         )
         dvec_map[0] = (prod_nhb, attr_nhb)
-    if 1 in direction_od_subset:
+    if 1 in direction_od_list:
         hb_prod_fr = (
-            cb.DVector.load(
-                r"I:\Prior adjustment\outputs_26_2\Core\hb_productions\hb_normits_tem_segmented_fr_pm_2023.dvec"
-            )
+            cb.DVector.load(te_cfg["hb_prod_fr"])
             .aggregate(["p", "m", "tp"])
             .filter_segment_value("p", hb_p_subset, keep_filtered=True)
             .filter_segment_value("m", m_subset, keep_filtered=True)
@@ -570,9 +573,7 @@ def main():
             .aggregate_comp_zones(normits)
         )
         hb_attr_fr = (
-            cb.DVector.load(
-                r"I:\Prior adjustment\outputs_26_2\Core\hb_attractions\hb_normits_tem_segmented_fr_pm_2023.dvec"
-            )
+            cb.DVector.load(te_cfg["hb_attr_fr"])
             .aggregate(["p", "m", "tp"])
             .filter_segment_value("p", hb_p_subset, keep_filtered=True)
             .filter_segment_value("m", m_subset, keep_filtered=True)
@@ -580,11 +581,9 @@ def main():
             .aggregate_comp_zones(normits)
         )
         dvec_map[1] = (hb_prod_fr, hb_attr_fr)
-    if 2 in direction_od_subset:
+    if 2 in direction_od_list:
         hb_prod_to = (
-            cb.DVector.load(
-                r"I:\Prior adjustment\outputs_26_2\Core\hb_productions\hb_normits_tem_segmented_to_pm_2023.dvec"
-            )
+            cb.DVector.load(te_cfg["hb_prod_to"])
             .aggregate(["p", "m", "tp"])
             .filter_segment_value("p", hb_p_subset, keep_filtered=True)
             .filter_segment_value("m", m_subset, keep_filtered=True)
@@ -592,9 +591,7 @@ def main():
             .aggregate_comp_zones(normits)
         )
         hb_attr_to = (
-            cb.DVector.load(
-                r"I:\Prior adjustment\outputs_26_2\Core\hb_attractions\hb_normits_tem_segmented_to_pm_2023.dvec"
-            )
+            cb.DVector.load(te_cfg["hb_attr_to"])
             .aggregate(["p", "m", "tp"])
             .filter_segment_value("p", hb_p_subset, keep_filtered=True)
             .filter_segment_value("m", m_subset, keep_filtered=True)
@@ -610,22 +607,27 @@ def main():
     attr.index.names = ["direction_od", "p", "m", "tp"]
     attr = cb.DVector(import_data=attr, segmentation=full_seg_p, zoning_system=normits)
 
+    # --- Run -------------------------------------------------------------------
+    run_opts = cfg.run_options
     _4d_constraint_gravity_model(
         prod,
         attr,
-        "fullrun_06_03_v2",
+        cfg.gm_run_name,
         tlds,
         tld_lookup,
         costs,
         normits_noham_sector,
         postme_purpose,
-        pathlib.Path(r"I:\Prior adjustment\distribution\distribute_outputs\fullrun_06_03_v2"),
-        False,
-        True,
+        pathlib.Path(cfg.output_path),
+        run_opts["run_gm"],
+        run_opts["run_adjust"],
         adj_target_options,
-        2,
+        cfg.max_process,
     )
 
 
 if __name__ == "__main__":
-    main()
+
+    cfg = DistributeConf.load_yaml(pathlib.Path(__file__).parent / "distribute_config.yml")
+    
+    main(cfg)
