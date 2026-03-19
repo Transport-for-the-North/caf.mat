@@ -4,41 +4,41 @@
 
 # ------------------------------------------------------------------
 # Segment subsets
-# Filters applied to m, tp, p, and direction_od across all inputs.
+# Filters applied to mode, timeperiod, purpose, and direction across all inputs.
 # Each value can be a single integer or a list of integers.
 # Full available ranges:
-#   m:            1-8
-#   tp:           1-8
-#   p:            1-8, 11-18
-#   direction_od: 0-2  (0=nhb, 1=hb_fr, 2=hb_to)
+#   mode:       1-8
+#   timeperiod: 1-8
+#   purpose:    1-8, 11-18
+#   direction:  0-2  (0=nhb, 1=hb_fr, 2=hb_to)
 # ------------------------------------------------------------------
-segment_subsets:
-  m: 3
-  tp:
-    - 1
-    - 2
-    - 3
-  p:
-    - 1
-    - 2
-    - 3
-    - 4
-    - 5
-    - 6
-    - 7
-    - 8
-    - 11
-    - 12
-    - 13
-    - 14
-    - 15
-    - 16
-    - 17
-    - 18
-  direction_od:
-    - 0
-    - 1
-    - 2
+mode_subset:
+  - 3
+timeperiod_subset:
+  - 1
+  - 2
+  - 3
+purpose_subset:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 16
+  - 17
+  - 18
+direction_subset:
+  - 0
+  - 1
+  - 2
 
 # ------------------------------------------------------------------
 # TLD lookup file (zone-to-TLD-area mapping)

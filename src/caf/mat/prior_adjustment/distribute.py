@@ -32,7 +32,10 @@ _ADJ_CHOICE_CONFIG = {
 LOG = logging.getLogger(__name__)
 
 class DistributeConf(BaseConfig):
-    segment_subsets: dict[str, int | list[int]]
+    mode_subset: int | list[int]
+    timeperiod_subset: int | list[int]
+    purpose_subset: int | list[int]
+    direction_subset: int | list[int]
     adj_target_options: dict[str, dict[str, bool | int]]
     tld_lookup_path: pathlib.Path
     zone_system: str
@@ -408,10 +411,10 @@ def main(cfg: DistributeConf):
     """
 
     # --- Segment subsets -------------------------------------------------------
-    m_subset = cfg.segment_subsets["m"]
-    tp_subset = cfg.segment_subsets["tp"]
-    p_subset = cfg.segment_subsets["p"]
-    direction_od_subset = cfg.segment_subsets["direction_od"]
+    m_subset = cfg.mode_subset
+    tp_subset = cfg.timeperiod_subset
+    p_subset = cfg.purpose_subset
+    direction_od_subset = cfg.direction_subset
     direction_od_list = _use_as_list(direction_od_subset)
 
     # --- Adjustment target options ---------------------------------------------
