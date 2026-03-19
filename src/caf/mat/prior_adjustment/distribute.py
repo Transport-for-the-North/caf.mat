@@ -334,7 +334,6 @@ def _4d_constraint_gravity_model(
 
     Warnings
     --------
-    - Time period 4 (tp==4) is skipped in processing.
     - Sector target matrix is rescaled by row sum ratio, potentially overwriting
       furness adjustment results.
     - The calibrate parameter is defined but not utilized in function logic.
@@ -355,8 +354,6 @@ def _4d_constraint_gravity_model(
 
     inputs = []
     for current_slice in row_trip_ends.segmentation.iter_slices():
-        if current_slice.get("tp") == 4:
-            continue
         row = row_trip_ends.get_slice(current_slice)
         col = col_trip_ends.get_slice(current_slice)
         cost = cost_matrix.get_matrix(
