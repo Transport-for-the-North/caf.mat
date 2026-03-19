@@ -48,44 +48,6 @@ class DistributeConf(BaseConfig):
     max_process: int
 
 
-def _multi_loop(
-    current_slice,
-    cost_distributions,
-    constraint_area_trans,
-    sector_target_furnessed,
-    calib_gm: gravity_model.MultiAreaGravityModelCalibrator,
-    out_dir,
-):
-    slice_name = current_slice.generate_name()
-    csv_logging_path = out_dir / f"{slice_name}_log.csv"
-    sectoral_inputs = furness.SectoralConstraintInputs(
-        constraint_area_trans,
-        from_col="normits_id",
-        to_col="noham_sector_id",
-        factor_col="normits_to_noham_sector",
-        target_mat=sector_target_furnessed,
-        zonal_zones=sorted(constraint_area_trans["normits_id"].unique()),
-    )
-    gravity_model_results = calib_gm.sectoral_run(
-        cost_distributions,
-        sectoral_inputs,
-        csv_logging_path,
-        True,
-        gravity_model.GMCalibParams(furness_jac=True),
-    )
-
-    summary = pd.concat(
-        {area: results.summary for area, results in gravity_model_results.items()}, axis=1
-    )
-    summary.to_csv(out_dir / f"{slice_name}_summary.csv")
-    matrix = pd.DataFrame(
-        calib_gm.achieved_distribution,
-        index=constraint_area_trans["normits_id"],
-        columns=constraint_area_trans["normits_id"],
-    )
-    matrix.to_csv(out_dir / f"{slice_name}_matrix.csv")
-
-
 # pylint: disable=too-many-locals
 def seg_furness(
     current_slice,
