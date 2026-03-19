@@ -1,21 +1,24 @@
 """
-DOCSTRINGS NEEDED:
-- Overall module docstring
-- Function docstrings for run_prior_adjustment, convert_ufms, tripend_factors, mts_adj_factors
-- Class docstring for PriorAdjustmentConf
+Prior adjustment module for trip rate factor calculations.
+This module handles the calculation and adjustment of trip rate factors using prior
+and post-ME matrices. 
+It converts UFM files, calculates trip-end factors, and applies MTS adjustments, if selected.
+"""
 
+"""
+OTHER COMMENTS:
 mts_adj_factors has hardcoded naming order and subsets for segments assuming consistency between the post-ME and synthetic.
 Is this guaranteed? This was not the case in distribute.py, so flexibility was added to the config file.
 """
 
+
+
 import pandas as pd
 import caf.base as cb
-from caf.base import segments                                                               # WHOLE LINE CAN BE REMOVED
-from caf.mat.matrices import MatrixFiles, MatrixType, MemoryMatrices                        # MemoryMatrices CAN BE REMOVED
-from caf.mat.direction.od_to_pa import OD2PAParameters, main as od2pa, disagg_and_convert   # main as od2pa CAN BE REMOVED
-from caf.mat.direction import factors                                                       # factors CAN BE REMOVED
+from caf.mat.matrices import MatrixFiles, MatrixType
+from caf.mat.direction.od_to_pa import OD2PAParameters, disagg_and_convert
 from caf.mat.ufm import UFMConverter
-# import caf.tem as ctem                                                                    # WHOLE LINE CAN BE REMOVED
+# import caf.tem as ctem
 from pathlib import Path
 import logging
 from caf.toolkit.config_base import BaseConfig
@@ -29,7 +32,30 @@ normits_noham_sector.columns = ['noham_sector_id','normits_id','noham_sector_to_
 normits_noham_sector['noham_sector_id'] = normits_noham_sector['noham_sector_id'].replace(NOHAM_SECTOR.name_to_id)
 
 class PriorAdjustmentConf(BaseConfig):
-    # saturn_path: Path                         # THIS CAN BE KEPT AND PERHAPS AN IF CONDITION ADDED IF CONVERSION IS NEEDED, ADDITIONAL PARAM run_conversion: bool = False
+    """
+    Configuration class for prior adjustment operations.
+    Attributes:
+        saturn_path: Path to Saturn exe for UFM conversion
+        run_conversion: Flag to enable UFM conversion
+        run_mts_adj: Flag to enable MTS adjustment
+        post_me_dir: Input directory for post-ME UFMs
+        post_me_out_dir: Directory for post-ME converted UFMs
+        prior_dir: Input directory for prior UFMs
+        prior_out_dir: Directory for prior converted UFMs
+        main_out_dir: Main output directory for results
+        post_me_od2pa_conf: Configuration parameters for post-ME OD to PA conversion
+        prior_od2pa_conf: Configuration parameters for prior OD to PA conversion
+        hb_prod_fr_path: HB Productions From-Home filepath
+        hb_attr_fr_path: HB Attractions From-Home filepath
+        hb_prod_to_path: HB Productions To-Home filepath
+        hb_attr_to_path: HB Attractions To-Home filepath
+        nhb_prod_path: NHB Productions filepath
+        nhb_attr_path: NHB Attractions filepath
+    """
+
+    saturn_path: Path
+    run_conversion: bool = False
+    run_mts_adj: bool = False
     post_me_dir: Path
     post_me_out_dir: Path
     prior_dir: Path
@@ -43,24 +69,38 @@ class PriorAdjustmentConf(BaseConfig):
     hb_attr_to_path: Path
     nhb_prod_path:Path
     nhb_attr_path:Path
-    # tem_conf: ctem.MainConfig                 # WHOLE LINE CAN BE REMOVED
+    # tem_conf: ctem.MainConfig
 
 def run_prior_adjustment(params: PriorAdjustmentConf):
     """
-    the below should be in a if condition to run the converter, eg:
-    if params.run_conversion:
-        ... code ...
+    Run prior adjustment process for trip rate factors.
+    This function starts the prior adjustment workflow, which includes:
+    1. Optional: conversion of UFMs for both post-ME and prior matrices
+    2. Disaggregation and conversion of OD to PA matrices for both post-ME and prior matrices
+    3. Loading HB and NHB productions/attractions
+    4. Calculating trip-end factors based on the loaded data
+    5. Optional: adjustment of factors based on MTS data
+    Parameters
+    ----------
+    params : PriorAdjustmentConf
+        Configuration object explained above
+    Returns
+    -------
+    None. It runs further functions that output directly to params.main_out_dir
     """
-    # converter = UFMConverter(params.saturn_path)
-    # convert_ufms(params.post_me_dir,
-    #              converter,
-    #              params.post_me_out_dir,
-    #              "postme_2023")
-    
-    # convert_ufms(params.prior_dir,
-    #              converter,
-    #              params.prior_out_dir,
-    #              "prior_2023")
+
+
+    if params.run_conversion:
+        converter = UFMConverter(params.saturn_path)
+        convert_ufms(params.post_me_dir,
+                    converter,
+                    params.post_me_out_dir,
+                    "postme_2023")
+        
+        convert_ufms(params.prior_dir,
+                    converter,
+                    params.prior_out_dir,
+                    "prior_2023")
 
     postme_disag = disagg_and_convert(params.post_me_od2pa_conf)
     prior_disag = disagg_and_convert(params.prior_od2pa_conf)
@@ -83,16 +123,30 @@ def run_prior_adjustment(params: PriorAdjustmentConf):
                     nhb_attr,
                     params.main_out_dir)
     
-    """
-    the below should be in a if condition to run the mts adj factor calculation, eg:
     if params.run_mts_adj:
-        ... code ...
-    """
-    # mts_adj_factors(params.post_me_dir,
-    #                 params.prior_out_dir,
-    #                 params.main_out_dir)
+        mts_adj_factors(params.post_me_dir,
+                        params.prior_out_dir,
+                        params.main_out_dir)
     
 def convert_ufms(ufm_dir: Path, converter: UFMConverter, out_dir: Path, rename: str):
+    """
+    Convert UFM files to square CSVs and organise outputs.
+    This function takes a directory of UFM files, converts each to square CSV format,
+    and saves the resulting files to the specified output directory.
+    Parameters
+    ----------
+    ufm_dir : Path
+        Directory containing UFM files to be converted.
+    converter : UFMConverter
+        Converter object used to perform the UFM to CSV conversion.
+    out_dir : Path
+        Directory where the converted CSV files will be saved.
+    rename : str
+        String used to rename the output files.
+    Returns
+    -------
+    None. The function calls on SATURN to convert UFMs and outputs information to LOG.
+    """
     matrices = list(ufm_dir.glob("*.ufm"))
     for i, path in enumerate(matrices):
         stacked, unstacked = converter.ufm_to_square_csvs(
@@ -122,6 +176,38 @@ def tripend_factors(synthetic,
                     nhb_prod,
                     nhb_attr,
                     out_dir: Path):
+    """
+    Calculate trip-end factors for both prior and post-ME matrices.
+    This calculates post and prior factors by dividing the interzonal post-ME OD by the
+    interzonal synthetic OD, separately for productions and attractions.
+    Then calculates factors by dividing the zonal synthetic OD by the HB/NHB 
+    productions/attractions for each direction. 
+    Finally, it multiplies the factors by the post/prior interzonal factors to get 
+    adjusted factors for HB/NHB productions/attractions.
+    Parameters
+    ----------
+    synthetic : MatrixFiles
+        MatrixFiles object containing the synthetic OD matrices.
+    postme : MatrixFiles
+        MatrixFiles object containing the post-ME OD matrices.
+    hb_prod_fr : DVector
+        DVector containing home-based-from productions.
+    hb_attr_fr : DVector
+        DVector containing home-based-from attractions.
+    hb_prod_to : DVector
+        DVector containing home-based-to productions.
+    hb_attr_to : DVector
+        DVector containing home-based-to attractions.
+    nhb_prod : DVector
+        DVector containing non-home-based productions.
+    nhb_attr : DVector
+        DVector containing non-home-based attractions.
+    out_dir : Path
+        Directory where the calculated factors will be saved as DVector files.
+    Returns
+    -------
+    None. The function outputs the calculated factors as DVector files to the specified output directory.
+    """
     synthetic_sector_inter = synthetic.remove_intras().translate_zoning(NOHAM_SECTOR)
     synthetic_sector  = synthetic.translate_zoning(NOHAM_SECTOR)
     synthetic_dvectors_inter = synthetic_sector_inter.to_dvector()
@@ -183,6 +269,9 @@ def tripend_factors(synthetic,
 def mts_adj_factors(postme_dir: Path,
                     synth_dir: Path,
                     out_dir: Path):
+    """
+    Currently not implemented, but leaving here for future development
+    """
     seg = cb.Segmentation(cb.SegmentationInput(enum_segments=['m', 'userclass', 'direction_od', 'tp'],
                                naming_order=['m', 'tp', 'userclass', 'direction_od'],
                                subsets={'m':[3], 'tp':[1,2,3]}))
@@ -216,7 +305,9 @@ if __name__ == "__main__":
     prior_conf = OD2PAParameters.load_yaml(Path(r"C:\Users\YanZhu\caf_mat\postme_adj\synthetic_conf.yml"))
 
     conf = PriorAdjustmentConf(
-        # saturn_path=Path(r"C:\Program Files (x86)\Atkins\SATURN\XEXES 11.6.03E MC N4"),                           # THIS CAN BE KEPT AND PERHAPS AN IF CONDITION ADDED IF CONVERSION IS NEEDED, ADDITIONAL PARAM run_conversion: bool = False
+        saturn_path=Path(r"C:\Program Files (x86)\Atkins\SATURN\XEXES 11.6.03E MC N4"),
+        run_conversion=False,
+        run_mts_adj=False,
         post_me_dir=Path(r"C:\Users\YanZhu\caf_mat\postme_adj\post_me_ufms"),
         post_me_out_dir=Path(r"C:\Users\YanZhu\caf_mat\postme_adj\post_me"),
         prior_dir=Path(r"C:\Users\YanZhu\caf_mat\postme_adj\prior_ufms"),
