@@ -31,12 +31,48 @@ _ADJ_CHOICE_CONFIG = {
 # # # CONSTANTS # # #
 LOG = logging.getLogger(__name__)
 
+
 class DistributeConf(BaseConfig):
+    """
+    Configuration dataclass for the distribute module, defining all necessary parameters
+    and file paths for executing the 4D constraint gravity model with post ME furness
+    adjustment.
+    This class is designed to be loaded from a YAML configuration file
+    (distribute_config.yml) and provides structured access to all configuration options
+    used in the main execution flow.
+
+    Attributes - data types are defined in code, descriptions are provided in comments
+    ----------
+    mode_subset : Subset of modes to include in the run.
+    timeperiod_subset : Subset of time periods to include in the run.
+    purpose_subset : Subset of purposes to include in the run.
+    direction_subset : Subset of directions to include in the run.
+    tld_lookup_path : File path to the TLD lookup CSV file.
+    zone_system : Name of the zoning system used for matrices.
+    sector_system : Name of the sector system used for related zone system.
+    zone_to_sector_lookup : Dictionary containing the file path and column mapping for
+                            the zone to sector lookup CSV.
+    postme_matrices : Dictionary containing configuration for post ME matrices, including
+                      naming order, folder path, and filename template.
+    cost_files : Dictionary containing configuration for cost matrix files, including
+                naming order, folder path, and filename template.
+    tld_files : Dictionary containing configuration for TLD files, including naming
+                order, folder path, and filename template.
+    trip_ends : Dictionary containing file paths for trip ends data, including production
+                and attraction vectors for NHB and HB (fr and to).
+    gm_run_name : Identifier name for the gravity model run, used in output naming.
+    output_path : Root output directory where results will be written.
+    run_options : Dictionary specifying which steps to execute (run_gm, run_adjust).
+    adj_target_options : Dictionary specifying adjustment target options (triple_targ,
+                         o_target, d_target, sec_target) with apply flag
+                         and max_cap value.
+    max_process : Maximum number of processes for parallel execution.
+    """
+
     mode_subset: int | list[int]
     timeperiod_subset: int | list[int]
     purpose_subset: int | list[int]
     direction_subset: int | list[int]
-    adj_target_options: dict[str, dict[str, bool | int]]
     tld_lookup_path: pathlib.Path
     zone_system: str
     sector_system: str
@@ -48,6 +84,7 @@ class DistributeConf(BaseConfig):
     gm_run_name: str
     output_path: pathlib.Path
     run_options: dict[str, bool]
+    adj_target_options: dict[str, dict[str, bool | int]]
     max_process: int
 
 
