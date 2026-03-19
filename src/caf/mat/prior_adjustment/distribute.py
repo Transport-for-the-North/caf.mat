@@ -457,8 +457,7 @@ def main(cfg: DistributeConf):
     # --- Adjustment target options ---------------------------------------------
     # YAML stores each target as {apply: bool, max_cap: int}; convert to (bool, int) tuples
     adj_target_options = {
-        k: (v["apply"], v["max_cap"])
-        for k, v in cfg.adj_target_options.items()
+        k: (v["apply"], v["max_cap"]) for k, v in cfg.adj_target_options.items()
     }
 
     # --- Lookups and zoning systems --------------------------------------------
@@ -630,6 +629,8 @@ def main(cfg: DistributeConf):
 
 if __name__ == "__main__":
 
-    cfg = DistributeConf.load_yaml(pathlib.Path(__file__).parent / "distribute_config.yml")
-    
-    main(cfg)
+    distribute_config = DistributeConf.load_yaml(
+        pathlib.Path(__file__).parent / "distribute_config.yml"
+    )
+
+    main(distribute_config)
