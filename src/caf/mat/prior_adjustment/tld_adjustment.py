@@ -7,6 +7,7 @@ import pandas as pd
 from caf.toolkit.cost_utils import CostDistribution
 
 
+
 def _load_matrix(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
     """Load one matrix CSV and return (origin_ids, matrix_values)."""
     df = pd.read_csv(file_path, compression="infer")
