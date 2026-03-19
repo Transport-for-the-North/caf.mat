@@ -1,11 +1,21 @@
+"""
+DOCSTRINGS NEEDED:
+- Overall module docstring
+- Function docstrings for run_prior_adjustment, convert_ufms, tripend_factors, mts_adj_factors
+- Class docstring for PriorAdjustmentConf
+
+mts_adj_factors has hardcoded naming order and subsets for segments assuming consistency between the post-ME and synthetic.
+Is this guaranteed? This was not the case in distribute.py, so flexibility was added to the config file.
+"""
+
 import pandas as pd
 import caf.base as cb
-from caf.base import segments
-from caf.mat.matrices import MatrixFiles, MatrixType, MemoryMatrices
-from caf.mat.direction.od_to_pa import OD2PAParameters, main as od2pa, disagg_and_convert
-from caf.mat.direction import factors
+from caf.base import segments                                                               # WHOLE LINE CAN BE REMOVED
+from caf.mat.matrices import MatrixFiles, MatrixType, MemoryMatrices                        # MemoryMatrices CAN BE REMOVED
+from caf.mat.direction.od_to_pa import OD2PAParameters, main as od2pa, disagg_and_convert   # main as od2pa CAN BE REMOVED
+from caf.mat.direction import factors                                                       # factors CAN BE REMOVED
 from caf.mat.ufm import UFMConverter
-# import caf.tem as ctem
+# import caf.tem as ctem                                                                    # WHOLE LINE CAN BE REMOVED
 from pathlib import Path
 import logging
 from caf.toolkit.config_base import BaseConfig
@@ -19,7 +29,7 @@ normits_noham_sector.columns = ['noham_sector_id','normits_id','noham_sector_to_
 normits_noham_sector['noham_sector_id'] = normits_noham_sector['noham_sector_id'].replace(NOHAM_SECTOR.name_to_id)
 
 class PriorAdjustmentConf(BaseConfig):
-    # saturn_path: Path
+    # saturn_path: Path                         # THIS CAN BE KEPT AND PERHAPS AN IF CONDITION ADDED IF CONVERSION IS NEEDED, ADDITIONAL PARAM run_conversion: bool = False
     post_me_dir: Path
     post_me_out_dir: Path
     prior_dir: Path
@@ -33,9 +43,14 @@ class PriorAdjustmentConf(BaseConfig):
     hb_attr_to_path: Path
     nhb_prod_path:Path
     nhb_attr_path:Path
-    # tem_conf: ctem.MainConfig
+    # tem_conf: ctem.MainConfig                 # WHOLE LINE CAN BE REMOVED
 
 def run_prior_adjustment(params: PriorAdjustmentConf):
+    """
+    the below should be in a if condition to run the converter, eg:
+    if params.run_conversion:
+        ... code ...
+    """
     # converter = UFMConverter(params.saturn_path)
     # convert_ufms(params.post_me_dir,
     #              converter,
@@ -67,7 +82,12 @@ def run_prior_adjustment(params: PriorAdjustmentConf):
                     nhb_prod,
                     nhb_attr,
                     params.main_out_dir)
-
+    
+    """
+    the below should be in a if condition to run the mts adj factor calculation, eg:
+    if params.run_mts_adj:
+        ... code ...
+    """
     # mts_adj_factors(params.post_me_dir,
     #                 params.prior_out_dir,
     #                 params.main_out_dir)
@@ -196,7 +216,7 @@ if __name__ == "__main__":
     prior_conf = OD2PAParameters.load_yaml(Path(r"C:\Users\YanZhu\caf_mat\postme_adj\synthetic_conf.yml"))
 
     conf = PriorAdjustmentConf(
-        # saturn_path=Path(r"C:\Program Files (x86)\Atkins\SATURN\XEXES 11.6.03E MC N4"),
+        # saturn_path=Path(r"C:\Program Files (x86)\Atkins\SATURN\XEXES 11.6.03E MC N4"),                           # THIS CAN BE KEPT AND PERHAPS AN IF CONDITION ADDED IF CONVERSION IS NEEDED, ADDITIONAL PARAM run_conversion: bool = False
         post_me_dir=Path(r"C:\Users\YanZhu\caf_mat\postme_adj\post_me_ufms"),
         post_me_out_dir=Path(r"C:\Users\YanZhu\caf_mat\postme_adj\post_me"),
         prior_dir=Path(r"C:\Users\YanZhu\caf_mat\postme_adj\prior_ufms"),
