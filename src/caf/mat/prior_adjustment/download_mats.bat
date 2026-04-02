@@ -5,7 +5,7 @@ set "mat_dir=I:\NorMITs Distribution\ntem_emp_rail"
 set "out_dir=D:\NorMITs Demand\ntem_emp_test"
 set "run_name=6_sec_adj"
 set "mode=6"
-set "tps=1 2 3"
+set "tps=1 2 3 4"
 
 for %%t in (%tps%) do (
     for %%p in (1 2 3 4 5 6 7 8) do (

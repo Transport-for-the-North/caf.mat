@@ -3,13 +3,13 @@ import pandas as pd
 import caf.base as cb
 from pathlib import Path
 import caf.toolkit as ctk
-from caf.mat.matrices import MatricesBase, MemoryMatrices, MatrixFiles
+from caf.mat.matrices import MatricesBase, MemoryMatrices, MatrixFiles, MatrixType
 import logging
 
 logging.basicConfig(
     level=logging.INFO,  # Set the logging level
     format='%(asctime)s - %(levelname)s - %(message)s',  # Log message format
-    filename=r"E:\dia_seg\outputs\refurness.log",
+    filename=r"D:\NorMITs Demand\ntem_emp_test\canca\seg.log",
     filemode='a' # Append mode
 )
 
@@ -37,9 +37,8 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
     zones : _type_
         _description_
     """
-    tlds.rename({'nca':1, 'ca':2}, inplace=True)
-    tlds.rename({'NE':1, 'NW':2, 'YH':3, 'South':4, 'Scotland':5}, inplace=True)
-    tlds.sort_index(inplace=True)
+    tld_seg_agg = [i for i in agg_mat.segmentation.names if i in tlds.index.names]
+    tld_seg_full = [i for i in prod.segmentation.names if i in tlds.index.names]
     for seg_slice in agg_mat.segmentation.iter_slices():
         mat = agg_mat.get_matrix(seg_slice).data
         triple_inputs = {}
@@ -49,25 +48,26 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
         adjustor = {}
         for area in zones['tld_area'].unique():
             tld_zones = zones[zones['tld_area'] == area].index
-            tld = tlds.groupby(list(seg_slice.naming_order) + ['tld_area','trav_dist']).sum().loc[seg_slice.as_tuple()]
-            tld['comp'] = ctk.cost_utils.cost_distribution(mat.values[tld_zones], costs[tld_zones], max_bounds=tld.index, min_bounds=tld.reset_index()['trav_dist'].shift().fillna(0))
+            tld = tlds.groupby(tld_seg_agg + ['tld_area','trav_dist']).sum().loc[seg_slice.aggregate(tld_seg_agg).as_tuple()].loc[area].to_frame()
+            tld['comp'] = ctk.cost_utils.cost_distribution(mat.loc[tld_zones].values, costs.loc[tld_zones].values, max_bounds=tld.index, min_bounds=tld.reset_index()['trav_dist'].shift().fillna(0))
             tld /= tld.sum()
             tld['adj'] = tld['comp'] / tld['trips']
-            adjustor[area] = tld
+            adjustor[area] = tld['adj']
         adjustor = pd.concat(adjustor)
         adjustor[adjustor>20] = 20
         tld_dicts = {}
         for te_seg in prod.segmentation.iter_slices(filter_=seg_slice.data):
             props = {}
             tld_dict = {}
-            for area in [1,2,3,4,5]:
-                tld = tlds.loc[te_seg.as_tuple()].copy().sort_index()
+            for area in zones['tld_area'].unique():
+                tld = tlds.xs(te_seg.aggregate(tld_seg_full).as_tuple(), level=tld_seg_full).loc[area].copy().sort_index().reset_index()
                 tld['from'] = tld['trav_dist'].shift().fillna(0)
-                tld  = tld.set_index(['from','trav_dist']).fillna(0).mul(adjustor.loc[area,'adj'], axis=0)
+                tld  = tld.set_index(['from','trav_dist']).squeeze().fillna(0).mul(adjustor.loc[area])
+                tld.name = 'trips'
                 tld /= tld.sum()
                 tld_zones = zones[zones['tld_area'] == area].index
                 prop, unique = furness.cost_to_prop(
-                costs[tld_zones],
+                costs.loc[tld_zones].values,
                 tld.reset_index(),
                 'trips'
             )
@@ -79,16 +79,21 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
             row_tot += row
             col = attr.get_slice(te_seg)
             col_tot += col
-            triple_inputs[te_seg.as_tuple()] = furness.SegInput(props, col_targets=col, row_targets=row)
+            triple_inputs[te_seg.generate_name()] = furness.SegInput(props, col_targets=col, row_targets=row)
         tld_ref = pd.concat(tld_dicts)
         rmse = furness.calc_rmse(col_tot, mat.values, row_tot)
         LOG.info(f"############# segment={seg_slice.generate_name} #############")
         if rmse > 1e-6:
-            LOG.warning(f"for uc:{uc} and ca{ca}, rmse of tripends to target mat = {rmse}")
+            row_adj = mat.sum(axis=1) / row_tot
+            col_adj = mat.sum() / col_tot
+            for slice_ in triple_inputs.keys():
+                triple_inputs[slice_].row_targets *= row_adj
+                triple_inputs[slice_].col_targets *= col_adj
+            LOG.warning(f"for {seg_slice.generate_name}, rmse of tripends to target mat = {rmse}")
         hdf_file = home_dir / "outputs" / f"matrices_{te_seg.generate_name}.hdf"
         seed = mat.copy()
         seed.columns.name = 'd'
-        seed.index = seed.index.set_levels(seed.columns, level='o')
+        # seed.index = seed.index.set_levels(seed.columns, level='o')
         seed = seed.stack().to_xarray()
         furnessed, rmse, checkers = furness.segmentation_furness(triple_inputs,
                                                 mat.to_numpy(),
@@ -111,76 +116,21 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
 
 if __name__ == "__main__":
     LOG = logging.getLogger(__name__)
-    areas = {'NE':1, 'NW':2, 'YH':3, 'South':4, 'Scotland':5}
-    home_dir = Path(r"E:\dia_seg")
-    zones = pd.read_csv(home_dir / "target_mats" / "zones.csv", index_col=0).sort_index().reset_index(drop=True)
-    zones['tld_area'] = zones['tld_area'].replace(areas)
-    costs = pd.read_csv(r"E:\costs\CSVs\ptnet_cost_ip-rail.csv", index_col=0).to_numpy()
-    attr_g = cb.DVector.load(r"E:\dia_seg\tripends\attr_g_balanced.dvec")
-    prod_g = cb.DVector.load(r"E:\dia_seg\tripends\prod_g.dvec")
-    attr_s = cb.DVector.load(r"E:\dia_seg\tripends\attr_s_balanced.dvec")
-    prod_s = cb.DVector.load(r"E:\dia_seg\tripends\prod_s.dvec")
-    attr_n = cb.DVector.load(r"E:\dia_seg\tripends\attr_n_balanced.dvec")
-    prod_n = cb.DVector.load(r"E:\dia_seg\tripends\prod_n.dvec")
-    tlds_g = pd.read_csv(r"E:/dia_seg/adjusted_tlds_gender.csv", index_col=[1,2,3,4]).drop('uc_name',axis=1)
-    tlds_s = pd.read_csv(r"E:/dia_seg/adjusted_tlds_soc.csv", index_col=[1,2,3,4]).drop('uc_name',axis=1)
-    tlds_n = pd.read_csv(r"E:/dia_seg/adjusted_tlds_ns_sec.csv", index_col=[1,2,3,4]).drop('uc_name',axis=1)
+    segmentation_input = cb.SegmentationInput(naming_order=['direction_od','m','p','tp','ca'],
+                                              enum_segments=['direction_od','m','p','tp','ca'],
+                                              subsets={'m':[6],
+                                                       'tp':[1,2,3,4]})
+    normits = cb.ZoningSystem.get_zoning('normits')
+    ca_seg = cb.Segmentation(segmentation_input)
+    prod = cb.DVector.load(r"D:\NorMITs Demand\ntem_emp_test\tripends\prod.dvec").aggregate(ca_seg).filter_segment_value('m', 6, keep_filtered=True).filter_segment_value('tp', [1,2,3,4])
+    attr = cb.DVector.load(r"D:\NorMITs Demand\ntem_emp_test\tripends\attr.dvec").aggregate(ca_seg).filter_segment_value('m', 6, keep_filtered=True).filter_segment_value('tp', [1,2,3,4])
+    agg_mat = MatrixFiles(ca_seg.remove_segment('ca'),
+                          normits,
+                          MatrixType.OD,
+                          Path(r"D:\NorMITs Demand\ntem_emp_test\matrices"))
+    costs = pd.read_csv(r"I:\Prior adjustment\distribution\costs\normits_costs_m6_tp1.csv", index_col=0)
+    tlds = pd.read_csv(r"D:\NorMITs Demand\ntem_emp_test\tlds\combined_tlds_canca_new.csv", index_col=[0,1,2,3,4,5])['trips']
+    tlds = tlds.rename({'hb_fr':1, 'hb_to':2, 'nhb':0})
+    zones = pd.read_csv(r"I:\NorMITs Distribution\voa_gb_2023_uni\NorMITs_zone.csv", index_col=0)
+    dist(attr, prod, agg_mat, tlds, costs, Path(r"D:\NorMITs Demand\ntem_emp_test\canca"), zones)
     
-    # dist(attr_s, prod_s, tlds_s, costs, cb.segments.SegmentsSuper('soc').get_segment(), home_dir, zones)
-    dist(attr_g, prod_g, tlds_g, costs, cb.segments.SegmentsSuper('gender_3').get_segment(), home_dir, zones)
-    dist(attr_n, prod_n, tlds_n, costs, cb.segments.SegmentsSuper('ns_sec').get_segment(), home_dir, zones)
-    
-
-    # tlds.rename({'nca':1, 'ca':2}, inplace=True)
-    # tlds.rename({'NE':1, 'NW':2, 'YH':3, 'South':4, 'Scotland':5}, inplace=True)
-    # tlds.sort_index(inplace=True)
-    # for uc in [1,2,3,4,5]:
-    #     for ca in [1,2]:
-    #         mat = pd.read_hdf(home_dir / "target_mats" / f"uc{uc}_ca{ca}.hdf")
-    #         triple_inputs = {}
-    #         row_tot = 0
-    #         col_tot = 0
-    #         # Adjust to matrix
-    #         adjustor = {}
-    #         for area in [1,2,3,4,5]:
-    #             tld_zones = zones[zones['tld_area'] == area].index
-    #             tld = tlds.groupby(['ca','area', 'uc', 'trav_dist']).sum().loc[(ca,area,uc)]
-    #             tld['comp'] = ctk.cost_utils.cost_distribution(mat.values[tld_zones], costs[tld_zones], max_bounds=tld.index, min_bounds=tld.reset_index()['trav_dist'].shift().fillna(0))
-    #             tld /= tld.sum()
-    #             tld['adj'] = tld['comp'] / tld['trips']
-    #             adjustor[area] = tld
-    #         adjustor = pd.concat(adjustor)
-    #         adjustor[adjustor>20] = 20
-    #         for g in [1,2,3]:
-    #             props = {}
-    #             for area in [1,2,3,4,5]:
-    #                 tld = tlds.loc[(ca,g,area, uc)].copy().sort_index()
-    #                 tld['from'] = tld['trav_dist'].shift().fillna(0)
-    #                 tld  = tld.set_index(['from','trav_dist']).fillna(0).mul(adjustor.loc[area,'adj'], axis=0)
-    #                 tld /= tld.sum()
-    #                 tld_zones = zones[zones['tld_area'] == area].index
-    #                 prop, unique = furness.cost_to_prop(
-    #                 costs[tld_zones],
-    #                 tld.reset_index(),
-    #                 'trips'
-    #             )
-                    
-    #                 props[area] = furness.PropsInput(prop, tld_zones, unique))
-    #             row = productions.data.loc[uc, ca, g].to_numpy()
-    #             row_tot += row
-    #             col = attractions.data.loc[uc, ca, g].to_numpy()
-    #             col_tot += col
-    #             triple_inputs[g] = furness.SegInput(props, col_targets=col, row_targets=row)
-    #         rmse = furness.calc_rmse(col_tot, mat.values, row_tot)
-    #         LOG.info(f"############# UC={uc}, CA={ca} #############")
-    #         if rmse > 1e-6:
-    #             LOG.warning(f"for uc:{uc} and ca{ca}, rmse of tripends to target mat = {rmse}")
-    #         furnessed, rmse, checkers = furness.segmentation_furness(triple_inputs,
-    #                                                 mat.to_numpy(),
-    #                                                 (5430,5430),
-    #                                                 tol=1e-5)
-    #         furnessed.columns = mat.columns
-    #         furnessed.index = furnessed.index.set_levels(mat.index, level='o')
-    #         furnessed.to_hdf(home_dir / f"gender_matrices_uc{uc}_ca{ca}.hdf", key='data')
-    #         checkers.to_hdf(home_dir / f"gender_matrices_uc{uc}_ca{ca}.hdf", key='checks')
-    # print('debugging')

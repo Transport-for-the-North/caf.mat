@@ -50,6 +50,39 @@ def join(val: list | tuple | int, dct: dict = None, sep: str = "") -> str | int:
         else str_to_value(sep.join(f"{_k}" for _k in val_to_list(val)))
     )
 
+def flatten_and_concat(nested_dict) -> pd.DataFrame:
+    dfs = []
+    
+    def _flatten(d):
+        for key, value in d.items():
+            if isinstance(value, pd.DataFrame):
+                dfs.append(value)
+            elif isinstance(value, dict):
+                _flatten(value)
+    
+    _flatten(nested_dict)
+    return pd.concat(dfs, ignore_index=False) if dfs else pd.DataFrame()
+
+def flatten_and_concat_with_keys(nested_dict) -> pd.DataFrame:
+    dfs = []
+    keys = []
+    
+    def _flatten(d, path=()):
+        for key, value in d.items():
+            current_path = path + (key,)
+            if isinstance(value, pd.DataFrame):
+                dfs.append(value)
+                keys.append(current_path)
+            elif isinstance(value, dict):
+                _flatten(value, current_path)
+    
+    _flatten(nested_dict)
+    if not dfs:
+        return pd.DataFrame()
+    
+    # Concat with keys to create MultiIndex
+    result = pd.concat(dfs, keys=keys, names=[f'level_{i}' for i in range(len(keys[0]))] if keys else None)
+    return result
 
 def read_tld(
     md: int,
@@ -197,18 +230,19 @@ def read_tld(
                 else:
                     curr_pp = pp
                 tmp.to_csv(tld_fldr / f"NTS_tld_m{mdx}_p{curr_pp}_{di}{cax}.csv")
-                csv_dict[pp][di][ca] = tld_fldr / f"NTS_tld_m{mdx}_p{curr_pp}_{di}{cax}.csv"
+                csv_dict[pp][di][ca] = tmp
 
-    return csv_dict
+    return flatten_and_concat_with_keys(csv_dict)
 
 x = read_tld(
     md=6,
-    z2z_path=Path(r"I:\Nhan_Data\trip_length_distribution.csv"),
-    s2s_path=Path(r"I:\Nhan_Data\trip_length_distribution_s2s.csv"),
+    z2z_path=Path(r"I:\Nhan_Data\trip_length_distribution_ca.csv"),
+    s2s_path=Path(r"I:\Nhan_Data\trip_length_distribution_s2s_ca.csv"),
     cons_path=Path(r"I:\Nhan_Data\wavelength_tld.csv"),
-    tld_fldr=Path(r"C:\Users\jared.hryszko\Documents\Task3\TLDs"),
-    cat_dict={0: "all"},
+    tld_fldr=Path(r"D:\NorMITs Demand\ntem_emp_test\tlds"),
+    cat_dict={1: "nca", 2: "ca"},
     cat_type=None,
     tld_cons="wavelength",
     run_code=True,
 )
+print('debugging')
