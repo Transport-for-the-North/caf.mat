@@ -377,6 +377,8 @@ def _4d_constraint_gravity_model(
         sector_target_furnessed = (
             sector_target.data * row.sum() / sector_target.data.sum().sum()
         )
+        LOG.info("Difference between Trip End productions and Target Sector Matrix productions: %s", row.sum() - sector_target_furnessed.sum(axis=1).sum())
+        LOG.info("Difference between Trip End attractions and Target Sector Matrix attractions: %s", col.sum() - sector_target_furnessed.sum(axis=0).sum())
         LOG.info("Running Gravity Model: %s, with calibration %s", name, run_gm)
 
         cost_function = cost_functions.BuiltInCostFunction.LOG_NORMAL.get_cost_function()
@@ -443,6 +445,12 @@ def main(cfg: DistributeConf):
     Main function to execute the 4D constraint gravity model with post ME furness adjustment.
     All inputs are defined in the distribute_config.yml file and loaded into the DistributeConf dataclass.
     """
+    log_path = pathlib.Path(cfg.output_path).parent / f"{cfg.gm_run_name}.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(log_path)
+    file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+    LOG.setLevel(logging.INFO)
+    LOG.addHandler(file_handler)
 
     # --- Segment subsets -------------------------------------------------------
     m_subset = cfg.mode_subset
