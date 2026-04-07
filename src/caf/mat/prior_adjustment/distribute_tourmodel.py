@@ -161,16 +161,16 @@ def seg_furness(
     )
 
     band_targets = band_targets.loc[used]
-    sec_look = constraint_area_trans.sort_values(by="normits_id").set_index("normits_id")[
-        "noham_sector_id"
-    ]
+    sec_look = constraint_area_trans.sort_values(by="normits_v3.3_id").set_index(
+        "normits_v3.3_id"
+    )["tour"]
     full_ind = (
         band_lookup.reset_index()
         .merge(sec_look, left_on="o_zon", right_index=True)
-        .rename(columns={"noham_sector_id": "o_sec"})
+        .rename(columns={"tour": "o_sec"})
     )
     full_ind = full_ind.merge(sec_look, left_on="d_zon", right_index=True).rename(
-        columns={"noham_sector_id": "d_sec"}
+        columns={"tour": "d_sec"}
     )
     if run_gm:
         gravity_model_results, dists = calib_gm.calibrate(  # pylint: disable=unused-variable
@@ -362,21 +362,24 @@ def _4d_constraint_gravity_model(
         sector_target = sector_target_matrix.get_matrix(
             current_slice.aggregate(sector_target_matrix.segmentation.naming_order)
         )
-        tld = pd.read_csv(tlds[current_slice.aggregate(["p", "direction_od"]).generate_name()])
-        tld["from"] = tld["Travel distance"].shift().fillna(0)
-        tld.loc[tld["from"] > tld["Travel distance"], "from"] = 0
-        tld["ave_dist"] = (tld["Travel distance"] + tld["from"]) / 2
-        trans = constraint_area_trans.set_index("normits_id")["noham_sector_id"].to_dict()
+        tld = pd.read_csv(
+            tlds[current_slice.aggregate(["m", "p", "direction_od"]).generate_name()]
+        )
+        tld["from"] = tld["trav_dist"].shift().fillna(0)
+        tld.loc[tld["from"] > tld["trav_dist"], "from"] = 0
+        # tld["ave_dist"] = (tld["trav_dist"] + tld["from"]) / 2
+        trans = constraint_area_trans.set_index("normits_v3.3_id")["tour"].to_dict()
         col_sector = col.rename(trans).groupby("normits_id").sum().reset_index()
         col_sector.columns = ["model_zone_id", "trips"]
         row_sector = row.rename(trans).groupby("normits_id").sum().reset_index()
         row_sector.columns = ["model_zone_id", "trips"]
-        sector_target_furnessed, _, _ = furness.furness_pandas_wrapper(
-            sector_target.data, row_sector, col_sector, tol=0.001
-        )
-        sector_target_furnessed = (
-            sector_target.data * row.sum() / sector_target.data.sum().sum()
-        )
+        # sector_target_furnessed, _, _ = furness.furness_pandas_wrapper(
+        #     sector_target.data, row_sector, col_sector, tol=0.001
+        # )
+        # sector_target_furnessed = (
+        #     sector_target.data * row.sum() / sector_target.data.sum().sum()
+        # )
+        sector_target_furnessed = sector_target.data
         LOG.info(
             "Difference between Trip End productions and Target Sector Matrix productions: %s",
             row.sum() - sector_target_furnessed.sum(axis=1).sum(),
@@ -393,11 +396,11 @@ def _4d_constraint_gravity_model(
             tld,
             tld_zones,
             {i: cost_function.default_params for i in tld_zones["tld_area"].unique()},
-            tld_cat_col="Tld area",
+            tld_cat_col=";index",
             tld_min_col="from",
-            tld_max_col="Travel distance",
+            tld_max_col="trav_dist",
             tld_avg_col="ave_dist",
-            tld_trips_col="final adjusted synthetic distribution",
+            tld_trips_col="trips",
             lookup_cat_col="tld_area",
             lookup_zone_col=";normits_v3.3_id",
         )
@@ -482,9 +485,9 @@ def main(cfg: DistributeConf):
         z2s_cfg = cfg.zone_to_sector_lookup
         normits_noham_sector = pd.read_csv(z2s_cfg["path"])
         normits_noham_sector.columns = z2s_cfg["columns"]
-        normits_noham_sector["noham_sector_id"] = normits_noham_sector[
-            "noham_sector_id"
-        ].replace(noham_sector.name_to_id)
+        normits_noham_sector["tour"] = normits_noham_sector["tour"].replace(
+            noham_sector.name_to_id
+        )
 
         # --- Split p into HB and NHB -----------------------------------------------
         hb_p_subset = (
@@ -645,7 +648,7 @@ def main(cfg: DistributeConf):
 if __name__ == "__main__":
 
     distribute_config = DistributeConf.load_yaml(
-        pathlib.Path(__file__).parent / "distribute_config.yml"
+        pathlib.Path(__file__).parent / "distribute_tourmodel_config.yml"
     )
 
     main(distribute_config)
