@@ -447,6 +447,60 @@ class MatricesBase(abc.ABC):
             output.set_matrix(total, to_slice)
 
         return output
+    
+    def p_to_uc(self,
+                output_name: str,
+                progress_bar: bool = True):
+        """
+        Compile matrices to Saturn format.
+
+        Compile from full purpose and direction, to userclass. Also applies occupancy and time 
+        period factors to go from full time period, person units to average hour pcu.
+
+        Parameters
+        ----------
+        occupancies : cb.DVector
+            DVector containing occupancy factors. This should include direction_od, tp and m segments. 
+            It can either contain p or userclass, but must contain one or the other.
+        tp_factors : dict[int, int]
+            Time period factors.
+        output_name : str
+            Name of output matrix.
+        progress_bar : bool
+            If True display progress bar for aggregation.
+
+        Returns
+        -------
+        Self
+        """
+        new_seg_in = self.segmentation.remove_segment('p').add_segment('userclass')
+        new_seg = cb.Segmentation(new_seg_in)
+
+        output = self.new(
+            output_name.format(name=self.name), segmentation_=new_seg
+        )
+
+        if progress_bar:
+            iterator = tqdm.tqdm(
+                new_seg.iter_slices(),
+                total=len(new_seg),
+                desc=f"Aggregating {self.name}",
+            )
+        else:
+            iterator = new_seg.iter_slices()
+
+        for to_slice in iterator:
+            total = 0
+            iter_seg = self.segmentation.add_segment('userclass')
+            for from_slice in iter_seg.iter_slices(to_slice.data):
+                from_slice_p = from_slice.remove('userclass')
+                mat = self.get_matrix(from_slice_p).data
+                if from_slice.data['direction_od'] == 2:
+                    mat = mat.T
+                total += mat
+            output.set_matrix(total, to_slice)
+
+        return output
 
     def disaggregate(
         self,
