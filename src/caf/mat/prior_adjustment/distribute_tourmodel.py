@@ -11,6 +11,7 @@ import pathlib
 # Third Party
 import caf.base as cb
 import pandas as pd
+import numpy as np
 from caf.distribute import cost_functions, furness, gravity_model
 from caf.toolkit.concurrency import multiprocess
 from caf.toolkit.config_base import BaseConfig
@@ -255,6 +256,67 @@ def seg_furness(
         final_mat.to_csv(adjustment_path / f"{slice_name}_matrix.csv")
         for i, out_filename in raw_factors_output_dict.items():
             adj_factors[i].to_csv(out_filename)
+
+def dfr_capval(dfr: pd.Series, chg_xmax: float = 1e+64, chg_xmin: float = None) -> pd.Series:
+    chg_xmin = 1 / chg_xmax if chg_xmin is None else chg_xmin
+    out = np.where(dfr > chg_xmax, chg_xmax, np.where(dfr < chg_xmin, chg_xmin, dfr))
+    return pd.Series(out, index=dfr.index)
+
+def read_4dcons(tor_cons: str, tour_fldr: pathlib.Path, moira_fldr: pathlib.Path, out_fldr: pathlib.Path) -> dict:
+        
+    # process sectoral constraint
+    lev_tour =  "tour"
+    csv_tour = pd.read_csv(tour_fldr / 
+                                f"matrix_output_{lev_tour}_4d.csv")
+    md, tsx_incl = [6], [1,2,3,4]
+    csv_tour = (csv_tour.loc[csv_tour["mode"].isin(md) & csv_tour["period"].isin(tsx_incl)]
+                .reset_index(drop=True))
+    col_name = {"orig tlc": "taz_o", "dest tlc": "taz_d"}
+    col_zone, col_purp = list(col_name.values()), []
+    if md == [6]:  # use moira adjustment
+        sec_mowl = pd.read_csv(moira_fldr / 
+                                    f"{tor_cons}_{lev_tour}_trips.csv")
+        sec_mowl = sec_mowl.rename(columns=col_name).set_index(col_zone + col_purp)
+        sec_fact = csv_tour.groupby(col_zone + col_purp)[['trips']].sum()
+        sec_fact = pd.concat([sec_fact, sec_mowl.rename(columns={"trips": "trips_wl"})], axis=1)
+        sec_fact.loc[sec_fact["trips_wl"].isna(), "trips_wl"] = sec_fact["trips"]
+        
+        # normalise to 100%
+        if len(col_purp) > 0:
+            tmp = (sec_fact.groupby(col_purp)["trips"].transform('sum')
+                    .div(sec_fact.groupby(col_purp)["trips_wl"].transform('sum')))
+        else:
+            tmp = sec_fact['trips'].sum() / sec_fact['trips_wl'].sum()
+            
+        sec_fact["trips_wl"] = sec_fact["trips_wl"].mul(tmp)
+        sec_fact["fact"] = sec_fact["trips_wl"].div(sec_fact["trips"]).fillna(1)
+        sec_fact['fact'] = dfr_capval(sec_fact['fact'], 50)
+
+        # update tour
+        csv_tour = pd.merge(csv_tour, sec_fact["fact"].reset_index(), how="left",
+                            on=col_zone + col_purp)
+        csv_tour["trips_adj"] = csv_tour["trips"].mul(csv_tour["fact"]).fillna(csv_tour["trips"])
+        tmp_grby = ["mode", "purpose", "period", "direction"]
+        tmp = (csv_tour.groupby(tmp_grby)["trips"].transform("sum")
+                .div(csv_tour.groupby(tmp_grby)["trips_adj"].transform("sum")))
+        csv_tour['trips_adj'] = csv_tour['trips_adj'].mul(tmp)
+        csv_tour = csv_tour.drop(columns=col_purp + ["fact", "trips"], errors="ignore").rename(columns={'trips_adj':'trips'})
+
+    # output
+    dix_list = csv_tour['direction'].unique()
+    csv_dict = {pp: {di: {} for di in dix_list} for pp in [1,2,3,4,5,6,7,8]}
+    csv_tour[col_zone] = csv_tour[col_zone].astype("category")
+    for pp in [1,2,3,4,5,6,7,8]:
+        for di in dix_list:
+            for ts in tsx_incl:
+                dfr = csv_tour.loc[csv_tour['mode'].isin(md) & (csv_tour['purpose'] == pp) &
+                                    (csv_tour['period'] == ts) & (csv_tour['direction'] == di)]
+                dfr = dfr.groupby(col_zone, observed=False)[['trips']].sum().reset_index()
+                # dfr = dfr.rename(columns={col: f';{col}' for col in col_zone})
+                out_name = f"sec_m{md}_p{pp}_ts{ts}_{di}.csv"
+                dfr.to_csv(out_fldr / "sector" / out_name, index=False)  
+                csv_dict[pp][di][ts] = out_fldr / "sector" / out_name
+    return csv_dict
 
 
 # pylint: disable=too-many-arguments
@@ -646,6 +708,11 @@ def main(cfg: DistributeConf):
 
 
 if __name__ == "__main__":
+
+    tour = read_4dcons( 'moira',
+                       pathlib.Path(r"T:\JaroslawHryscko\tourmodel_outputs\original_emp"),
+                       pathlib.Path(r"I:\NorMITs Distribution\voa_gb_2023_uni_i1\iter3a_rail_only\inputs"),
+                       pathlib.Path(r"D:\NorMITs Demand\ntem_emp_test\secs"))
 
     distribute_config = DistributeConf.load_yaml(
         pathlib.Path(__file__).parent / "distribute_tourmodel_config.yml"
