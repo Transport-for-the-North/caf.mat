@@ -314,8 +314,8 @@ def read_4dcons(tor_cons: str, tour_fldr: pathlib.Path, moira_fldr: pathlib.Path
                 dfr = dfr.groupby(col_zone, observed=False)[['trips']].sum().reset_index()
                 # dfr = dfr.rename(columns={col: f';{col}' for col in col_zone})
                 out_name = f"sec_m{md[0]}_p{pp}_ts{ts}_{di}.csv"
-                dfr.to_csv(out_fldr / "sector" / out_name, index=False)  
-                csv_dict[pp][di][ts] = out_fldr / "sector" / out_name
+                dfr.to_csv(out_fldr / out_name, index=False)  
+                csv_dict[pp][di][ts] = out_fldr / out_name
     return csv_dict
 
 
