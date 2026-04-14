@@ -473,8 +473,8 @@ class MatricesBase(abc.ABC):
         -------
         Self
         """
-        new_seg_in = self.segmentation.remove_segment('p').add_segment('userclass')
-        new_seg = cb.Segmentation(new_seg_in)
+        new_seg = self.segmentation.remove_segment('p').add_segment('userclass')
+        # new_seg = cb.Segmentation(new_seg)
 
         output = self.new(
             output_name.format(name=self.name), segmentation_=new_seg
@@ -495,6 +495,7 @@ class MatricesBase(abc.ABC):
             for from_slice in iter_seg.iter_slices(to_slice.data):
                 from_slice_p = from_slice.remove('userclass')
                 mat = self.get_matrix(from_slice_p).data
+                # TODO DELETE THIS
                 if from_slice.data['direction_od'] == 2:
                     mat = mat.T
                 total += mat

@@ -12,22 +12,22 @@ for %%t in (%tps%) do (
         set /a nhb_p = %%p + 10
         
         rem Copy fr file
-        robocopy "%mat_dir%\p%%p\m%mode%_p%%p_ts%%t_fr\%run_name%" "%out_dir%" "m%mode%_p%%p_ts%%t_fr_matrix.csv" /NJH /NJS /NP /R:1 /W:1
+        robocopy "%mat_dir%\p%%p\m%mode%_p%%p_ts%%t_fr" "%out_dir%\p%%p\m%mode%_p%%p_ts%%t_fr" "overall_matrix.csv" /NJH /NJS /NP /R:1 /W:1
         if exist "%out_dir%\m%mode%_p%%p_ts%%t_fr_matrix.csv" (
-            rename "%out_dir%\m%mode%_p%%p_ts%%t_fr_matrix.csv" "m%mode%_p%%p_ts%%t_fr.csv"
+            rename "%out_dir%\p%%p\m%mode%_p%%p_ts%%t_fr\overall_matrix.csv" "m%mode%_p%%p_ts%%t_fr.csv"
         )
         
-        rem Copy to file
-        robocopy "%mat_dir%\p%%p\m%mode%_p%%p_ts%%t_to\%run_name%" "%out_dir%" "m%mode%_p%%p_ts%%t_to_matrix.csv" /NJH /NJS /NP /R:1 /W:1
-        if exist "%out_dir%\m%mode%_p%%p_ts%%t_to_matrix.csv" (
-            rename "%out_dir%\m%mode%_p%%p_ts%%t_to_matrix.csv" "m%mode%_p%%p_ts%%t_to.csv"
-        )
+        @REM rem Copy to file
+        @REM robocopy "%mat_dir%\p%%p\m%mode%_p%%p_ts%%t_to\%run_name%" "%out_dir%" "m%mode%_p%%p_ts%%t_to_matrix.csv" /NJH /NJS /NP /R:1 /W:1
+        @REM if exist "%out_dir%\m%mode%_p%%p_ts%%t_to_matrix.csv" (
+        @REM     rename "%out_dir%\m%mode%_p%%p_ts%%t_to_matrix.csv" "m%mode%_p%%p_ts%%t_to.csv"
+        @REM )
         
-        rem Copy nhb file
-        robocopy "%mat_dir%\p!nhb_p!\m%mode%_p!nhb_p!_ts%%t_nhb\%run_name%" "%out_dir%" "m%mode%_p!nhb_p!_ts%%t_nhb_matrix.csv" /NJH /NJS /NP /R:1 /W:1
-        if exist "%out_dir%\m%mode%_p!nhb_p!_ts%%t_nhb_matrix.csv" (
-            rename "%out_dir%\m%mode%_p!nhb_p!_ts%%t_nhb_matrix.csv" "m%mode%_p!nhb_p!_ts%%t_nhb.csv"
-        )
+        @REM rem Copy nhb file
+        @REM robocopy "%mat_dir%\p!nhb_p!\m%mode%_p!nhb_p!_ts%%t_nhb\%run_name%" "%out_dir%" "m%mode%_p!nhb_p!_ts%%t_nhb_matrix.csv" /NJH /NJS /NP /R:1 /W:1
+        @REM if exist "%out_dir%\m%mode%_p!nhb_p!_ts%%t_nhb_matrix.csv" (
+        @REM     rename "%out_dir%\m%mode%_p!nhb_p!_ts%%t_nhb_matrix.csv" "m%mode%_p!nhb_p!_ts%%t_nhb.csv"
+        @REM )
     )
 )
 

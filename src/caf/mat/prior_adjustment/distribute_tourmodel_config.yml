@@ -37,9 +37,7 @@ purpose_subset:
   - 17
   - 18
 direction_subset:
-  - 0
   - 1
-  - 2
 
 # ------------------------------------------------------------------
 # TLD lookup file (zone-to-TLD-area mapping)
@@ -57,7 +55,7 @@ sector_system: tour_sector
 # columns: list of column names to assign after loading (in order)
 # ------------------------------------------------------------------
 zone_to_sector_lookup:
-  path: "D:/TM_Original_Emp/NorMITs Demand_Nhan/NoTEM/inputs/normits_v3.3_noham_v3.8_trans.csv"
+  path: I:\Nhan_Data\NoTEM\inputs\normits_v3.3_noham_v3.8_trans.csv
   columns:
     - noham_v3.8_id
     - normits_v3.3_id
@@ -87,7 +85,7 @@ postme_matrices:
     - p
     - tp
     - direction_od
-  folder_path: D:\TM_Original_Emp\NorMITs Demand_Nhan\NoTEM\tripend\target_sector_matrices
+  folder_path: I:\NorMITs NoTEM\ntem_emp\v2\tourmodel_output\target_sector_matrices
   filename_template: "tourmodel_{type}_{slice_name}.csv"
 
 # ------------------------------------------------------------------
@@ -112,7 +110,7 @@ tld_files:
     - m
     - p
     - direction_od
-  folder_path: C:\Users\jared.hryszko\Documents\Task3\TLDs
+  folder_path: T:\JaroslawHryscko\dist_testing_inputs\TLDs
   filename_template: "NTS_tld_{slice_name}.csv"
 
 # ------------------------------------------------------------------
@@ -123,12 +121,12 @@ tld_files:
 #   direction_od=2 -> hb_prod_to / hb_attr_to
 # ------------------------------------------------------------------
 trip_ends:
-  prod_nhb:    D:\TM_Original_Emp\NorMITs Demand_Nhan\NoTEM\tripend\DVectors\orig\nhb_normits_tem_segmented_fr.dvec
-  attr_nhb:    D:\TM_Original_Emp\NorMITs Demand_Nhan\NoTEM\tripend\DVectors\dest\nhb_normits_tem_segmented_fr.dvec
-  hb_prod_fr:  D:\TM_Original_Emp\NorMITs Demand_Nhan\NoTEM\tripend\DVectors\orig\hb_normits_tem_segmented_fr.dvec
-  hb_attr_fr:  D:\TM_Original_Emp\NorMITs Demand_Nhan\NoTEM\tripend\DVectors\dest\hb_normits_tem_segmented_fr.dvec
-  hb_prod_to:  D:\TM_Original_Emp\NorMITs Demand_Nhan\NoTEM\tripend\DVectors\dest\hb_normits_tem_segmented_to.dvec
-  hb_attr_to:  D:\TM_Original_Emp\NorMITs Demand_Nhan\NoTEM\tripend\DVectors\orig\hb_normits_tem_segmented_to.dvec
+  prod_nhb:    I:\NorMITs NoTEM\ntem_emp\v1\tripend\DVectors\orig\nhb_normits_tem_segmented_fr.dvec
+  attr_nhb:    I:\NorMITs NoTEM\ntem_emp\v1\tripend\DVectors\dest\nhb_normits_tem_segmented_fr.dvec
+  hb_prod_fr:  I:\NorMITs NoTEM\ntem_emp\v1\tripend\DVectors\orig\hb_normits_tem_segmented_fr.dvec
+  hb_attr_fr:  I:\NorMITs NoTEM\ntem_emp\v1\tripend\DVectors\dest\hb_normits_tem_segmented_fr.dvec
+  hb_prod_to:  I:\NorMITs NoTEM\ntem_emp\v1\tripend\DVectors\dest\hb_normits_tem_segmented_to.dvec
+  hb_attr_to:  I:\NorMITs NoTEM\ntem_emp\v1\tripend\DVectors\orig\hb_normits_tem_segmented_to.dvec
 
 # ------------------------------------------------------------------
 # Gravity model run name (used for output folder naming)
@@ -138,7 +136,7 @@ gm_run_name: rail_originalEmp_2026_04_10_v1
 # ------------------------------------------------------------------
 # Output directory for all results
 # ------------------------------------------------------------------
-output_path: I:\Prior adjustment\distribution\distribute_outputs\rail_originalEmp_2026_04_10_v1
+output_path: D:\NorMITs Demand\ntem_emp_test\unadjusted
 
 # ------------------------------------------------------------------
 # Run options
@@ -146,7 +144,7 @@ output_path: I:\Prior adjustment\distribution\distribute_outputs\rail_originalEm
 # run_adjust: if true, runs the furness adjustment after the GM step
 # ------------------------------------------------------------------
 run_options:
-  run_gm: True
+  run_gm: False
   run_adjust: True
 
 # ------------------------------------------------------------------

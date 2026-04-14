@@ -197,7 +197,6 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
         # furnessed.to_hdf(hdf_file, key='data')
         # checkers.to_hdf(hdf_file, key='checks')
     del agg_mat, prod, attr
-    multi_loop(*inputs[2])
     multiprocess(multi_loop, arg_list=inputs)
 
 if __name__ == "__main__":
