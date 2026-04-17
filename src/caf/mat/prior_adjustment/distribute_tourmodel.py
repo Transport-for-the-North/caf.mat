@@ -304,18 +304,22 @@ def read_4dcons(tor_cons: str, tour_fldr: pathlib.Path, moira_fldr: pathlib.Path
 
     # output
     dix_list = csv_tour['direction'].unique()
-    csv_dict = {pp: {di: {} for di in dix_list} for pp in [1,2,3,4,5,6,7,8]}
+    csv_dict = {pp: {di: {} for di in dix_list} for pp in [1,2,3,4,5,6,7,8,11,12,13,14,15,16,17,18]}
     csv_tour[col_zone] = csv_tour[col_zone].astype("category")
     for pp in [1,2,3,4,5,6,7,8]:
         for di in dix_list:
+            if di == "nhb":
+                output_pp = pp + 10
+            else:
+                output_pp = pp    
             for ts in tsx_incl:
                 dfr = csv_tour.loc[csv_tour['mode'].isin(md) & (csv_tour['purpose'] == pp) &
                                     (csv_tour['period'] == ts) & (csv_tour['direction'] == di)]
                 dfr = dfr.groupby(col_zone, observed=False)[['trips']].sum().reset_index()
                 # dfr = dfr.rename(columns={col: f';{col}' for col in col_zone})
-                out_name = f"sec_m{md[0]}_p{pp}_ts{ts}_{di}.csv"
+                out_name = f"sec_m{md[0]}_p{output_pp}_ts{ts}_{di}.csv"
                 dfr.to_csv(out_fldr / out_name, index=False)  
-                csv_dict[pp][di][ts] = out_fldr / out_name
+                csv_dict[output_pp][di][ts] = out_fldr / out_name
     return csv_dict
 
 
@@ -710,9 +714,9 @@ def main(cfg: DistributeConf):
 if __name__ == "__main__":
 
     tour = read_4dcons( 'moira',
-                       pathlib.Path(r"T:\JaroslawHryscko\tourmodel_outputs\original_emp"),
+                       pathlib.Path(r"D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend"),
                        pathlib.Path(r"I:\NorMITs Distribution\voa_gb_2023_uni_i1\iter3a_rail_only\inputs"),
-                       pathlib.Path(r"D:\NorMITs Demand\ntem_emp_test\secs"))
+                       pathlib.Path(r"D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend\sectors_moira"))
 
     distribute_config = DistributeConf.load_yaml(
         pathlib.Path(__file__).parent / "distribute_tourmodel_config.yml"
