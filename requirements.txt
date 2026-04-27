@@ -3,6 +3,6 @@ pandas>=2.2.3
 caf.base>=0.4.0
 caf.toolkit>=0.9.0
 caf.distribute>=0.7.0
-xarray>=2025
+xarray>=2026.4.0
 tqdm>=4.67
 tables>=3.10.1  # pytables on conda-forge
