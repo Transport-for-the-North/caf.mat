@@ -1,4 +1,4 @@
-sphinx>=7.4
+sphinx>=9.0.4
 pydata-sphinx-theme>=0.17.1
 graphviz>=0.20.1
 sphinx-gallery>=0.21.0
