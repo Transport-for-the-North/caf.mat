@@ -1,7 +1,6 @@
 <div align="center" style="background-color: white;">
 <a href="https://www.transportforthenorth.com/">
-<img src="https://www.transportforthenorth.com/wp-content/themes/tfn-theme/img/logo.svg"
-  alt="Transport for the North logo">
+<img src="https://www.transportforthenorth.com/logo.svg" alt="Transport for the North logo">
 </a>
 </div>
 
@@ -40,7 +39,10 @@
 > If using this package it is recommended to set a specific version and check before
 > upgrading to a new version.
 
-Interacting with, and converting between formats of, transport modelling matrices.
+CAF.mat contains functionality for reading, writing and performing calculations with transport
+modelling matrices. The aim is to provide a consistent method for interacting with all types of
+transport matrices from Python, with some additional front-end features for more common matrix
+operations.
 
 > [!TIP]
 > For more detailed information including a user guide, tutorials and API reference see the full
@@ -67,20 +69,33 @@ Interacting with, and converting between formats of, transport modelling matrice
 
 ### What does it do?
 
-> [!IMPORTANT]
-> This section of the README hasn't been written yet, but it will contain a brief
-> description of what the tool is intended to do.
+CAF.mat is primarily a Python package for interacting with transport modelling matrices in various
+file formats. The package provides a set of classes for interacting with matrices and ties into
+some other CAF packages, namely [caf.base](https://cafbase.readthedocs.io/en/stable/).
+
+The package also provides a standalone CLI tool for some more common matrix operations.
 
 ### Main Features
 
-> [!IMPORTANT]
-> This section of the README hasn't been written yet.
-
-- **Feature 1** - description
+- **Matrices Classes** - custom Python classes to handle groups of matrices, builds on top of
+  [caf.base's](https://cafbase.readthedocs.io/en/stable/)
+  [`Segmentation`](https://cafbase.readthedocs.io/en/stable/_autosummary/caf.base.Segmentation.html)
+  and [`ZoningSystem`](https://cafbase.readthedocs.io/en/stable/_autosummary/caf.base.ZoningSystem.html)
+  functionality and provides access to individual matrices as
+  [pandas DataFrames](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html).
+- **Various File Formats** - read, write and convert between various matrix file formats from
+  different transport modelling software.
+  - OpenMatrix (OMX)
+  - SATURN's UFM
+  - CUBE's (MAT)
+- **Any Matrix Data** - can handle any type of matrix data e.g. travel demand and transport costs.
+- **Tour Modelling Conversions** - functions to convert between OD and PA based matrices, as used
+  in tour based transport demand modelling.
 
 #### Work-in-Progress
 
-- **Work in progress feature** - description of feature not yet release.
+- **UFM Comparisons** - functionality to compare different UFM files (see #17).
+- **Matrix Adjustments** - adjust a matrix to a target matrix at a specified sector level (see #18).
 
 > [!WARNING]
 > These features are work-in-progress and are not available in a released version of caf.mat, to
@@ -88,8 +103,8 @@ Interacting with, and converting between formats of, transport modelling matrice
 
 ### Who is it for?
 
-- **Target audience:** *TODO*
-- **CAF Analytical Stage:** *TODO*
+- **Target audience:** Transport Modellers
+- **CAF Analytical Stage:** Modelling, Appraisal
 
 ![CAF Analytical Process Diagram](https://github.com/Transport-for-the-North/.github/blob/21a428e81880639839e221940881572cdee24d5a/profile/ProcessDiagram.png?raw=true)
 
