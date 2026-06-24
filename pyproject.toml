@@ -101,8 +101,6 @@ ignore = [
     "SIM108", # one line if else (flake8-bandit)
     "S311",   # random.random not allowed (flake8-bandit)
     "DOC502", # docstring-extraneous-exception (sometimes necessary)
-    "PD013",  # pandas.melt preferred over .stack
-    "PD010",  # pandas.pivot_table is preferred to .pivot or .unstack
     "ANN003", # type annotation for **kwargs
 ]
 unfixable = [
@@ -127,6 +125,15 @@ convention = "numpy"
 
 [tool.ruff.lint.pep8-naming]
 ignore-names = ["df", "fn", "ca", "tp", "x", "i"]
+
+[tool.ruff.lint.flake8-import-conventions.extend-aliases]
+# Recommended aliases for caf packages
+"caf.toolkit" = "ctk"
+"caf.base" = "cbase"
+"caf.mat" = "cmat"
+"caf.space" = "cspace"
+"caf.distribute" = "cdist"
+"caf.viz" = "cviz"
 
 [tool.ruff.lint.pylint]
 max-args = 10
@@ -167,7 +174,12 @@ allow_redefinition = true
 # Tests
 [tool.pytest.ini_options]
 pythonpath = ["src"]
-addopts = '--cov=caf --cov-report=xml -n auto -m "not integration" --strict-markers'
+addopts = """\
+    --cov=caf --cov-report=xml -n auto \
+    -m "not integration" --strict-markers
+    --doctest-modules --ignore=examples \
+    --junitxml=junit.xml -o junit_family=legacy\
+    """
 markers = [
     "integration: marks integration tests, which are slow and require some manual intervention",
 ]

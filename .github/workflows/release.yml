@@ -1,7 +1,12 @@
-# .github/workflows/release.yml
-# Publish caf.mat to PyPI when a GitHub Release is published
+# This workflow will upload a Python Package using Twine when a release is created
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
 
-name: Publish Python Package
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: Upload Python Package
 
 on:
   release:
@@ -15,24 +20,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
+    # Specifying a GitHub environment is optional, but strongly encouraged
     environment: release
     permissions:
+      # IMPORTANT: this permission is mandatory for trusted publishing
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
 
-      - name: Upgrade pip and install build tools
-        run: |
-          python -m pip install --upgrade pip
-          pip install build
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build
 
-      - name: Build package
-        run: python -m build
+    - name: Build package
+      run: python -m build
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+    - name: Publish package
+      uses: pypa/gh-action-pypi-publish@release/v1
