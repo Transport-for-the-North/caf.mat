@@ -18,7 +18,7 @@ import pydantic
 from pydantic import dataclasses
 
 # Local Imports
-import caf.mat
+import caf.mat as cmat
 
 ##### CONSTANTS #####
 
@@ -196,7 +196,7 @@ def main() -> None:
     """
     parameters = _Parameters.load_yaml(CONFIG_PATH)
 
-    details = ctk.ToolDetails("caf.mat.compare", caf.mat.__version__)
+    details = ctk.ToolDetails("caf.mat.compare", cmat.__version__)
     output_folder = (
         parameters.output_folder / f"OD2PA_comparison-{datetime.date.today():%Y%m%d}"
     )

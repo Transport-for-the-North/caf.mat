@@ -161,11 +161,12 @@ class PhiFactors:
         subsets: dict[str, Sequence[int]],
     ) -> tuple[segmentation.Segmentation, pd.DataFrame]:
         if additional_segments is None:
-            enum_segments = [self._tp_segment_enum]
-            naming = [self._tp_segment.name]
+            enum_segments: list[str] | list[segments.SegmentsSuper] = [self._tp_segment_enum]
+            naming: list[str] = [self._tp_segment.name]
         else:
-            enum_segments = [*list(additional_segments), self._tp_segment.name]  # type: ignore[list-item]
-            naming = enum_segments
+            enum_segments = [*list(additional_segments), self._tp_segment.name]
+            # enum_segments is list[str] at this point
+            naming = enum_segments  # type: ignore[assignment]
 
         mask = np.full(len(data), True)
         for seg, values in subsets.items():
@@ -173,8 +174,9 @@ class PhiFactors:
         data = data.loc[mask]
 
         segmentation_ = segmentation.Segmentation(
+            # Can handle enum_segments as list[str], caf.base type annotations need updating
             segmentation.SegmentationInput(
-                enum_segments=enum_segments,
+                enum_segments=enum_segments,  # type: ignore[arg-type]
                 naming_order=naming,
                 subsets={i: list(j) for i, j in subsets.items()},
             )

@@ -15,6 +15,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 
 [project.urls]
@@ -127,6 +128,15 @@ convention = "numpy"
 [tool.ruff.lint.pep8-naming]
 ignore-names = ["df", "fn", "ca", "tp", "x", "i"]
 
+[tool.ruff.lint.flake8-import-conventions.extend-aliases]
+# Recommended aliases for caf packages
+"caf.toolkit" = "ctk"
+"caf.base" = "cbase"
+"caf.mat" = "cmat"
+"caf.space" = "cspace"
+"caf.distribute" = "cdist"
+"caf.viz" = "cviz"
+
 [tool.ruff.lint.pylint]
 max-args = 10
 max-statements = 100
@@ -166,7 +176,12 @@ allow_redefinition = true
 # Tests
 [tool.pytest.ini_options]
 pythonpath = ["src"]
-addopts = '--cov=caf --cov-report=xml -n auto -m "not integration" --strict-markers'
+addopts = """\
+    --cov=caf --cov-report=xml -n auto \
+    -m "not integration" --strict-markers
+    --doctest-modules --ignore=examples \
+    --junitxml=junit.xml -o junit_family=legacy\
+    """
 markers = [
     "integration: marks integration tests, which are slow and require some manual intervention",
 ]

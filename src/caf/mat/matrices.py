@@ -13,7 +13,7 @@ from collections.abc import Iterator
 from typing import Self
 
 # Third Party
-import caf.base as bs
+import caf.base as cbase
 import caf.toolkit as ctk
 import numpy as np
 import pandas as pd
@@ -77,7 +77,7 @@ class MatricesBase(abc.ABC):
     """
 
     def __init__(
-        self, segmentation_: bs.Segmentation, zoning: bs.ZoningSystem, type_: MatrixType
+        self, segmentation_: cbase.Segmentation, zoning: cbase.ZoningSystem, type_: MatrixType
     ) -> None:
         self._segmentation = segmentation_
         self._zoning = zoning
@@ -100,12 +100,12 @@ class MatricesBase(abc.ABC):
             yield self.get_matrix(slice_=values)
 
     @property
-    def segmentation(self) -> bs.Segmentation:
+    def segmentation(self) -> cbase.Segmentation:
         """Copy of the matrix segmentation."""
         return self._segmentation.copy()
 
     @property
-    def zoning(self) -> bs.ZoningSystem:
+    def zoning(self) -> cbase.ZoningSystem:
         """Copy of the matrix zoning system."""
         return self._zoning.copy()
 
@@ -142,8 +142,8 @@ class MatricesBase(abc.ABC):
         self,
         name: str,
         *,
-        segmentation_: bs.Segmentation | None = None,
-        zoning: bs.ZoningSystem | None = None,
+        segmentation_: cbase.Segmentation | None = None,
+        zoning: cbase.ZoningSystem | None = None,
         type_: MatrixType | None = None,
     ) -> Self:
         """Create a new instance of the matrices class with a new name.
@@ -614,8 +614,8 @@ class MemoryMatrices(MatricesBase):
 
     def __init__(
         self,
-        segmentation_: bs.Segmentation,
-        zoning: bs.ZoningSystem,
+        segmentation_: cbase.Segmentation,
+        zoning: cbase.ZoningSystem,
         type_: MatrixType,
         matrices: list[Matrix] | None = None,
         *,
@@ -641,8 +641,8 @@ class MemoryMatrices(MatricesBase):
         self,
         name: str,
         *,
-        segmentation_: bs.Segmentation | None = None,
-        zoning: bs.ZoningSystem | None = None,
+        segmentation_: cbase.Segmentation | None = None,
+        zoning: cbase.ZoningSystem | None = None,
         type_: MatrixType | None = None,
     ) -> "MemoryMatrices":
         return MemoryMatrices(
@@ -702,8 +702,8 @@ class MatrixFiles(MatricesBase):
 
     def __init__(
         self,
-        segmentation_: bs.Segmentation,
-        zoning: bs.ZoningSystem,
+        segmentation_: cbase.Segmentation,
+        zoning: cbase.ZoningSystem,
         type_: MatrixType,
         folder: pathlib.Path,
         *,
@@ -786,8 +786,8 @@ class MatrixFiles(MatricesBase):
         self,
         name: str,
         *,
-        segmentation_: bs.Segmentation | None = None,
-        zoning: bs.ZoningSystem | None = None,
+        segmentation_: cbase.Segmentation | None = None,
+        zoning: cbase.ZoningSystem | None = None,
         type_: MatrixType | None = None,
     ) -> Self:
         folder = self._folder.with_name(name)
@@ -853,8 +853,8 @@ class LongMatrices(MatricesBase):
 
     def __init__(
         self,
-        segmentation_: bs.Segmentation,
-        zoning: bs.ZoningSystem,
+        segmentation_: cbase.Segmentation,
+        zoning: cbase.ZoningSystem,
         type_: MatrixType,
         *,
         data: pd.DataFrame | None = None,
@@ -1032,8 +1032,8 @@ class LongMatrices(MatricesBase):
         self,
         name: str,
         *,
-        segmentation_: bs.Segmentation | None = None,
-        zoning: bs.ZoningSystem | None = None,
+        segmentation_: cbase.Segmentation | None = None,
+        zoning: cbase.ZoningSystem | None = None,
         type_: MatrixType | None = None,
     ) -> "LongMatrices":
         return LongMatrices(
@@ -1055,8 +1055,8 @@ class LongMatrices(MatricesBase):
     @classmethod
     def from_csv(
         cls,
-        segmentation_: bs.Segmentation,
-        zoning: bs.ZoningSystem,
+        segmentation_: cbase.Segmentation,
+        zoning: cbase.ZoningSystem,
         type_: MatrixType,
         path: pathlib.Path,
         *,
