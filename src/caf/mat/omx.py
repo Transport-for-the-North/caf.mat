@@ -79,8 +79,9 @@ class OMXFile(tables.File):
         self,
         filename: Path,
         mode: str = "r",
-        omx_version: str | None = None,
+        omx_version: str = _EXPECTED_OMX_VERSION,
         shape: tuple[int, int] | None = None,
+        zones: np.ndarray | None = None
         **kwargs,
     ) -> None:
         self.mode = str(mode).strip().lower()
@@ -91,7 +92,7 @@ class OMXFile(tables.File):
         super().__init__(filename, mode=self.mode, **kwargs)
 
         self._path = Path(filename)
-        self._zones = None
+        self._zones = zones
         self._matrix_levels = None
         self._omx_version = None
         self._shape = None
@@ -137,6 +138,12 @@ class OMXFile(tables.File):
                 f"but got {value}, which may be incompatible"
             )
         return value
+    
+    def csv_to_omx(self, csv_paths: dict[str, Path]):
+        for name, csv_path in csv_paths.items():
+            df = pd.read_csv(csv_path, index_col=0)
+            df.columns = df.columns.astype(int)
+            self.set_matrix_level(name, df)
 
     @staticmethod
     def _check_shape(value: tuple[int, int]) -> tuple[int, int]:

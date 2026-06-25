@@ -10,7 +10,7 @@ import enum
 import logging
 import pathlib
 import warnings
-from typing import Iterator, Self, Type, TypeVar
+from typing import Callable, Iterator, Self, Type, TypeVar, Literal
 from numbers import Real
 
 # Third Party
@@ -21,7 +21,7 @@ import pandas as pd
 import tqdm
 
 # Local Imports
-from caf.mat import _mat
+from caf.mat import _mat, omx, cube
 
 ##### CONSTANTS #####
 
@@ -299,6 +299,48 @@ class MatricesBase(abc.ABC):
                 messages.append(msg)
 
         raise ValueError(f"{name} contains invalid values\n\t" + "\n\t".join(messages))
+    
+    def to_omx(self,
+               omx_path: pathlib.Path,
+               name_conversion: dict[cb.segmentation.SegmentationSlice, str] | None = None) -> None:
+        """
+        Save a set of matrices to an omx file
+
+        Parameters
+        ----------
+        omx_path : pathlib.Path
+            Path to the omx file to save to.
+        name_conversion : dict[cb.segmentation.SegmentationSlice, str] | None, optional
+            A dictionary defining names for matrix levels in the omx file, if you don't want to use 
+            the names generated from the slices of the segmentation. This also can control the order.
+        """
+        if name_conversion is None:
+            iterator = self.segmentation.iter_slices()
+        else:
+            iterator = iter(name_conversion)
+        with omx.OMXFile(omx_path,
+                               mode='w',
+                               shape=(len(self.zoning), len(self.zoning)),
+                               zones=self.zoning.zone_ids) as omx_file:
+            for slice_ in iterator:
+                mat = self.get_matrix(slice_)
+                if name_conversion is not None:
+                    name = name_conversion[slice_]
+                else:
+                    name = slice_.generate_name()
+                omx_file.set_matrix_level(name, mat.data)
+
+    def to_mat(self,
+               mat_path: pathlib.Path,
+               cube_path: pathlib.Path,
+               name_conversion: dict[cb.segmentation.SegmentationSlice,str] | None = None,
+               ) -> None:
+        omx_path = mat_path.with_suffix('.omx')
+        self.to_omx(omx_path,
+                          name_conversion=name_conversion)
+        converter = cube.CUBEMatConverter(cube_path)
+        converter.from_omx(omx_path, mat_path)
+
 
     def __repr__(self) -> str:
         """Return a string representation of the matrices."""
@@ -369,6 +411,34 @@ class MatricesBase(abc.ABC):
             output.set_matrix(total, to_slice)
 
         return output
+    
+    def filter_segment_value(self, segment: str, values: list[int] | int, progress_bar: bool=True, keep_segment: bool = True):
+        if keep_segment:
+            new_seg = self.segmentation.copy()
+            new_seg.input.subsets['segment'] = values
+            new_seg.reinit()
+            iterator = new_seg.iter_slices()
+        else:
+            if isinstance(values, list):
+                raise ValueError("To remove the segment, must filter to a single value.")
+            new_seg = self.segmentation.remove_segment(segment)
+            iterator = self.segmentation.iter_slices({segment: values})
+
+        new_mats = self.new(name=f"{self.name}_filtered_{segment}",
+                                segmentation_=new_seg)
+
+        if progress_bar:
+            iterator = tqdm.tqdm(
+                iterator,
+                total=len(new_seg),
+                desc=f"Filtering {self.name}",
+            )
+
+        for slice_ in iterator:
+            mat = self.get_matrix(slice_).data
+            new_mats.set_matrix(mat, slice_.aggregate(new_seg))
+        return new_mats
+        
     
     def compile_highway(self,
                         occupancies: cb.DVector,
@@ -473,8 +543,8 @@ class MatricesBase(abc.ABC):
         -------
         Self
         """
-        new_seg_in = self.segmentation.remove_segment('p').add_segment('userclass')
-        new_seg = cb.Segmentation(new_seg_in)
+        new_seg = self.segmentation.remove_segment('p').add_segment('userclass')
+        # new_seg = cb.Segmentation(new_seg)
 
         output = self.new(
             output_name.format(name=self.name), segmentation_=new_seg
@@ -495,6 +565,7 @@ class MatricesBase(abc.ABC):
             for from_slice in iter_seg.iter_slices(to_slice.data):
                 from_slice_p = from_slice.remove('userclass')
                 mat = self.get_matrix(from_slice_p).data
+                # TODO DELETE THIS
                 if from_slice.data['direction_od'] == 2:
                     mat = mat.T
                 total += mat
@@ -656,31 +727,23 @@ class MatricesBase(abc.ABC):
 
         return disaggregations
 
-    def copy(self, subsets: dict[str, list[int]], other: MATRICES) -> MATRICES:
-        """
-        Copy a subset of self into other.
-        Parameters
-        ----------
-        subsets : dict[str, list[int]]
-            The subset of self to be copied.
-        other : MatricesBase
-            The instance of MatrixFiles the subset will be copied into.
-
-        Returns
-        -------
-        MatrixFiles
-            Other updated with the subset from self.
-        """
-        for slice_ in self.segmentation.iter_slices():
-            break_loop = False
-            for seg, vals in subsets.items():
-                if slice_.data[seg] not in vals:
-                    break_loop = True
-                    continue
-            if break_loop:
-                continue
-            other.set_matrix(self.get_matrix(slice).data, slice_)
-        return other
+    def copy(self, **overrides):
+        params = {
+            "segmentation_": self._segmentation,
+            "zoning": self._zoning,
+            "type_": self._type,
+        }
+        params.update(overrides)
+        return self.__class__(**params)
+    
+    def subset(self, seg_subset: cb.Segmentation | dict[str, list[int]]):
+        if isinstance(seg_subset, cb.Segmentation):
+            return self.copy(segmentation_=seg_subset)
+        new_seg = self.segmentation.copy()
+        for seg, vals in seg_subset.items():
+            new_seg.input.subsets[seg] = vals
+        return self.copy(segmentation_=new_seg.reinit())
+    
 
     def convert_type(self, new_type: Type[MATRICES]) -> MATRICES:
         """
@@ -704,6 +767,41 @@ class MatricesBase(abc.ABC):
             matrix = self.get_matrix(slice_)
             converted.set_matrix(matrix.data, slice_)
         return converted
+
+    def to_external(self) -> Self:
+        """
+        Remove internal to internal trips leaving trips starting and/or finishing in external zones.
+
+        Returns
+        -------
+        Self
+            External matrices
+        """
+        external = self.new(name=f"{self.name}_external")
+        internals = self.zoning.internal
+        for slice_ in self.segmentation.iter_slices():
+            matrix = self.get_matrix(slice_).data.copy()
+            matrix.loc[internals, internals] = 0
+            external.set_matrix(matrix, slice_)
+        return external
+    
+    def to_internal(self) -> Self:
+        """
+        Remove trips starting and/or finishing in external zones, leaving internal to internal trips.
+
+        Returns
+        -------
+        Self
+            Internal matrices
+        """
+        internal = self.new(name=f"{self.name}_internal")
+        externals = self.zoning.external
+        for slice_ in self.segmentation.iter_slices():
+            matrix = self.get_matrix(slice_).data.copy()
+            matrix.loc[externals] = 0
+            matrix.loc[:, externals] = 0
+            internal.set_matrix(matrix, slice_)
+        return internal
 
     def remove_intras(self) -> Self:
         """
@@ -824,7 +922,6 @@ class MatricesBase(abc.ABC):
         self,
         other: MATRICES | cb.DVector | Real,
         mat_method,
-        number_method,
         method_name,
     ):
         """
@@ -847,14 +944,25 @@ class MatricesBase(abc.ABC):
         # if self.zoning != other.zoning:
         #     raise ZoningError("Zoning systems don't match.")
         if isinstance(other, MatricesBase):
-            out = self.new(name=f"{self.name}_{method_name}_{other.name}")
+            if self.segmentation == other.segmentation:
+                out = self.new(name=f"{self.name}_{method_name}_{other.name}")
+            elif self.segmentation.overlap(other.segmentation) == set(self.segmentation.names):
+                out = self.new(name=f"{self.name}_{method_name}_{other.name}", segmentation_=other.segmentation)
+                for slice_ in self.segmentation.iter_slices():
+                    for inner_slice in other.segmentation.iter_slices(slice_.data):
+                        product = mat_method(
+                            self.get_matrix(slice_).data, other.get_matrix(inner_slice).data
+                        )
+                        out.set_matrix(product, inner_slice)
+                return out
         else:
             out = self.new(name=f"{self.name}_{method_name}_other")
         for slice_ in self.segmentation.iter_slices():
             if isinstance(other, MatricesBase):
-                product = mat_method(
-                    self.get_matrix(slice_).data, other.get_matrix(slice_).data
-                )
+                if self.segmentation == other.segmentation:
+                    product = mat_method(
+                        self.get_matrix(slice_).data, other.get_matrix(slice_).data
+                    )
             elif isinstance(other, cb.DVector):
                 other_slice = other.get_slice(
                     slice_.aggregate(other.segmentation.naming_order)
@@ -867,18 +975,18 @@ class MatricesBase(abc.ABC):
                 else:
                     product = mat_method(self.get_matrix(slice_).data, other_slice)
             else:
-                product = number_method(self.get_matrix(slice_).data, other)
+                product = mat_method(self.get_matrix(slice_).data, other)
             out.set_matrix(product.fillna(0), slice_)
         return out
 
     def __truediv__(self, other):
         return self._generic_dunder(
-            other, pd.DataFrame.__truediv__, float.__truediv__, "divide"
+            other, pd.DataFrame.__truediv__, "divide"
         )
 
     def __mul__(self, other):
         return self._generic_dunder(
-            other, pd.DataFrame.__mul__, float.__mul__, "multiply"
+            other, pd.DataFrame.__mul__, "multiply"
         )
 
 
@@ -1022,6 +1130,7 @@ class MemoryMatrices(MatricesBase):
         matrices: list[Matrix] | None = None,
         *,
         name: str | None = None,
+        mutable: bool = True
     ):
         super().__init__(segmentation_, zoning, type_)
         self._matrices: dict[cb.segmentation.SegmentationSlice, pd.DataFrame] = {}
@@ -1033,6 +1142,7 @@ class MemoryMatrices(MatricesBase):
         if name is None:
             name = "In-memory matrices"
         self._name = name
+        self.mutable = mutable
 
     @property
     def name(self) -> str:
@@ -1051,10 +1161,32 @@ class MemoryMatrices(MatricesBase):
             name=name,
         )
 
-    def save(self, folder: pathlib.Path):
+    def copy(self, **overrides) -> "MemoryMatrices":
+        params = {
+            "segmentation_": self._segmentation,
+            "zoning": self._zoning,
+            "type_": self._type,
+            "matrices": [
+                Matrix(matrix.copy(), slice_)
+                for slice_, matrix in self._matrices.items()
+            ],
+            "name": self._name,
+            "mutable": False
+        }
+        params.update(overrides)
+        return self.__class__(**params)
+
+    def save(self, folder: pathlib.Path, name: str | None = None, format: Literal['long', 'wide', 'cube']='wide'):
         for slice_ in self.segmentation.iter_slices():
             mat = self.get_matrix(slice_)
-            mat.data.to_csv(folder / f"{self.name}_{slice_.generate_name()}.csv")
+            if name is None:
+                name = self.name
+            if format == 'cube':
+                mat.data.stack().reset_index().to_csv(folder / f"{name}_{slice_.generate_name()}.csv", index=False, header=False)
+            elif format == 'long':
+                mat.data.stack().reset_index().to_csv(folder / f"{name}_{slice_.generate_name()}.csv")
+            else:
+                mat.data.to_csv(folder / f"{name}_{slice_.generate_name()}.csv")
 
     def exists(self) -> bool:
         for slice_ in self.segmentation.iter_slices():
@@ -1073,6 +1205,8 @@ class MemoryMatrices(MatricesBase):
         self, matrix: pd.DataFrame, slice_: cb.segmentation.SegmentationSlice
     ):
         """Store matrix in class (in-memory)."""
+        if not self.mutable:
+            raise PermissionError("This set of matrices is immutable. This is most likely because it is a copy, and so can't be altered.")
         self._matrices[slice_] = matrix
 
 
@@ -1116,6 +1250,7 @@ class MatrixFiles(MatricesBase):
         *,
         filename_template: str | None = None,
         check_files: bool = True,
+        mutable: bool = True
     ):
         super().__init__(segmentation_, zoning, type_)
 
@@ -1127,6 +1262,7 @@ class MatrixFiles(MatricesBase):
             type=self.type.name, slice_name="{slice_name}"
         )
         self._folder = folder.resolve()
+        self._mutable = mutable
 
         if not self._folder.is_dir() and check_files:
             raise NotADirectoryError(folder)
@@ -1169,6 +1305,8 @@ class MatrixFiles(MatricesBase):
         self, matrix: pd.DataFrame, slice_: cb.segmentation.SegmentationSlice
     ) -> None:
         """Save the matrix to a CSV, with a filename based on the slice parameters."""
+        if not self._mutable:
+            raise PermissionError("This set of matrices is immutable. This is most likely because it is a copy, and so can't be altered.")
         filename = self._get_filename(slice_)
         self.validate_matrix(matrix, filename)
 
@@ -1209,6 +1347,19 @@ class MatrixFiles(MatricesBase):
             filename_template=self._raw_filename_template,
             check_files=False,
         )
+    
+    def copy(self, **overrides) -> "MatrixFiles":
+        params = {
+            "segmentation_": self._segmentation,
+            "zoning": self._zoning,
+            "type_": self._type,
+            "folder": self._folder,
+            "filename_template": self._raw_filename_template,
+            "check_files": False,
+            "_mutable": False
+        }
+        params.update(overrides)
+        return self.__class__(**params)
 
     def exists(self) -> bool:
         try:

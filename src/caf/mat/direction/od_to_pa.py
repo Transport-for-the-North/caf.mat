@@ -673,8 +673,8 @@ def od_to_pa(
                 "input matrices are NHB only, so OD to PA conversion is ignored for HB"
             )
             continue
-
-        phi_factors = phi.get(segmentation.SegmentationSlice(params))
+        filtered_params = {i:j for i, j in params.items() if i in phi._segmentation.names}
+        phi_factors = phi.get(segmentation.SegmentationSlice(slice_params=filtered_params))
 
         from_home, to_home, adjustments = _hb_od_to_pa(
             input_,

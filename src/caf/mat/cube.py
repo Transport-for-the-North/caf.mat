@@ -9,6 +9,8 @@ import re
 import subprocess
 import warnings
 from pathlib import Path
+from caf.mat import omx
+import pandas as pd
 
 ##### CONSTANTS #####
 
@@ -92,6 +94,19 @@ class CUBEMatConverter:
 
         if mat_path.suffix != ".mat":
             mat_path.with_suffix(".mat")
+
+        if len(csv_paths) > 20:
+            warnings.warn("Mat files cannot be created from more than 20 files. Creating via omx.")
+            omx_folder = mat_path.parent
+            omx_file_path = omx_folder / 'temp_omx.omx'
+            omx_file = omx.OMXFile(omx_file_path,
+                                   mode='w',
+                                   omx_version=omx.OMXFile._EXPECTED_OMX_VERSION,
+                                   shape=[num_zones, num_zones])
+            omx_file.zones = pd.read_csv(list(csv_paths.values())[0], index_col=0).index
+            omx_file.csv_to_omx(csv_paths)
+            self.from_omx(omx_file_path, mat_path)
+            omx_file_path.unlink()
 
         # Create CUBE Voyager script
         script_text = [
@@ -292,3 +307,77 @@ def _stdout_decode(stdout: bytes) -> str:
     if stdout != "":
         stdout = "\n" + stdout
     return stdout
+
+if __name__ == "__main__":
+
+    # import pandas as pd
+    # # 24hr_pa
+    demand_segments = demand_segments = {
+        "HBEBCA_Int": "business",
+        "HBEBNCA_Int": "business",
+        "NHBEBCA_Int": "business",
+        "NHBEBNCA_Int": "business",
+        "HBWCA_Int": "commute",
+        "HBWNCA_Int": "commute",
+        "HBOCA_Int": "leisure",
+        "HBONCA_Int": "leisure",
+        "NHBOCA_Int": "leisure",
+        "NHBONCA_Int": "leisure",
+        "EBCA_Ext_FM": "business",
+        "EBCA_Ext_TO": "business",
+        "EBNCA_Ext": "business",
+        "HBWCA_Ext_FM": "commute",
+        "HBWCA_Ext_TO": "commute",
+        "HBWNCA_Ext": "commute",
+        "OCA_Ext_FM": "leisure",
+        "OCA_Ext_TO": "leisure",
+        "ONCA_Ext": "leisure",
+    }
+    
+    # in_dir = Path(r"D:\NorMITs Demand\ntem_emp_test\canca\PA")
+    # csvs = {}
+    # for key, path in demand_segments.items():
+    #     # df = pd.read_csv(path, index_col=0)
+    #     # df.stack().reset_index().to_csv(in_dir / "to_mat" / f"{key}.csv", index=False, header=False)
+    #     csvs[key] = in_dir / "to_mat" / f"{key}.csv"
+    converter = CUBEMatConverter(Path(r"C:\Program Files\Citilabs\CubeVoyager\VOYAGER.EXE"))
+    # converter.from_csv(1325, csvs, in_dir / "24hr_pa.mat")
+    # ###
+    adj_dir = Path(r"D:\NorMITs Demand\ntem_emp_test\canca\try_2\norms_uc")
+    tod_dir = Path(r"D:\NorMITs Demand\ntem_emp_test\canca\TOD")
+    full_dir = Path(r"D:\NorMITs Demand\ntem_emp_test\canca\PA\to_mat")
+    tps = {1:'AM', 2:'IP', 3:'PM', 4:'OP'}
+    full_mats = {}
+    for uc in demand_segments.keys():
+        if 'ext' in uc.lower():
+            df = pd.read_csv(full_dir / f"{uc}.csv", index_col=[0,1], names=['o','d','trips'])
+            # df *= 5
+            # df.reset_index().to_csv(full_dir / f"{uc}.csv", index=False, header=False)
+            full_mats[uc] = df
+
+    ### TOD
+    for tp in [1,2,3,4]:
+        csv_paths = {}
+        for uc_1, uc_2 in {'EB':'EMP', 'HBW':'COM', 'O':"OTH"}.items():
+            nca = pd.read_csv(tod_dir / f"{uc_1}NCA_Ext_TS{tp}.csv", index_col=[0,1], names=['o','d','trips'])
+            (nca / (5*full_mats[f"{uc_1}NCA_Ext"])).fillna(0).reset_index().to_csv(tod_dir / f"{uc_2}NCA_Ext_TS{tp}_long.csv", index=False, header=False)
+            csv_paths[f"{uc_2}_NCA"] = tod_dir / f"{uc_2}NCA_Ext_TS{tp}_long.csv"
+            fr = pd.read_csv(tod_dir / f"{uc_1}CA_Ext_FM_TS{tp}.csv", index_col=[0,1], names=['o','d','trips'])
+            (fr / full_mats[f"{uc_1}CA_Ext_FM"]).reset_index().to_csv(tod_dir / f"{uc_2}CA_Ext_FM_TS{tp}_long.csv", index=False, header=False)
+            csv_paths[f"{uc_2}_FH"] = tod_dir / f"{uc_2}CA_Ext_FM_TS{tp}_long.csv"
+            to = pd.read_csv(tod_dir / f"{uc_1}CA_Ext_TO_TS{tp}.csv", index_col=[0,1], names=['o','d','trips'])
+            (to / full_mats[f"{uc_1}CA_Ext_TO"]).reset_index().to_csv(tod_dir / f"{uc_2}CA_Ext_TO_TS{tp}_long.csv", index=False, header=False)
+            csv_paths[f"{uc_2}_TH"] = tod_dir / f"{uc_2}CA_Ext_TO_TS{tp}_long.csv"
+            
+        converter.from_csv(1325, csv_paths, tod_dir / f"Time_of_Day_Factors_Zonal_{tps[tp]}.mat")
+
+    ### nhb_od_prop
+    od_prop_dir = Path(r"D:\NorMITs Demand\ntem_emp_test\canca\od_return_factors")
+    for tp_num, tp_nam in {1:'AM', 2:'IP', 3:'PM', 4:'OP'}.items():
+        csvs = {}
+        for uc_1, uc_2 in {'business':'EB', 'other':"O"}.items():
+            for ca_num, ca_nam in {2:'CA', 1:'NCA'}.items():
+                csvs[f"NHB{uc_2}{ca_nam}"] = od_prop_dir / f"OD_nhb_m6_ts{tp_num}_ca{ca_num}_{uc_1}.csv"
+        converter.from_csv(1325, csvs, od_prop_dir / f"OD_Prop_{tp_nam}_PT.mat")
+
+

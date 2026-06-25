@@ -37,9 +37,7 @@ purpose_subset:
   - 17
   - 18
 direction_subset:
-  - 0
   - 1
-  - 2
 
 # ------------------------------------------------------------------
 # TLD lookup file (zone-to-TLD-area mapping)
@@ -113,7 +111,7 @@ tld_files:
     - m
     - p
     - direction_od
-  folder_path: C:\Users\jared.hryszko\Documents\Task3\TLDs
+  folder_path: T:\JaroslawHryscko\dist_testing_inputs\TLDs
   filename_template: "NTS_tld_{slice_name}.csv"
 
 # ------------------------------------------------------------------
@@ -147,7 +145,7 @@ output_path: I:\Prior adjustment\distribution\distribute_outputs\rail_adjustedEm
 # run_adjust: if true, runs the furness adjustment after the GM step
 # ------------------------------------------------------------------
 run_options:
-  run_gm: True
+  run_gm: False
   run_adjust: True
 
 # ------------------------------------------------------------------
