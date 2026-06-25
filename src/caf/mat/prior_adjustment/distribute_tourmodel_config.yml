@@ -78,10 +78,10 @@ zone_to_sector_lookup:
 
 
 # ------------------------------------------------------------------
-# Post ME matrices (MatrixFiles)
+# Sector Target Files (MatrixFiles)
 # naming_order: segment order used to generate filenames
 # ------------------------------------------------------------------
-postme_matrices:
+adj_target_matrices:
   naming_order:
     - m
     - p
