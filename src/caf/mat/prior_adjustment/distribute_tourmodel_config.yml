@@ -37,7 +37,9 @@ purpose_subset:
   - 17
   - 18
 direction_subset:
+  - 0
   - 1
+  - 2
 
 # ------------------------------------------------------------------
 # TLD lookup file (zone-to-TLD-area mapping)

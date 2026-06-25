@@ -52,8 +52,8 @@ class DistributeConf(BaseConfig):
     sector_system : Name of the sector system used for related zone system.
     zone_to_sector_lookup : Dictionary containing the file path and column mapping for
                             the zone to sector lookup CSV.
-    postme_matrices : Dictionary containing configuration for post ME matrices, including
-                      naming order, folder path, and filename template.
+    adj_target_matrices : Dictionary containing configuration for sector target matrices, 
+                          including naming order, folder path, and filename template.
     cost_files : Dictionary containing configuration for cost matrix files, including
                 naming order, folder path, and filename template.
     tld_files : Dictionary containing configuration for TLD files, including naming
@@ -77,7 +77,7 @@ class DistributeConf(BaseConfig):
     zone_system: str
     sector_system: str
     zone_to_sector_lookup: dict[str, pathlib.Path | list[str]]
-    postme_matrices: dict[str, list[str] | pathlib.Path | str]
+    adj_target_matrices: dict[str, list[str] | pathlib.Path | str]
     cost_files: dict[str, list[str] | pathlib.Path | str]
     tld_files: dict[str, list[str] | pathlib.Path | str]
     trip_ends: dict[str, pathlib.Path]
@@ -356,6 +356,11 @@ def _4d_constraint_gravity_model(
     for current_slice in row_trip_ends.segmentation.iter_slices():
         row = row_trip_ends.get_slice(current_slice)
         col = col_trip_ends.get_slice(current_slice)
+        LOG.info(
+            "Difference between the input trip end productions and attractions: %s, as a percentage of the input productions: %s%%",
+            row.sum() - col.sum(),
+            (row.sum() - col.sum()) / row.sum() * 100
+        )
         cost = cost_matrix.get_matrix(
             current_slice.aggregate(cost_matrix.segmentation.naming_order)
         )
@@ -385,7 +390,7 @@ def _4d_constraint_gravity_model(
             "Difference between Trip End attractions and Target Sector Matrix attractions: %s",
             col.sum() - sector_target_furnessed.sum(axis=0).sum(),
         )
-        LOG.info("Running Gravity Model: %s, with calibration %s", name, run_gm)
+        LOG.info("Running Gravity Model: %s, for slice %s, with calibration set to %s", name, current_slice, run_gm)
 
         cost_function = cost_functions.BuiltInCostFunction.LOG_NORMAL.get_cost_function()
 
@@ -458,6 +463,12 @@ def main(cfg: DistributeConf):
     LOG.setLevel(logging.INFO)
     LOG.addHandler(file_handler)
 
+    # Save config file contents to the LOG for reference
+    LOG.info(
+        "Distribution config file contents: ===================================================================\n%s\n===================================================================\n",
+        cfg.to_yaml(),
+    )
+
     # To improve memory efficiency, each tp is processed separately.
     # This ensures the loaded DVectors aren't too large but multiprocessing will still work
     for tp_subset in cfg.timeperiod_subset:
@@ -498,12 +509,12 @@ def main(cfg: DistributeConf):
             else (p_subset if p_subset in list(range(11, 19)) else None)
         )
 
-        # --- Post-ME matrix segmentation and MatrixFiles ---------------------------
-        postme_cfg = cfg.postme_matrices
+        # --- Adjustment target matrix segmentation and MatrixFiles -----------------
+        adj_target_cfg = cfg.adj_target_matrices
         full_seg_p = cb.Segmentation(
             cb.SegmentationInput(
-                enum_segments=postme_cfg["naming_order"],
-                naming_order=postme_cfg["naming_order"],
+                enum_segments=adj_target_cfg["naming_order"],
+                naming_order=adj_target_cfg["naming_order"],
                 subsets={
                     "m": _use_as_list(m_subset),
                     "p": _use_as_list(p_subset),
@@ -512,12 +523,12 @@ def main(cfg: DistributeConf):
                 },
             )
         )
-        postme_purpose = MatrixFiles(
+        adj_target_purpose = MatrixFiles(
             full_seg_p,
             noham_sector,
             MatrixType.OD,
-            pathlib.Path(postme_cfg["folder_path"]),
-            filename_template=postme_cfg["filename_template"],
+            pathlib.Path(adj_target_cfg["folder_path"]),
+            filename_template=adj_target_cfg["filename_template"],
         )
 
         # --- Cost files ------------------------------------------------------------
@@ -633,7 +644,7 @@ def main(cfg: DistributeConf):
             tld_lookup,
             costs,
             normits_noham_sector,
-            postme_purpose,
+            adj_target_purpose,
             pathlib.Path(cfg.output_path),
             run_opts["run_gm"],
             run_opts["run_adjust"],
