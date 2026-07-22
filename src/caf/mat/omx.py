@@ -81,7 +81,7 @@ class OMXFile(tables.File):
         mode: str = "r",
         omx_version: str = _EXPECTED_OMX_VERSION,
         shape: tuple[int, int] | None = None,
-        zones: np.ndarray | None = None
+        zones: np.ndarray | None = None,
         **kwargs,
     ) -> None:
         self.mode = str(mode).strip().lower()
