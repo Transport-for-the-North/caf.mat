@@ -3,7 +3,7 @@ import pandas as pd
 import caf.base as cb
 from pathlib import Path
 import caf.toolkit as ctk
-from caf.mat.matrices import MatricesBase, MemoryMatrices, MatrixFiles, MatrixType
+from caf.mat.matrices import MatricesBase, MatrixFiles, MatrixType
 import logging
 from caf.toolkit.concurrency import multiprocess
 import numpy as np
@@ -117,6 +117,9 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
     # Set up logging for this distribution run
     LOG = logging.getLogger("main")
     LOG.setLevel(logging.INFO)  # Only log warnings and errors
+
+    output_dir = home_dir / "outputs"
+    output_dir.mkdir(exist_ok=True, parents=True)
     
     tld_seg_agg = [i for i in agg_mat.segmentation.names if i in tlds.index.names]
     tld_seg_full = [i for i in prod.segmentation.names if i in tlds.index.names]
@@ -171,7 +174,7 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
                 triple_inputs[slice_].row_targets = np.divide(triple_inputs[slice_].row_targets, row_tot, where=row_tot != 0,out=np.ones_like(row_tot, dtype=float)) * mat_row
                 triple_inputs[slice_].col_targets = np.divide(triple_inputs[slice_].col_targets, col_tot, where=col_tot != 0,out=np.ones_like(col_tot, dtype=float)) * mat_col
             LOG.warning(f"for {seg_slice.generate_name()}, rmse of tripends to target mat = {rmse}")
-        hdf_file = home_dir / "outputs" / f"matrices_{seg_slice.generate_name()}.hdf"
+        hdf_file = output_dir / f"matrices_{seg_slice.generate_name()}.hdf"
         # seed = mat.copy()
         # seed.columns.name = 'd'
         # seed.index = seed.index.set_levels(seed.columns, level='o')
@@ -201,7 +204,7 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
 
 if __name__ == "__main__":
     # Set up main process logging
-    main_log_file = r"D:\NorMITs Demand\ntem_emp_test\canca\main_process.log"
+    main_log_file = r"D:\rail\distribution\p3\canca\main_process_p3.log"
     main_logger = logging.getLogger("main")
     main_logger.setLevel(logging.INFO)
     
@@ -216,21 +219,33 @@ if __name__ == "__main__":
     main_logger.addHandler(main_handler)
     
     main_logger.info("Starting distribution process")
-    
+    dvec_dir = Path(r"I:\NorTMS rebase\9. Tripends\2.0\v7_prev\tourmodel_tripend\tripend\DVectors")
+    segmentation_input = cb.SegmentationInput(naming_order=['m','p','tp','direction_od','ca'],
+                                                enum_segments=['direction_od','m','p','tp','ca'],
+                                                subsets={'m':[6]})
+    normits = cb.ZoningSystem.get_zoning('normits')
+    ca_seg = cb.Segmentation(segmentation_input)
+    dvecs = {}
+    for direction in 'orig','dest':
+        hb_fr = cb.DVector.load(dvec_dir / direction / "hb_normits_tem_segmented_fr.dvec")
+        hb_to = cb.DVector.load(dvec_dir / direction / "hb_normits_tem_segmented_to.dvec")
+        nhb = cb.DVector.load(dvec_dir / direction / "nhb_normits_tem_segmented_fr.dvec")
+        full = pd.concat({0:nhb.data,1:hb_fr.data,2:hb_to.data}).groupby(level=[0,1,2,3,4]).sum()
+        full.index.names = ['direction_od','p','m','tp','ca']
+        full.index = full.index.reorder_levels(ca_seg.naming_order)
+        dvecs[direction] = cb.DVector(ca_seg, full.xs(6, level='m', drop_level=False), normits)
+        del hb_fr, hb_to, nhb
     for tp in [1,2,3,4]:
         main_logger.info(f"Processing time period: {tp}")
-        segmentation_input = cb.SegmentationInput(naming_order=['direction_od','m','p','tp','ca'],
-                                                enum_segments=['direction_od','m','p','tp','ca'],
-                                                subsets={'m':[6],
-                                                        'tp':[tp]})
-        normits = cb.ZoningSystem.get_zoning('normits')
-        ca_seg = cb.Segmentation(segmentation_input)
-        prod = cb.DVector.load(r"D:\NorMITs Demand\ntem_emp_test\tripends\prod.dvec").aggregate(ca_seg).filter_segment_value('m', 6, keep_filtered=True).filter_segment_value('tp', tp, keep_filtered=True)
-        attr = cb.DVector.load(r"D:\NorMITs Demand\ntem_emp_test\tripends\attr.dvec").aggregate(ca_seg).filter_segment_value('m', 6, keep_filtered=True).filter_segment_value('tp', tp, keep_filtered=True)
-        agg_mat = MatrixFiles(ca_seg.remove_segment('ca'),
+        temp_seg = ca_seg.remove_segment('ca')
+        temp_seg.input.subsets['tp'] = [tp]
+        temp_seg = temp_seg.reinit()
+        prod = dvecs['orig'].filter_segment_value('tp',tp, keep_filtered=True)#cb.DVector.load(r"D:\rail\tripends\prop_by_dir_unconstrained_agg_small\access\orig.dvec").aggregate(ca_seg).filter_segment_value('m', 6, keep_filtered=True).filter_segment_value('tp', tp, keep_filtered=True)
+        attr = dvecs['dest'].filter_segment_value('tp',tp, keep_filtered=True)#cb.DVector.load(r"D:\rail\tripends\prop_by_dir_unconstrained_agg_small\egress\dest.dvec").aggregate(ca_seg).filter_segment_value('m', 6, keep_filtered=True).filter_segment_value('tp', tp, keep_filtered=True)
+        agg_mat = MatrixFiles(temp_seg,
                             normits,
                             MatrixType.OD,
-                            Path(r"D:\NorMITs Demand\ntem_emp_test\matrices"))
+                            Path(r"D:\rail\distribution\p3"))
         costs = pd.read_csv(r"I:\Prior adjustment\distribution\costs\normits_costs_m6_tp1.csv", index_col=0, dtype=np.float32)
         tlds = pd.read_csv(r"D:\NorMITs Demand\ntem_emp_test\tlds\combined_tlds_canca_new.csv", index_col=[0,1,2,3,4,5])['trips']
         tlds = tlds.rename({'hb_fr':1, 'hb_to':2, 'nhb':0})
@@ -238,7 +253,7 @@ if __name__ == "__main__":
         
         main_logger.info(f"Loaded data for tp {tp}: {len(tlds)} TLD records, {len(zones)} zones")
         
-        dist(attr, prod, agg_mat, tlds, costs.values, Path(r"D:\NorMITs Demand\ntem_emp_test\canca"), zones)
+        dist(attr, prod, agg_mat, tlds, costs.values, Path(r"D:\rail\distribution\p3\canca"), zones)
         
         main_logger.info(f"Completed processing for time period {tp}")
     
