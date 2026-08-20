@@ -81,7 +81,7 @@ class OMXFile(tables.File):
         mode: str = "r",
         omx_version: str = _EXPECTED_OMX_VERSION,
         shape: tuple[int, int] | None = None,
-        zones: np.ndarray | None = None
+        zones: np.ndarray | None = None,
         **kwargs,
     ) -> None:
         self.mode = str(mode).strip().lower()
@@ -394,6 +394,6 @@ class OMXFile(tables.File):
                 data.name = "value"
 
             data.to_csv(out_path)
-            LOG.debug("Written: %s", out_path)
+            LOG.debug("Written: %s, total= %f", out_path, data.sum().sum())
 
         return [i[1] for i in filepaths]
