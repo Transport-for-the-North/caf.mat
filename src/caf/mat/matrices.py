@@ -565,9 +565,9 @@ class MatricesBase(abc.ABC):
             for from_slice in iter_seg.iter_slices(to_slice.data):
                 from_slice_p = from_slice.remove('userclass')
                 mat = self.get_matrix(from_slice_p).data
-                # TODO DELETE THIS
-                if from_slice.data['direction_od'] == 2:
-                    mat = mat.T
+                # # TODO DELETE THIS
+                # if from_slice.data['direction_od'] == 2:
+                #     mat = mat.T
                 total += mat
             output.set_matrix(total, to_slice)
 
