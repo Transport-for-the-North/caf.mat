@@ -27,10 +27,28 @@ _ADJ_CHOICE_CONFIG = {
     (False, True, True, False): ("4_od_adj", ["origin", "dest"]),
     (False, True, True, True): ("5_od_sec_adj", ["origin", "dest", "sec"]),
     (False, False, False, True): ("6_sec_adj", ["sec"]),
+    # (False, False, False, True): ("6_sec_adj_moira", ["sec"]),
 }
 
 # # # CONSTANTS # # #
 LOG = logging.getLogger(__name__)
+
+
+class CaDisaggregationConfig(BaseConfig):
+    """
+    Configuration for the CA/NCA disaggregation stage (dia/distribute.py), which runs
+    after the main gravity model + adjustment stage and further disaggregates the
+    resulting matrices to car availability segmentation via furness.
+
+    Attributes
+    ----------
+    run : Whether to run this stage after the gravity model/adjustment stage.
+    tlds_path : Path to the combined TLD CSV for this stage, indexed by segmentation
+                plus tld_area/trav_dist.
+    """
+
+    run: bool = True
+    tlds_path: pathlib.Path
 
 
 class DistributeConf(BaseConfig):
@@ -68,6 +86,7 @@ class DistributeConf(BaseConfig):
                          o_target, d_target, sec_target) with apply flag
                          and max_cap value.
     max_process : Maximum number of processes for parallel execution.
+    ca_disaggregation : Configuration for the downstream CA/NCA disaggregation stage.
     """
 
     mode_subset: int | list[int]
@@ -87,6 +106,7 @@ class DistributeConf(BaseConfig):
     run_options: dict[str, bool]
     adj_target_options: dict[str, dict[str, bool | int]]
     max_process: int
+    ca_disaggregation: CaDisaggregationConfig
 
 
 # pylint: disable=too-many-locals
@@ -452,12 +472,12 @@ def _4d_constraint_gravity_model(
         # )
         sector_target_furnessed = sector_target.data
         LOG.info(
-            "Difference between Trip End productions and Target Sector Matrix productions: %s",
-            row.sum() - sector_target_furnessed.sum(axis=1).sum(),
+            "Ratio between Trip End productions and Target Sector Matrix productions: %s",
+            row.sum() / sector_target_furnessed.sum(axis=1).sum(),
         )
         LOG.info(
-            "Difference between Trip End attractions and Target Sector Matrix attractions: %s",
-            col.sum() - sector_target_furnessed.sum(axis=0).sum(),
+            "Ratio between Trip End attractions and Target Sector Matrix attractions: %s",
+            col.sum() / sector_target_furnessed.sum(axis=0).sum(),
         )
         LOG.info("Running Gravity Model: %s, for slice %s, with calibration set to %s", name, current_slice, run_gm)
 

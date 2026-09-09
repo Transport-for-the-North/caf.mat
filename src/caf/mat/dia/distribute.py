@@ -9,6 +9,9 @@ from caf.toolkit.concurrency import multiprocess
 import numpy as np
 import os
 
+from caf.mat.dia.distribution_matrix_source import DistributionMatrixReader
+from caf.mat.prior_adjustment.distribute_tourmodel import DistributeConf, _use_as_list
+
 def smart_downcast(arr):
     """Conservatively downcast to most efficient dtype"""
     if arr.dtype == np.float64:
@@ -28,6 +31,19 @@ def smart_downcast(arr):
             return arr.astype(np.int16)
     
     return arr  # Return original if no downcast possible
+
+
+def _ensure_ca_segment(dvec: cb.DVector) -> cb.DVector:
+    """Return a DVector with a car-availability segment."""
+    segment_names = dvec.segmentation.names
+    if "ca" in segment_names:
+        return dvec
+    if "hh_type" in segment_names:
+        return dvec.translate_segment("hh_type", "ca")
+    raise ValueError(
+        "DVector must contain either a 'ca' or 'hh_type' segment; "
+        f"found {segment_names}."
+    )
 
 def multi_loop(triple_inputs, mat, hdf_file, tld_ref, segmentation, zoning):
     # Create separate log file for each process/iteration
@@ -202,64 +218,113 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
     del agg_mat, prod, attr
     multiprocess(multi_loop, arg_list=inputs)
 
-if __name__ == "__main__":
+def main(cfg: DistributeConf):
+    """
+    Run the CA/NCA disaggregation stage, reading the gravity model/adjustment stage's
+    output matrices directly via DistributionMatrixReader. Needs a run flag, whether it is required
+    and the new TLDs path for combined CA/NCA TLDs
+    """
+    ca_cfg = cfg.ca_disaggregation
+    if not ca_cfg.run:
+        return
+
+    mode = cfg.mode_subset
+    tp_subset = cfg.timeperiod_subset
+    zones_path = cfg.tld_lookup_path
+    dvec_dir = cfg.trip_ends["prod_nhb"].parent.parent
+    home_dir = cfg.output_path / "canca"
+    home_dir.mkdir(parents=True, exist_ok=True)
+    (home_dir / "outputs").mkdir(exist_ok=True)
+
     # Set up main process logging
-    main_log_file = r"D:\rail\distribution\p3\canca\main_process_p3.log"
+    main_log_file = home_dir / "main_process.log"
     main_logger = logging.getLogger("main")
     main_logger.setLevel(logging.INFO)
-    
+
     # Remove any existing handlers
     for handler in main_logger.handlers[:]:
         main_logger.removeHandler(handler)
-    
+
     main_handler = logging.FileHandler(main_log_file)
     main_handler.setLevel(logging.INFO)
     main_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     main_handler.setFormatter(main_formatter)
     main_logger.addHandler(main_handler)
-    
+
     main_logger.info("Starting distribution process")
-    dvec_dir = Path(r"I:\NorTMS rebase\9. Tripends\2.0\v7_prev\tourmodel_tripend\tripend\DVectors")
+
+    normits = cb.ZoningSystem.get_zoning(cfg.zone_system)
     segmentation_input = cb.SegmentationInput(naming_order=['m','p','tp','direction_od','ca'],
                                                 enum_segments=['direction_od','m','p','tp','ca'],
-                                                subsets={'m':[6]})
-    normits = cb.ZoningSystem.get_zoning('normits')
+                                                subsets={'m':_use_as_list(mode)})
     ca_seg = cb.Segmentation(segmentation_input)
+
+    # Combine hb_fr/hb_to/nhb DVectors per direction into a single CA-segmented DVector
     dvecs = {}
     for direction in 'orig','dest':
-        hb_fr = cb.DVector.load(dvec_dir / direction / "hb_normits_tem_segmented_fr.dvec")
-        hb_to = cb.DVector.load(dvec_dir / direction / "hb_normits_tem_segmented_to.dvec")
-        nhb = cb.DVector.load(dvec_dir / direction / "nhb_normits_tem_segmented_fr.dvec")
-        full = pd.concat({0:nhb.data,1:hb_fr.data,2:hb_to.data}).groupby(level=[0,1,2,3,4]).sum()
-        full.index.names = ['direction_od','p','m','tp','ca']
+        hb_fr = _ensure_ca_segment(
+            cb.DVector.load(dvec_dir / direction / "hb_normits_tem_segmented_fr.dvec")
+        )
+        hb_to = _ensure_ca_segment(
+            cb.DVector.load(dvec_dir / direction / "hb_normits_tem_segmented_to.dvec")
+        )
+        nhb = _ensure_ca_segment(
+            cb.DVector.load(dvec_dir / direction / "nhb_normits_tem_segmented_fr.dvec")
+        )
+        hb_fr = hb_fr.aggregate(["m", "tp", "p", "ca"])
+        hb_to = hb_to.aggregate(["m", "tp", "p", "ca"])
+        nhb = nhb.aggregate(["m", "tp", "p", "ca"])
+        source_names = hb_fr.segmentation.naming_order
+        if any(dvec.segmentation.naming_order != source_names for dvec in (hb_to, nhb)):
+            raise ValueError("DVector segmentations do not match after CA normalization.")
+        full = pd.concat({0:nhb.data,1:hb_fr.data,2:hb_to.data})
+        full.index.names = ['direction_od'] + source_names
+        full = full.groupby(level=full.index.names).sum()
         full.index = full.index.reorder_levels(ca_seg.naming_order)
-        dvecs[direction] = cb.DVector(ca_seg, full.xs(6, level='m', drop_level=False), normits)
+        dvecs[direction] = cb.DVector(ca_seg, full.xs(mode[0], level='m', drop_level=False), normits)
         del hb_fr, hb_to, nhb
-    for tp in [1,2,3,4]:
+
+    tlds = pd.read_csv(ca_cfg.tlds_path, index_col=[0,1,2,3,4,5])['trips']
+    tlds = tlds.rename({'hb_fr':1, 'hb_to':2, 'nhb':0})
+    zones = pd.read_csv(zones_path, index_col=0).sort_index().reset_index(drop=True)
+
+    cost_cfg = cfg.cost_files
+    cost_seg = cb.Segmentation(
+        cb.SegmentationInput(
+            enum_segments=cost_cfg["naming_order"],
+            naming_order=cost_cfg["naming_order"],
+            subsets={"m": _use_as_list(mode), "tp": _use_as_list(tp_subset)},
+        )
+    )
+    cost_matrix = MatrixFiles(
+        cost_seg,
+        normits,
+        MatrixType.OD,
+        Path(cost_cfg["folder_path"]),
+        filename_template=cost_cfg["filename_template"],
+    )
+
+    for tp in _use_as_list(tp_subset):
         main_logger.info(f"Processing time period: {tp}")
-        temp_seg = ca_seg.remove_segment('ca')
-        temp_seg.input.subsets['tp'] = [tp]
-        temp_seg = temp_seg.reinit()
-        prod = dvecs['orig'].filter_segment_value('tp',tp, keep_filtered=True)#cb.DVector.load(r"D:\rail\tripends\prop_by_dir_unconstrained_agg_small\access\orig.dvec").aggregate(ca_seg).filter_segment_value('m', 6, keep_filtered=True).filter_segment_value('tp', tp, keep_filtered=True)
-        attr = dvecs['dest'].filter_segment_value('tp',tp, keep_filtered=True)#cb.DVector.load(r"D:\rail\tripends\prop_by_dir_unconstrained_agg_small\egress\dest.dvec").aggregate(ca_seg).filter_segment_value('m', 6, keep_filtered=True).filter_segment_value('tp', tp, keep_filtered=True)
-        agg_mat = MatrixFiles(temp_seg,
-                            normits,
-                            MatrixType.OD,
-                            Path(r"D:\rail\distribution\p3"))
-        costs = pd.read_csv(r"I:\Prior adjustment\distribution\costs\normits_costs_m6_tp1.csv", index_col=0, dtype=np.float32)
-        tlds = pd.read_csv(r"D:\NorMITs Demand\ntem_emp_test\tlds\combined_tlds_canca_new.csv", index_col=[0,1,2,3,4,5])['trips']
-        tlds = tlds.rename({'hb_fr':1, 'hb_to':2, 'nhb':0})
-        zones = pd.read_csv(r"I:\NorMITs Distribution\voa_gb_2023_uni\NorMITs_zone.csv", index_col=0).sort_index().reset_index(drop=True)
-        
+        prod = dvecs['orig'].filter_segment_value('tp', tp, keep_filtered=True)
+        attr = dvecs['dest'].filter_segment_value('tp', tp, keep_filtered=True)
+        agg_mat = DistributionMatrixReader(cfg, mode_subset=mode, tp_subset=tp)
+        cost_slice = {"m": mode[0], "tp": tp}
+        costs = cost_matrix.get_matrix(cost_slice).data
+
         main_logger.info(f"Loaded data for tp {tp}: {len(tlds)} TLD records, {len(zones)} zones")
-        
-        dist(attr, prod, agg_mat, tlds, costs.values, Path(r"D:\rail\distribution\p3\canca"), zones)
-        
+
+        dist(attr, prod, agg_mat, tlds, costs.values, home_dir, zones)
+
         main_logger.info(f"Completed processing for time period {tp}")
-    
+
     main_logger.info("All distribution processes completed")
-    
-    # Clean up main logger
     main_logger.removeHandler(main_handler)
     main_handler.close()
-    
+
+
+if __name__ == "__main__":
+    distribute_config = DistributeConf.load_yaml(
+        Path(__file__).parent.parent / "prior_adjustment" / "distribute_tourmodel_config.yml"
+    )
+    main(distribute_config)

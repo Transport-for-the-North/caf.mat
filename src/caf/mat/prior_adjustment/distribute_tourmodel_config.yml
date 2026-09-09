@@ -57,7 +57,7 @@ sector_system: tour_sector
 # columns: list of column names to assign after loading (in order)
 # ------------------------------------------------------------------
 zone_to_sector_lookup:
-  path: "D:/TM_Adjusted_Emp/NorMITs Demand_Nhan/NoTEM/inputs/normits_v3.3_noham_v3.8_trans.csv"
+  path: I:\NorTMS rebase\9. Tripends\1.0\rail_refresh_phase2\NorMITs Demand_Nhan\NoTEM\inputs\normits_v3.3_noham_v3.8_trans.csv
   columns:
     - noham_v3.8_id
     - normits_v3.3_id
@@ -87,8 +87,9 @@ adj_target_matrices:
     - p
     - tp
     - direction_od
-  folder_path: D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend\sectors_moira
-  filename_template: "sec_{slice_name}.csv"
+  folder_path: I:\NorTMS rebase\10. distributions\phase_3_sectors
+  # filename_template: "sec_{slice_name}.csv"
+  filename_template: "p3_mat_{slice_name}"
   #"tourmodel_{type}_{slice_name}.csv"
 
 # ------------------------------------------------------------------
@@ -113,7 +114,7 @@ tld_files:
     - m
     - p
     - direction_od
-  folder_path: T:\JaroslawHryscko\dist_testing_inputs\TLDs
+  folder_path: D:\distribute_inputs\TLDs
   filename_template: "NTS_tld_{slice_name}.csv"
 
 # ------------------------------------------------------------------
@@ -124,22 +125,22 @@ tld_files:
 #   direction_od=2 -> hb_prod_to / hb_attr_to
 # ------------------------------------------------------------------
 trip_ends:
-  prod_nhb:    D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend\DVectors\orig\nhb_normits_tem_segmented_fr.dvec
-  attr_nhb:    D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend\DVectors\dest\nhb_normits_tem_segmented_fr.dvec
-  hb_prod_fr:  D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend\DVectors\orig\hb_normits_tem_segmented_fr.dvec
-  hb_attr_fr:  D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend\DVectors\dest\hb_normits_tem_segmented_fr.dvec
-  hb_prod_to:  D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend\DVectors\dest\hb_normits_tem_segmented_to.dvec
-  hb_attr_to:  D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend\DVectors\orig\hb_normits_tem_segmented_to.dvec
+  prod_nhb:   I:\NorTMS rebase\9. Tripends\3+ test\orig\nhb_normits_tem_segmented_fr.dvec
+  attr_nhb:   I:\NorTMS rebase\9. Tripends\3+ test\dest\nhb_normits_tem_segmented_fr.dvec
+  hb_prod_fr: I:\NorTMS rebase\9. Tripends\3+ test\orig\hb_normits_tem_segmented_fr.dvec
+  hb_attr_fr: I:\NorTMS rebase\9. Tripends\3+ test\dest\hb_normits_tem_segmented_fr.dvec
+  hb_prod_to: I:\NorTMS rebase\9. Tripends\3+ test\orig\hb_normits_tem_segmented_to.dvec
+  hb_attr_to: I:\NorTMS rebase\9. Tripends\3+ test\dest\hb_normits_tem_segmented_to.dvec
 
 # ------------------------------------------------------------------
 # Gravity model run name (used for output folder naming)
 # ------------------------------------------------------------------
-gm_run_name: rail_adjustedEmp_2026_04_10_v1
+gm_run_name: rail_phase3plus_test_20260903_v1
 
 # ------------------------------------------------------------------
 # Output directory for all results
 # ------------------------------------------------------------------
-output_path: I:\Prior adjustment\distribution\distribute_outputs\rail_adjustedEmp_2026_04_10_v1
+output_path: T:\JaroslawHryscko\distribute_output\rail_phase3plus_test_20260903_v1
 
 # ------------------------------------------------------------------
 # Run options
@@ -147,7 +148,7 @@ output_path: I:\Prior adjustment\distribution\distribute_outputs\rail_adjustedEm
 # run_adjust: if true, runs the furness adjustment after the GM step
 # ------------------------------------------------------------------
 run_options:
-  run_gm: False
+  run_gm: True
   run_adjust: True
 
 # ------------------------------------------------------------------
@@ -167,7 +168,7 @@ adj_target_options:
     max_cap: 10
   sec_target:
     apply: True
-    max_cap: 1000
+    max_cap: 5
 
 # ------------------------------------------------------------------
 # Maximum number of parallel processes
@@ -176,4 +177,14 @@ adj_target_options:
 #   3-4 for testing individual time periods
 # Note: automatically set to 0 (serial) when run_gm is false
 # ------------------------------------------------------------------
-max_process: 2
+max_process: 4
+
+# ------------------------------------------------------------------
+# CA/NCA disaggregation stage (dia/distribute.py)
+# Runs after the gravity model/adjustment stage above, further
+# disaggregating the resulting matrices to car availability segmentation.
+# ------------------------------------------------------------------
+ca_disaggregation:
+  run: True
+  tlds_path: I:\NorTMS rebase\10. distributions\tlds\combined_tlds_canca_new.csv
+
