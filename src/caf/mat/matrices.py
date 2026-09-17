@@ -863,12 +863,7 @@ class MatricesBase(abc.ABC):
             The input matrices in the new zone system.
         """
         if translation is None:
-            translation = ctk.translation.ZoneCorrespondence(
-                self.zoning.translate(new_zoning),
-                self.zoning.column_name,
-                new_zoning.column_name,
-                self.zoning.translation_column_name(new_zoning),
-            )
+            translation = self.zoning.translate(new_zoning)
 
         elif isinstance(translation, pd.DataFrame):
             translation = ctk.translation.ZoneCorrespondence(
