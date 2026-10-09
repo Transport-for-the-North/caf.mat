@@ -57,7 +57,7 @@ sector_system: tour_sector
 # columns: list of column names to assign after loading (in order)
 # ------------------------------------------------------------------
 zone_to_sector_lookup:
-  path: I:\NorTMS rebase\9. Tripends\1.0\rail_refresh_phase2\NorMITs Demand_Nhan\NoTEM\inputs\normits_v3.3_noham_v3.8_trans.csv
+  path: D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\inputs\normits_v3.3_noham_v3.8_trans.csv
   columns:
     - noham_v3.8_id
     - normits_v3.3_id
@@ -87,9 +87,10 @@ adj_target_matrices:
     - p
     - tp
     - direction_od
-  folder_path: I:\NorTMS rebase\10. distributions\phase_3_sectors
-  # filename_template: "sec_{slice_name}.csv"
-  filename_template: "p3_mat_{slice_name}"
+  # folder_path: I:\NorTMS rebase\10. distributions\phase_3_sectors
+  folder_path: D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend\sectors_moira
+  filename_template: "sec_{slice_name}.csv"
+  # filename_template: "p3_mat_{slice_name}"
   #"tourmodel_{type}_{slice_name}.csv"
 
 # ------------------------------------------------------------------
@@ -99,8 +100,25 @@ cost_files:
   naming_order:
     - m
     - tp
+  # folder_path: I:\Prior adjustment\distribution\costs
+  # filename_template: "normits_costs_{slice_name}.csv"
+  folder_path: I:\NorTMS rebase\13. Zone to Station Mapping\output_car_emp_5_closest_5_min_penalty\Costs
+  filename_template: "rail_costs_{slice_name}.csv"
+
+# ------------------------------------------------------------------
+# Comparison cost files (MatrixFiles)
+# These will be used to adjust the seed matrix based on the ratio of
+# the main mode cost files.
+# ------------------------------------------------------------------
+comparison_cost_files:
+  check: False
+  naming_order:
+    - m
+    - tp
+  mode: 3
   folder_path: I:\Prior adjustment\distribution\costs
   filename_template: "normits_costs_{slice_name}.csv"
+  steepness: 0.0
 
 # ------------------------------------------------------------------
 # Trip Length Distribution files
@@ -135,12 +153,12 @@ trip_ends:
 # ------------------------------------------------------------------
 # Gravity model run name (used for output folder naming)
 # ------------------------------------------------------------------
-gm_run_name: rail_phase3plus_test_20260903_v1
+gm_run_name: rail_newcosts_noseed_fullrun_20261008_v1
 
 # ------------------------------------------------------------------
 # Output directory for all results
 # ------------------------------------------------------------------
-output_path: T:\JaroslawHryscko\distribute_output\rail_phase3plus_test_20260903_v1
+output_path: D:\rail_newcosts_noseed_fullrun_20261008_v1
 
 # ------------------------------------------------------------------
 # Run options
@@ -149,7 +167,7 @@ output_path: T:\JaroslawHryscko\distribute_output\rail_phase3plus_test_20260903_
 # ------------------------------------------------------------------
 run_options:
   run_gm: True
-  run_adjust: True
+  run_adjust: False
 
 # ------------------------------------------------------------------
 # Adjustment target options
@@ -185,6 +203,6 @@ max_process: 4
 # disaggregating the resulting matrices to car availability segmentation.
 # ------------------------------------------------------------------
 ca_disaggregation:
-  run: True
+  run: False
   tlds_path: I:\NorTMS rebase\10. distributions\tlds\combined_tlds_canca_new.csv
 

@@ -99,6 +99,7 @@ class DistributeConf(BaseConfig):
     zone_to_sector_lookup: dict[str, pathlib.Path | list[str]]
     adj_target_matrices: dict[str, list[str] | pathlib.Path | str]
     cost_files: dict[str, list[str] | pathlib.Path | str]
+    comparison_cost_files: dict[str, bool | list[str] | int | pathlib.Path | str | float]
     tld_files: dict[str, list[str] | pathlib.Path | str]
     trip_ends: dict[str, pathlib.Path]
     gm_run_name: str
@@ -121,6 +122,8 @@ def seg_furness(
     run_gm: bool,
     run_adjust: bool,
     adj_target_options: dict[str, tuple[bool, int]],
+    alternate_cost: np.ndarray | None,
+    relative_cost_steepness: float | None,
 ):
     """
     Execute gravity model calibration and/or Furness adjustment for a given slice,
@@ -199,6 +202,8 @@ def seg_furness(
             csv_logging_path,
             output_path,
             gravity_model.GMCalibParams(furness_jac=True, ftol=1e-2, xtol=1e-2),
+            alternate_cost_matrix=alternate_cost,
+            relative_cost_steepness=relative_cost_steepness,
             return_distributions=True,
         )
     if run_adjust:
@@ -351,6 +356,8 @@ def _4d_constraint_gravity_model(
     tlds: dict[str, pathlib.Path],
     tld_zones: pd.Series,
     cost_matrix: MatrixFiles,
+    alternate_cost_matrix: MatrixFiles | None,
+    relative_cost_steepness: float | None,
     constraint_area_trans: pd.DataFrame,
     sector_target_matrix: MatrixFiles,
     out_dir: pathlib.Path,
@@ -384,6 +391,10 @@ def _4d_constraint_gravity_model(
     constraint_area_trans : pd.DataFrame
         Translation/mapping dataframe between normits_id and noham_sector_id for
         spatial constraint areas.
+    alternate_cost_matrix : MatrixFiles | None
+        Alternate cost matrix object for comparison purposes.
+    relative_cost_steepness : float | None
+        Steepness parameter for relative cost comparison.
     sector_target_matrix : MatrixFiles
         MatrixFiles object for target matrices for sector-level constraint targets.
     calibrate : bool
@@ -450,6 +461,20 @@ def _4d_constraint_gravity_model(
         cost = cost_matrix.get_matrix(
             current_slice.aggregate(cost_matrix.segmentation.naming_order)
         )
+
+        alternate_cost = None
+        if alternate_cost_matrix is not None:
+            alt_seg = alternate_cost_matrix.segmentation
+            alt_modes = {s.get("m") for s in alt_seg.iter_slices()}
+            if len(alt_modes) != 1:
+                raise ValueError(f"Expected a single alternate mode, got {alt_modes}")
+            # tp (and any other shared segment) follows current_slice; m comes from the alternate subset
+            alt_slice = {
+                name: current_slice.get(name) for name in alt_seg.naming_order
+            }
+            alt_slice["m"] = alt_modes.pop()
+            alternate_cost = alternate_cost_matrix.get_matrix(alt_slice).data
+
         sector_target = sector_target_matrix.get_matrix(
             current_slice.aggregate(sector_target_matrix.segmentation.naming_order)
         )
@@ -515,6 +540,8 @@ def _4d_constraint_gravity_model(
                 run_gm,
                 run_adjust,
                 adj_target_options,
+                alternate_cost,
+                relative_cost_steepness,
             )
         )
 
@@ -637,6 +664,29 @@ def main(cfg: DistributeConf):
             filename_template=cost_cfg["filename_template"],
         )
 
+        # --- Comparison cost files -------------------------------------------------
+        alternate_costs_cfg = cfg.comparison_cost_files
+        alternate_costs = None
+        cost_steepness = None
+        if alternate_costs_cfg["check"]:
+            alternate_costs_seg = cb.Segmentation(
+                cb.SegmentationInput(
+                    enum_segments=alternate_costs_cfg["naming_order"],
+                    naming_order=alternate_costs_cfg["naming_order"],
+                    subsets={"m": _use_as_list(alternate_costs_cfg["mode"]), "tp": _use_as_list(tp_subset)},
+                )
+            )
+            alternate_costs = MatrixFiles(
+                alternate_costs_seg,
+                normits,
+                MatrixType.OD,
+                pathlib.Path(alternate_costs_cfg["folder_path"]),
+                filename_template=alternate_costs_cfg["filename_template"],
+            )
+
+            # Config dict values are typed as list|Path|str, so this may arrive as a string
+            cost_steepness = float(alternate_costs_cfg["steepness"])
+
         # --- TLD files -------------------------------------------------------------
         tld_cfg = cfg.tld_files
         tld_seg = cb.Segmentation(
@@ -732,6 +782,8 @@ def main(cfg: DistributeConf):
             tlds,
             tld_lookup,
             costs,
+            alternate_costs,
+            cost_steepness,
             normits_noham_sector,
             adj_target_purpose,
             pathlib.Path(cfg.output_path),
