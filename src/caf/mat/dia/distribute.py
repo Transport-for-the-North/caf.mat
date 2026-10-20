@@ -262,14 +262,20 @@ def main(cfg: DistributeConf):
     # Combine hb_fr/hb_to/nhb DVectors per direction into a single CA-segmented DVector
     dvecs = {}
     for direction in 'orig','dest':
+        
+        if direction == "orig":
+            direction_sub = "prod"
+        elif direction == "dest":
+            direction_sub = "attr"
+        
         hb_fr = _ensure_ca_segment(
-            cb.DVector.load(dvec_dir / direction / "hb_normits_tem_segmented_fr.dvec")
+            cb.DVector.load(dvec_dir / direction / cfg.trip_ends[f"hb_{direction_sub}_fr"].name)
         )
         hb_to = _ensure_ca_segment(
-            cb.DVector.load(dvec_dir / direction / "hb_normits_tem_segmented_to.dvec")
+            cb.DVector.load(dvec_dir / direction / cfg.trip_ends[f"hb_{direction_sub}_to"].name)
         )
         nhb = _ensure_ca_segment(
-            cb.DVector.load(dvec_dir / direction / "nhb_normits_tem_segmented_fr.dvec")
+            cb.DVector.load(dvec_dir / direction / cfg.trip_ends[f"{direction_sub}_nhb"].name)
         )
         hb_fr = hb_fr.aggregate(["m", "tp", "p", "ca"])
         hb_to = hb_to.aggregate(["m", "tp", "p", "ca"])

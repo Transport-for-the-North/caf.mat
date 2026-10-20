@@ -87,10 +87,12 @@ adj_target_matrices:
     - p
     - tp
     - direction_od
+  # folder_path: D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend\sectors_moira
+  # filename_template: "sec_{slice_name}.csv"
   # folder_path: I:\NorTMS rebase\10. distributions\phase_3_sectors
-  folder_path: D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend\sectors_moira
-  filename_template: "sec_{slice_name}.csv"
   # filename_template: "p3_mat_{slice_name}"
+  folder_path: I:\NorTMS rebase\10. distributions\phase_4_sectors
+  filename_template: "p3_mat_{slice_name}"
   #"tourmodel_{type}_{slice_name}.csv"
 
 # ------------------------------------------------------------------
@@ -102,8 +104,10 @@ cost_files:
     - tp
   # folder_path: I:\Prior adjustment\distribution\costs
   # filename_template: "normits_costs_{slice_name}.csv"
-  folder_path: I:\NorTMS rebase\13. Zone to Station Mapping\output_car_emp_5_closest_5_min_penalty\Costs
-  filename_template: "rail_costs_{slice_name}.csv"
+  # folder_path: I:\NorTMS rebase\13. Zone to Station Mapping\output_walk_car_5_closest_5_min_penalty_RAIL_SPEED_X2\matrix_creation\Costs
+  # filename_template: "rail_costs_{slice_name}.csv"
+  folder_path: I:\Prior adjustment\distribution\costs\Rail_Adjusted
+  filename_template: "railadjusted_normits_costs_{slice_name}.csv"
 
 # ------------------------------------------------------------------
 # Comparison cost files (MatrixFiles)
@@ -143,22 +147,22 @@ tld_files:
 #   direction_od=2 -> hb_prod_to / hb_attr_to
 # ------------------------------------------------------------------
 trip_ends:
-  prod_nhb:   I:\NorTMS rebase\9. Tripends\3+ test\orig\nhb_normits_tem_segmented_fr.dvec
-  attr_nhb:   I:\NorTMS rebase\9. Tripends\3+ test\dest\nhb_normits_tem_segmented_fr.dvec
-  hb_prod_fr: I:\NorTMS rebase\9. Tripends\3+ test\orig\hb_normits_tem_segmented_fr.dvec
-  hb_attr_fr: I:\NorTMS rebase\9. Tripends\3+ test\dest\hb_normits_tem_segmented_fr.dvec
-  hb_prod_to: I:\NorTMS rebase\9. Tripends\3+ test\orig\hb_normits_tem_segmented_to.dvec
-  hb_attr_to: I:\NorTMS rebase\9. Tripends\3+ test\dest\hb_normits_tem_segmented_to.dvec
+  prod_nhb:   I:\NorTMS rebase\9. Tripends\4.0\orig\nhb_prod_adj.dvec
+  attr_nhb:   I:\NorTMS rebase\9. Tripends\4.0\dest\nhb_attr_adj.dvec
+  hb_prod_fr: I:\NorTMS rebase\9. Tripends\4.0\orig\prod_fr_adj.dvec
+  hb_attr_fr: I:\NorTMS rebase\9. Tripends\4.0\dest\attr_fr_adj.dvec
+  hb_prod_to: I:\NorTMS rebase\9. Tripends\4.0\orig\attr_to_adj.dvec
+  hb_attr_to: I:\NorTMS rebase\9. Tripends\4.0\dest\prod_to_adj.dvec
 
 # ------------------------------------------------------------------
 # Gravity model run name (used for output folder naming)
 # ------------------------------------------------------------------
-gm_run_name: rail_newcosts_noseed_fullrun_20261008_v1
+gm_run_name: rail_hwy_TE4.0_20261015_v2
 
 # ------------------------------------------------------------------
 # Output directory for all results
 # ------------------------------------------------------------------
-output_path: D:\rail_newcosts_noseed_fullrun_20261008_v1
+output_path: D:\rail_hwy_TE4.0_20261015_v2
 
 # ------------------------------------------------------------------
 # Run options
@@ -167,7 +171,7 @@ output_path: D:\rail_newcosts_noseed_fullrun_20261008_v1
 # ------------------------------------------------------------------
 run_options:
   run_gm: True
-  run_adjust: False
+  run_adjust: True
 
 # ------------------------------------------------------------------
 # Adjustment target options
@@ -203,6 +207,6 @@ max_process: 4
 # disaggregating the resulting matrices to car availability segmentation.
 # ------------------------------------------------------------------
 ca_disaggregation:
-  run: False
+  run: True
   tlds_path: I:\NorTMS rebase\10. distributions\tlds\combined_tlds_canca_new.csv
 
