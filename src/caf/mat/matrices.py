@@ -931,9 +931,7 @@ class HDFMatrices(MatricesBase):
             self._keys[slice_] = self._key_template.format(slice_name=slice_name)
         return self._keys[slice_]
 
-    def set_matrix(
-        self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice
-    ) -> None:
+    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:
         """Save the matrix to HDF, with a key based on the slice parameters."""
         self.validate_slice(slice_)
 
