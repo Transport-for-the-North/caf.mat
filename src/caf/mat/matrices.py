@@ -171,7 +171,7 @@ class MatricesBase(abc.ABC):
         segment = self.type.direction_segment.name
         return segment in (i.name for i in self.segmentation.segments)
 
-    def _get_direction_subset(self) -> None | set[int]:
+    def _get_direction_subset(self) -> set[int] | None:
         if not self.has_type_segment:
             return None
 
@@ -975,7 +975,7 @@ class HDFMatrices(MatricesBase):
         if pathlib.Path(name).suffix:
             path = self._path.with_name(name)
         else:
-            suffix = self._path.suffix if self._path.suffix else ".h5"
+            suffix = self._path.suffix or ".h5"
             path = self._path.with_name(f"{name}{suffix}")
 
         return self.__class__(
