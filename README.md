@@ -83,6 +83,8 @@ The package also provides a standalone CLI tool for some more common matrix oper
   and [`ZoningSystem`](https://cafbase.readthedocs.io/en/stable/_autosummary/caf.base.ZoningSystem.html)
   functionality and provides access to individual matrices as
   [pandas DataFrames](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html).
+- **Compressed HDF Storage** - segmented matrices can be stored in a single compressed HDF file
+  for faster repeated reads/writes than CSV-based storage.
 - **Various File Formats** - read, write and convert between various matrix file formats from
   different transport modelling software.
   - OpenMatrix (OMX)

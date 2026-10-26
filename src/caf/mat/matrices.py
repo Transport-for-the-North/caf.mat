@@ -818,6 +818,205 @@ class MatrixFiles(MatricesBase):
             return False
         return True
 
+    def to_hdf(
+        self,
+        path: pathlib.Path,
+        *,
+        key_template: str | None = None,
+        complevel: int = 9,
+        complib: str = "zlib",
+    ) -> "HDFMatrices":
+        """Convert CSV matrices to HDF matrices."""
+        output = HDFMatrices(
+            segmentation_=self._segmentation,
+            zoning=self._zoning,
+            type_=self._type,
+            path=path,
+            key_template=key_template,
+            check_file=False,
+            complevel=complevel,
+            complib=complib,
+        )
+        for matrix in self:
+            output.set_matrix(matrix.data, matrix.slice)
+        return output
+
+
+class HDFMatrices(MatricesBase):
+    """Handle matrices stored in a single HDF file.
+
+    Parameters
+    ----------
+    segmentation_
+        Segmentation for the matrices.
+    zoning
+        ZoningSystem for all the matrices.
+    type_
+        Type of the matrices.
+    path
+        Path to HDF file for storing matrices in.
+    key_template
+        Template for HDF dataset keys of individual matrices,
+        if None defaults to "{type}_{slice_name}".
+        Template will be infilled with the following:
+        - {type} - name of the matrix `type_` e.g. "OD";
+        - {slice_name} - the name of the individual slice e.g. "p1_m3_nhb"
+          from :class:`SegmentationSlice`.
+    check_file
+        If True (default) raises an error if the HDF file doesn't already
+        exist with datasets for all slices in segmentation.
+    complevel
+        Compression level used when writing matrices.
+    complib
+        Compression library used when writing matrices.
+    """
+
+    _default_key_template = "{type}_{slice_name}"
+
+    def __init__(
+        self,
+        segmentation_: cbase.Segmentation,
+        zoning: cbase.ZoningSystem,
+        type_: MatrixType,
+        path: pathlib.Path,
+        *,
+        key_template: str | None = None,
+        check_file: bool = True,
+        complevel: int = 9,
+        complib: str = "zlib",
+    ) -> None:
+        super().__init__(segmentation_, zoning, type_)
+
+        if key_template is None:
+            key_template = self._default_key_template
+
+        self._raw_key_template = key_template
+        self._key_template = key_template.format(
+            type=self.type.name, slice_name="{slice_name}"
+        )
+        self._path = path.resolve()
+        self._keys: dict[segmentation.SegmentationSlice, str] = {}
+        self._complevel = complevel
+        self._complib = complib
+
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+
+        if check_file and not self._path.is_file():
+            raise FileNotFoundError(path)
+
+        if check_file:
+            with pd.HDFStore(self._path, mode="r") as store:
+                keys = set(store.keys())
+                for slice_ in self._segmentation.iter_slices():
+                    key = self._get_key(slice_)
+                    if f"/{key}" not in keys:
+                        raise FileNotFoundError(
+                            f"{self._path} does not contain matrix key: {key}"
+                        )
+
+    @property
+    def name(self) -> str:
+        """Name of the matrices."""
+        return self._path.stem
+
+    @property
+    def path(self) -> pathlib.Path:
+        """Path to HDF file containing the matrices."""
+        return self._path
+
+    def _get_key(self, slice_: segmentation.SegmentationSlice) -> str:
+        """Get HDF key for given slice, generates it if not already present."""
+        if slice_ not in self._keys:
+            slice_name = self._segmentation.generate_slice_name(slice_)
+            self._keys[slice_] = self._key_template.format(slice_name=slice_name)
+        return self._keys[slice_]
+
+    def set_matrix(
+        self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice
+    ) -> None:
+        """Save the matrix to HDF, with a key based on the slice parameters."""
+        self.validate_slice(slice_)
+
+        key = self._get_key(slice_)
+        self.validate_matrix(matrix, key)
+
+        with pd.HDFStore(
+            self._path,
+            mode="a",
+            complevel=self._complevel,
+            complib=self._complib,
+        ) as store:
+            store.put(key, matrix, format="fixed")
+        LOG.debug("Written %s matrix to %s", key, self._path)
+
+    def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
+        """Load the matrix from HDF."""
+        self.validate_slice(slice_)
+        key = self._get_key(slice_)
+
+        with pd.HDFStore(self._path, mode="r") as store:
+            if f"/{key}" not in set(store.keys()):
+                raise KeyError(f"no matrix found for {slice_}")
+            data = store.get(key)
+
+        data.index.name = "origin"
+        data.columns.name = "destination"
+        self.validate_matrix(data, key)
+        return Matrix(data, slice_)
+
+    def new(  # noqa: D102
+        self,
+        name: str,
+        *,
+        segmentation_: cbase.Segmentation | None = None,
+        zoning: cbase.ZoningSystem | None = None,
+        type_: MatrixType | None = None,
+    ) -> Self:
+        if pathlib.Path(name).suffix:
+            path = self._path.with_name(name)
+        else:
+            suffix = self._path.suffix if self._path.suffix else ".h5"
+            path = self._path.with_name(f"{name}{suffix}")
+
+        return self.__class__(
+            segmentation_=self._segmentation if segmentation_ is None else segmentation_,
+            zoning=self._zoning if zoning is None else zoning,
+            type_=self._type if type_ is None else type_,
+            path=path,
+            key_template=self._raw_key_template,
+            check_file=False,
+            complevel=self._complevel,
+            complib=self._complib,
+        )
+
+    def exists(self) -> bool:  # noqa: D102
+        if not self._path.is_file():
+            return False
+
+        with pd.HDFStore(self._path, mode="r") as store:
+            keys = set(store.keys())
+            for slice_ in self._segmentation.iter_slices():
+                key = self._get_key(slice_)
+                if f"/{key}" not in keys:
+                    return False
+        return True
+
+    def to_csv(
+        self, folder: pathlib.Path, *, filename_template: str | None = None
+    ) -> MatrixFiles:
+        """Convert HDF matrices to CSV matrix files."""
+        output = MatrixFiles(
+            segmentation_=self._segmentation,
+            zoning=self._zoning,
+            type_=self._type,
+            folder=folder,
+            filename_template=filename_template,
+            check_files=False,
+        )
+        for matrix in self:
+            output.set_matrix(matrix.data, matrix.slice)
+        return output
+
 
 class LongMatrices(MatricesBase):
     """Store multiple matrices in a single long DataFrame.
