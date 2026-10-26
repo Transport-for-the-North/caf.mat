@@ -12,7 +12,7 @@ See Also
 
 ##### IMPORTS #####
 
-import datetime
+import datetime as dt
 import logging
 import os
 import pathlib
@@ -277,4 +277,4 @@ class ConvertArguments(_mat.ArgumentHandler):
             folder = self.output.parent
         else:
             folder = self.path.parent
-        return folder / f"caf.mat-convert-{datetime.date.today():%Y%m%d}.log"
+        return folder / f"caf.mat-convert-{dt.date.today():%Y%m%d}.log"
