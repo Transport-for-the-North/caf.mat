@@ -176,6 +176,48 @@ class TestLongMatrices:
         pd.testing.assert_frame_equal(long_matrices.data, answer._data)
 
 
+class TestHDFMatrices:
+    """Tests for HDF matrix storage specific functionality."""
+
+    def test_to_csv(
+        self,
+        tmp_path: pathlib.Path,
+        tp_hdf_matrices: "MatricesResults",
+    ) -> None:
+        """Test converting HDF matrices to CSV matrix files."""
+        csv = tp_hdf_matrices.test.to_csv(tmp_path / "csv")
+        assert isinstance(csv, matrices.MatrixFiles)
+
+        for slice_ in tp_hdf_matrices.segmentation_.iter_slices():
+            expected = tp_hdf_matrices.data[slice_]
+            got = csv.get_matrix(slice_).data
+            pd.testing.assert_frame_equal(
+                expected,
+                got,
+                check_index_type=False,
+                check_column_type=False,
+                check_names=False,
+            )
+
+    def test_from_csv(
+        self, tmp_path: pathlib.Path, tp_matrices_files: "MatricesResults"
+    ) -> None:
+        """Test converting CSV matrix files to HDF matrices."""
+        hdf = tp_matrices_files.test.to_hdf(tmp_path / "matrices.h5")
+        assert isinstance(hdf, matrices.HDFMatrices)
+
+        for slice_ in tp_matrices_files.segmentation_.iter_slices():
+            expected = tp_matrices_files.data[slice_]
+            got = hdf.get_matrix(slice_).data
+            pd.testing.assert_frame_equal(
+                expected,
+                got,
+                check_index_type=False,
+                check_column_type=False,
+                check_names=False,
+            )
+
+
 ##### Common tests for matrices classes #####
 
 
@@ -195,7 +237,12 @@ def random_matrices_data(
     return data
 
 
-Matrices = matrices.MemoryMatrices | matrices.MatrixFiles | matrices.LongMatrices
+Matrices = (
+    matrices.MemoryMatrices
+    | matrices.MatrixFiles
+    | matrices.HDFMatrices
+    | matrices.LongMatrices
+)
 
 
 @dataclasses.dataclass
@@ -246,6 +293,29 @@ def _produce_matrices_files(
 
     matrices_ = matrices.MatrixFiles(segmentation_, zone_system, type_, folder)
 
+    return data, matrices_
+
+
+def _produce_hdf_matrices(
+    path: pathlib.Path,
+    zone_system: zoning.ZoningSystem,
+    segmentation_: segmentation.Segmentation,
+    type_: matrices.MatrixType,
+    name: str = "test matrices hdf",
+    data: dict[segmentation.SegmentationSlice, pd.DataFrame] | None = None,
+) -> tuple[dict[segmentation.SegmentationSlice, pd.DataFrame], matrices.HDFMatrices]:
+    """Produce instance of HDFMatrices for testing."""
+    if data is None:
+        data = random_matrices_data(zone_system, segmentation_, seed=157)
+
+    hdf_path = path / f"{name}.h5"
+    matrices_ = matrices.HDFMatrices(
+        segmentation_, zone_system, type_, hdf_path, check_file=False
+    )
+    for slice_, df in data.items():
+        matrices_.set_matrix(df, slice_)
+
+    matrices_ = matrices.HDFMatrices(segmentation_, zone_system, type_, hdf_path)
     return data, matrices_
 
 
@@ -341,6 +411,23 @@ def fix_tp_long_matrices(
     )
 
 
+@pytest.fixture(name="tp_hdf_matrices")
+def fix_tp_hdf_matrices(
+    tmp_path: pathlib.Path,
+    zone_system: cbase.ZoningSystem,
+    tp_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
+) -> MatricesResults:
+    """PA HDFMatrices containing time period for testing."""
+    data, matrices_ = _produce_hdf_matrices(tmp_path, zone_system, *tp_segmentation)
+    return MatricesResults(
+        test=matrices_,
+        segmentation_=tp_segmentation[0],
+        zoning_=zone_system,
+        type_=tp_segmentation[1],
+        data=data,
+    )
+
+
 @pytest.fixture(name="hb_segmentation")
 def fix_hb_segmentation() -> tuple[segmentation.Segmentation, matrices.MatrixType]:
     """PA HB segmentation without time period for testing."""
@@ -404,6 +491,23 @@ def fix_hb_long_matrices(
     )
 
 
+@pytest.fixture(name="hb_hdf_matrices")
+def fix_hb_hdf_matrices(
+    tmp_path: pathlib.Path,
+    zone_system: cbase.ZoningSystem,
+    hb_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
+) -> MatricesResults:
+    """PA HB HDFMatrices without time period for testing."""
+    data, matrices_ = _produce_hdf_matrices(tmp_path, zone_system, *hb_segmentation)
+    return MatricesResults(
+        test=matrices_,
+        segmentation_=hb_segmentation[0],
+        zoning_=zone_system,
+        type_=hb_segmentation[1],
+        data=data,
+    )
+
+
 @pytest.fixture(name="nhb_segmentation")
 def fix_nhb_segmentation() -> tuple[segmentation.Segmentation, matrices.MatrixType]:
     """PA NHB segmentation without time period for testing."""
@@ -458,6 +562,23 @@ def fix_nhb_long_matrices(
     """PA NHB LongMatrices without time period for testing."""
     data, matrices_ = _produce_long_matrices(zone_system, *nhb_segmentation)
 
+    return MatricesResults(
+        test=matrices_,
+        segmentation_=nhb_segmentation[0],
+        zoning_=zone_system,
+        type_=nhb_segmentation[1],
+        data=data,
+    )
+
+
+@pytest.fixture(name="nhb_hdf_matrices")
+def fix_nhb_hdf_matrices(
+    tmp_path: pathlib.Path,
+    zone_system: cbase.ZoningSystem,
+    nhb_segmentation: tuple[segmentation.Segmentation, matrices.MatrixType],
+) -> MatricesResults:
+    """PA NHB HDFMatrices without time period for testing."""
+    data, matrices_ = _produce_hdf_matrices(tmp_path, zone_system, *nhb_segmentation)
     return MatricesResults(
         test=matrices_,
         segmentation_=nhb_segmentation[0],
@@ -1066,7 +1187,8 @@ class TestMatrices:
     """Tests for the common functionality across all matrices."""
 
     @pytest.mark.parametrize(
-        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+        "matrices_",
+        ["tp_memory_matrices", "tp_matrices_files", "tp_hdf_matrices", "tp_long_matrices"],
     )
     def test_segmentation(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test segmentation property returns expected Segmentation."""
@@ -1074,7 +1196,8 @@ class TestMatrices:
         assert result.test.segmentation == result.segmentation_
 
     @pytest.mark.parametrize(
-        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+        "matrices_",
+        ["tp_memory_matrices", "tp_matrices_files", "tp_hdf_matrices", "tp_long_matrices"],
     )
     def test_zoning(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test zoning property returns expected ZoningSystem."""
@@ -1082,7 +1205,8 @@ class TestMatrices:
         assert result.test.zoning == result.zoning_
 
     @pytest.mark.parametrize(
-        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+        "matrices_",
+        ["tp_memory_matrices", "tp_matrices_files", "tp_hdf_matrices", "tp_long_matrices"],
     )
     def test_type(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test type property returns expected MatrixType."""
@@ -1090,7 +1214,8 @@ class TestMatrices:
         assert result.test.type == result.type_
 
     @pytest.mark.parametrize(
-        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+        "matrices_",
+        ["tp_memory_matrices", "tp_matrices_files", "tp_hdf_matrices", "tp_long_matrices"],
     )
     def test_name(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test name property returns a string."""
@@ -1098,7 +1223,8 @@ class TestMatrices:
         assert isinstance(result.test.name, str)
 
     @pytest.mark.parametrize(
-        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+        "matrices_",
+        ["tp_memory_matrices", "tp_matrices_files", "tp_hdf_matrices", "tp_long_matrices"],
     )
     def test_get_matrix(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test `get_matrix` method returns expected DataFrame for all slices."""
@@ -1119,7 +1245,8 @@ class TestMatrices:
             )
 
     @pytest.mark.parametrize(
-        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+        "matrices_",
+        ["tp_memory_matrices", "tp_matrices_files", "tp_hdf_matrices", "tp_long_matrices"],
     )
     def test_set_matrix(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test `set_matrix` method for all slices."""
@@ -1142,7 +1269,8 @@ class TestMatrices:
             )
 
     @pytest.mark.parametrize(
-        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+        "matrices_",
+        ["tp_memory_matrices", "tp_matrices_files", "tp_hdf_matrices", "tp_long_matrices"],
     )
     @pytest.mark.parametrize(
         "new_seg_input",
@@ -1205,9 +1333,11 @@ class TestMatrices:
         [
             ("tp_memory_matrices", True),
             ("tp_matrices_files", True),
+            ("tp_hdf_matrices", True),
             ("tp_long_matrices", True),
             ("hb_memory_matrices", False),
             ("hb_matrices_files", False),
+            ("hb_hdf_matrices", False),
             ("hb_long_matrices", False),
         ],
     )
@@ -1223,11 +1353,14 @@ class TestMatrices:
         [
             ("tp_memory_matrices", False),
             ("tp_matrices_files", False),
+            ("tp_hdf_matrices", False),
             ("hb_memory_matrices", True),
             ("hb_matrices_files", True),
+            ("hb_hdf_matrices", True),
             ("hb_long_matrices", True),
             ("nhb_memory_matrices", False),
             ("nhb_matrices_files", False),
+            ("nhb_hdf_matrices", False),
             ("nhb_long_matrices", False),
         ],
     )
@@ -1243,11 +1376,14 @@ class TestMatrices:
         [
             ("tp_memory_matrices", False),
             ("tp_matrices_files", False),
+            ("tp_hdf_matrices", False),
             ("hb_memory_matrices", False),
             ("hb_matrices_files", False),
+            ("hb_hdf_matrices", False),
             ("hb_long_matrices", False),
             ("nhb_memory_matrices", True),
             ("nhb_matrices_files", True),
+            ("nhb_hdf_matrices", True),
             ("nhb_long_matrices", True),
         ],
     )
@@ -1263,6 +1399,7 @@ class TestMatrices:
         [
             ("tp_memory_matrices", {"userclass": 3, "direction": 1, "tp": 2}),
             ("tp_matrices_files", {"userclass": 3, "direction": 1, "tp": 2}),
+            ("tp_hdf_matrices", {"userclass": 3, "direction": 1, "tp": 2}),
             ("tp_long_matrices", {"userclass": 3, "direction": 1, "tp": 2}),
         ],
     )
@@ -1280,6 +1417,7 @@ class TestMatrices:
         [
             ("tp_memory_matrices", {"userclass": 7, "direction": 3, "tp": 5}),
             ("tp_matrices_files", {"userclass": 7, "direction": 3, "tp": 5}),
+            ("tp_hdf_matrices", {"userclass": 7, "direction": 3, "tp": 5}),
             ("tp_long_matrices", {"userclass": 7, "direction": 3, "tp": 5}),
         ],
     )
@@ -1294,7 +1432,8 @@ class TestMatrices:
             result.test.validate_slice(slice_)
 
     @pytest.mark.parametrize(
-        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+        "matrices_",
+        ["tp_memory_matrices", "tp_matrices_files", "tp_hdf_matrices", "tp_long_matrices"],
     )
     def test_validate_matrix(self, request: pytest.FixtureRequest, matrices_: str) -> None:
         """Test `validate_matrix` for valid matrix."""
@@ -1304,7 +1443,8 @@ class TestMatrices:
         result.test.validate_matrix(next(rand), "Valid matrix")
 
     @pytest.mark.parametrize(
-        "matrices_", ["tp_memory_matrices", "tp_matrices_files", "tp_long_matrices"]
+        "matrices_",
+        ["tp_memory_matrices", "tp_matrices_files", "tp_hdf_matrices", "tp_long_matrices"],
     )
     def test_validate_matrix_invalid(
         self, request: pytest.FixtureRequest, matrices_: str
