@@ -591,7 +591,10 @@ def _disaggregate_matrix(
         disaggregated = aggregate.data * factor
 
         try:
-            existing = output.get_matrix(matrix.slice).data
+            existing_matrix = output.get_matrix(matrix.slice)
+            existing = existing_matrix.data
+            if existing.isna().all().all():
+                existing = None
         except (KeyError, FileNotFoundError):
             existing = None
 

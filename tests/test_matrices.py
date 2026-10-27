@@ -965,6 +965,26 @@ class DisaggregateReplaceDatasets:
     segments: tuple[cbase.Segment, cbase.Segment]
 
 
+def _build_disaggregate_inputs_from_lookup(
+    from_segmentation: segmentation.Segmentation,
+    to_segmentation: segmentation.Segmentation,
+    expected_matrices: dict[segmentation.SegmentationSlice, pd.DataFrame],
+    from_segment: cbase.Segment,
+    to_segment: cbase.Segment,
+) -> dict[segmentation.SegmentationSlice, pd.DataFrame]:
+    """Build aggregated input matrices by grouping expected matrices via segment lookup."""
+    disaggregations = matrices._get_disaggregation_translation(  # noqa: SLF001
+        from_segmentation, from_segment, to_segment, to_segmentation
+    )
+    agg_matrices = {}
+    for from_slice, to_slices in disaggregations.items():
+        total = 0
+        for to_slice in to_slices:
+            total += expected_matrices[to_slice]
+        agg_matrices[from_slice] = total
+    return agg_matrices
+
+
 @pytest.fixture(name="disaggregate_replace_datasets")
 def fix_disaggregate_replace_datasets(
     zone_system: zoning.ZoningSystem,
@@ -989,33 +1009,15 @@ def fix_disaggregate_replace_datasets(
 
     # Produce some random expected matrices and calculate inputs from these
     expected_matrices = random_matrices_data(zone_system, to_segmentation, seed=16549)
-
-    # Aggregate expected matrices to produce test compiled
-    aggregations: list[tuple[int, int, tuple[int, ...]]] = [
-        (0, 1, (11, 12)),
-        (0, 3, (13, 14, 15, 16, 17, 18)),
-        (1, 1, (2,)),
-        (1, 2, (1,)),
-        (1, 3, tuple(range(3, 9))),
-        (2, 1, (2,)),
-        (2, 2, (1,)),
-        (2, 3, tuple(range(3, 9))),
-    ]
-    agg_matrices = {}
-    for direction, uc, purposes in aggregations:
-        total = 0
-
-        for p in purposes:
-            slice_ = segmentation.SegmentationSlice(
-                {"direction_od": direction, "p": p, "m": 3}, to_segmentation.naming_order
-            )
-            total += expected_matrices[slice_]
-
-        slice_ = segmentation.SegmentationSlice(
-            {"direction_od": direction, "userclass": uc, "m": 3},
-            from_segmentation.naming_order,
-        )
-        agg_matrices[slice_] = total
+    from_segment = cbase.segments.SegmentsSuper.USERCLASS.get_segment()
+    to_segment = cbase.segments.SegmentsSuper.PURPOSE.get_segment()
+    agg_matrices = _build_disaggregate_inputs_from_lookup(
+        from_segmentation,
+        to_segmentation,
+        expected_matrices,
+        from_segment,
+        to_segment,
+    )
 
     return DisaggregateReplaceDatasets(
         zone_system=zone_system,
@@ -1025,10 +1027,7 @@ def fix_disaggregate_replace_datasets(
         input_=agg_matrices,
         targets={i: j / 3 for i, j in expected_matrices.items()},
         expected=expected_matrices,
-        segments=(
-            cbase.segments.SegmentsSuper.USERCLASS.get_segment(),
-            cbase.segments.SegmentsSuper.PURPOSE.get_segment(),
-        ),
+        segments=(from_segment, to_segment),
     )
 
 
@@ -1164,35 +1163,15 @@ def fix_disaggregate_and_replace_datasets(
 
     # Produce some random expected matrices and calculate inputs from these
     expected_matrices = random_matrices_data(zone_system, to_segmentation, seed=16879)
-
-    # Aggregate expected matrices to produce test compiled
-    aggregations: list[tuple[int, int, tuple[int, ...]]] = [
-        (0, 1, (11, 12)),
-        (0, 3, (13, 14, 15, 16, 17, 18)),
-        (1, 1, (2,)),
-        (1, 2, (1,)),
-        (1, 3, tuple(range(3, 9))),
-        (2, 1, (2,)),
-        (2, 2, (1,)),
-        (2, 3, tuple(range(3, 9))),
-    ]
-    agg_matrices = {}
-    for direction, uc, purposes in aggregations:
-        total = 0
-
-        for p in purposes:
-            for tp in time_periods:
-                slice_ = segmentation.SegmentationSlice(
-                    {"direction_od": direction, "p": p, "m": 3, "tp": tp},
-                    to_segmentation.naming_order,
-                )
-                total += expected_matrices[slice_]
-
-        slice_ = segmentation.SegmentationSlice(
-            {"direction_od": direction, "userclass": uc, "m": 3},
-            from_segmentation.naming_order,
-        )
-        agg_matrices[slice_] = total
+    from_segment = cbase.segments.SegmentsSuper.USERCLASS.get_segment()
+    to_segment = cbase.segments.SegmentsSuper.PURPOSE.get_segment()
+    agg_matrices = _build_disaggregate_inputs_from_lookup(
+        from_segmentation,
+        to_segmentation,
+        expected_matrices,
+        from_segment,
+        to_segment,
+    )
 
     return DisaggregateReplaceDatasets(
         zone_system=zone_system,
@@ -1202,10 +1181,7 @@ def fix_disaggregate_and_replace_datasets(
         input_=agg_matrices,
         targets={i: j / 3 for i, j in expected_matrices.items()},
         expected=expected_matrices,
-        segments=(
-            cbase.segments.SegmentsSuper.USERCLASS.get_segment(),
-            cbase.segments.SegmentsSuper.PURPOSE.get_segment(),
-        ),
+        segments=(from_segment, to_segment),
     )
 
 
