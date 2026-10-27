@@ -957,7 +957,7 @@ class HDFMatrices(MatricesBase):
         with omx.OMXFile(
             self._path,
             mode="w",
-            omx_version=omx.OMXFile._EXPECTED_OMX_VERSION,  # noqa: SLF001
+            omx_version=omx.OMXFile._EXPECTED_OMX_VERSION,
             shape=self._omx_shape,
         ) as file:
             file.zones = self._zoning.zone_ids
@@ -1010,11 +1010,11 @@ class HDFMatrices(MatricesBase):
             ),
         ) as file:
             try:
-                file.get_node(omx.OMXFile._DATA_NODE, key)  # noqa: SLF001
+                file.get_node(omx.OMXFile._DATA_NODE, key)
             except tables.NoSuchNodeError:
                 pass
             else:
-                file.remove_node(omx.OMXFile._DATA_NODE, key)  # noqa: SLF001
+                file.remove_node(omx.OMXFile._DATA_NODE, key)
             file.set_matrix_level(key, matrix)
         self._write_metadata(self._path)
         LOG.debug("Written %s matrix to %s", key, self._path)
@@ -1081,7 +1081,7 @@ class HDFMatrices(MatricesBase):
         with omx.OMXFile(
             path,
             mode="w",
-            omx_version=omx.OMXFile._EXPECTED_OMX_VERSION,  # noqa: SLF001
+            omx_version=omx.OMXFile._EXPECTED_OMX_VERSION,
             shape=self._omx_shape,
             filters=tables.Filters(
                 complevel=self._complevel,
