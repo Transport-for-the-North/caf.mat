@@ -275,6 +275,28 @@ class TestHDFMatrices:
                     check_names=False,
                 )
 
+    def test_set_matrix_twice_does_not_rewrite_metadata(
+        self, tmp_path: pathlib.Path, tp_hdf_matrices: "MatricesResults"
+    ) -> None:
+        """Test writing twice doesn't fail due to duplicate segmentation/zoning metadata."""
+        saved_path = tp_hdf_matrices.test.save(tmp_path / "repeat-write")
+        loaded = matrices.HDFMatrices.load(saved_path)
+
+        slice_ = next(tp_hdf_matrices.segmentation_.iter_slices())
+        matrix = tp_hdf_matrices.data[slice_]
+        loaded.set_matrix(matrix, slice_)
+        loaded.set_matrix(matrix * 2, slice_)
+
+        got = loaded.get_matrix(slice_).data
+        expected = matrix * 2
+        pd.testing.assert_frame_equal(
+            expected,
+            got,
+            check_index_type=False,
+            check_column_type=False,
+            check_names=False,
+        )
+
 
 ##### Common tests for matrices classes #####
 

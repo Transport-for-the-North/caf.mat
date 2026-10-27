@@ -6,6 +6,7 @@ import collections
 import collections.abc
 import dataclasses
 import enum
+import h5py
 import logging
 import pathlib
 import warnings
@@ -989,8 +990,25 @@ class HDFMatrices(MatricesBase):
     def _write_metadata(self, path: pathlib.Path) -> None:
         """Write metadata, segmentation and zoning to file."""
         self._metadata_frame().to_hdf(path, key=self._metadata_key, mode="a", format="fixed")
-        self._segmentation.save(path, "hdf")
-        self._zoning.save(path, "hdf")
+        zoning_key = f"zoning_{self._zoning.name}"
+        zoning_meta_key = f"zoning_meta_{self._zoning.name}"
+        with h5py.File(path, "a") as file:
+            has_segmentation = "segmentation" in file
+            has_zoning = zoning_key in file
+            has_zoning_meta = zoning_meta_key in file
+
+        if not has_segmentation:
+            self._segmentation.save(path, "hdf")
+
+        if not has_zoning:
+            self._zoning.zones_data.reset_index().to_hdf(path, key=zoning_key, mode="a")
+
+        if not has_zoning_meta:
+            with h5py.File(path, "a") as file:
+                file.create_dataset(
+                    zoning_meta_key,
+                    data=self._zoning.metadata.to_yaml().encode("utf-8"),
+                )
 
     def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:
         """Save the matrix to HDF, with a key based on the slice parameters."""
