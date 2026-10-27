@@ -973,16 +973,62 @@ def _build_disaggregate_inputs_from_lookup(
     to_segment: cbase.Segment,
 ) -> dict[segmentation.SegmentationSlice, pd.DataFrame]:
     """Build aggregated input matrices by grouping expected matrices via segment lookup."""
-    disaggregations = matrices._get_disaggregation_translation(  # noqa: SLF001
-        from_segmentation, from_segment, to_segment, to_segmentation
+    disaggregations = _slice_disaggregations_from_lookup(
+        from_segmentation,
+        to_segmentation,
+        from_segment,
+        to_segment,
     )
     agg_matrices = {}
-    for from_slice, to_slices in disaggregations.items():
+    for from_slice in from_segmentation.iter_slices():
+        to_slices = disaggregations.get(from_slice, [])
         total = 0
         for to_slice in to_slices:
             total += expected_matrices[to_slice]
         agg_matrices[from_slice] = total
     return agg_matrices
+
+
+def _lookup_groupings(
+    from_segmentation: segmentation.Segmentation,
+    from_segment: cbase.Segment,
+    to_segment: cbase.Segment,
+) -> dict[int, list[int]]:
+    """Get source->target segment lookup groupings from caf.base lookup data."""
+    try:
+        _, lookup = from_segmentation.translate_segment(from_segment, to_segment)
+    except FileNotFoundError:
+        _, lookup = from_segmentation.translate_segment(
+            from_segment,
+            to_segment,
+            reverse=True,
+        )
+        lookup = lookup.reset_index().set_index(lookup.name)
+
+    return lookup.groupby(level=0).agg(list).squeeze().to_dict()
+
+
+def _slice_disaggregations_from_lookup(
+    from_segmentation: segmentation.Segmentation,
+    to_segmentation: segmentation.Segmentation,
+    from_segment: cbase.Segment,
+    to_segment: cbase.Segment,
+) -> dict[segmentation.SegmentationSlice, list[segmentation.SegmentationSlice]]:
+    """Build slice-level disaggregation map using lookup groupings and target segmentation."""
+    groupings = _lookup_groupings(from_segmentation, from_segment, to_segment)
+    disaggregations: dict[
+        segmentation.SegmentationSlice, list[segmentation.SegmentationSlice]
+    ] = {}
+
+    for from_slice in from_segmentation.iter_slices():
+        to_slices: list[segmentation.SegmentationSlice] = []
+        for to_seg in groupings.get(from_slice[from_segment.name], []):
+            slice_data = from_slice.data | {to_segment.name: to_seg}
+            slice_data.pop(from_segment.name)
+            to_slices.extend(to_segmentation.iter_slices(slice_data))
+        disaggregations[from_slice] = to_slices
+
+    return disaggregations
 
 
 @pytest.fixture(name="disaggregate_replace_datasets")
@@ -999,18 +1045,22 @@ def fix_disaggregate_replace_datasets(
             subsets=subsets,
         )
     )
+    from_segment = cbase.segments.SegmentsSuper.USERCLASS.get_segment()
+    to_segment = cbase.segments.SegmentsSuper.PURPOSE.get_segment()
+    lookup_groupings = _lookup_groupings(from_segmentation, from_segment, to_segment)
+    lookup_purpose_values = sorted(
+        {purpose for values in lookup_groupings.values() for purpose in values}
+    )
     to_segmentation = cbase.Segmentation(
         cbase.SegmentationInput(
             enum_segments=[*segments, "p", "direction_od"],
             naming_order=["direction_od", "p", *segments],
-            subsets=subsets,
+            subsets=subsets | {"p": lookup_purpose_values},
         )
     )
 
     # Produce some random expected matrices and calculate inputs from these
     expected_matrices = random_matrices_data(zone_system, to_segmentation, seed=16549)
-    from_segment = cbase.segments.SegmentsSuper.USERCLASS.get_segment()
-    to_segment = cbase.segments.SegmentsSuper.PURPOSE.get_segment()
     agg_matrices = _build_disaggregate_inputs_from_lookup(
         from_segmentation,
         to_segmentation,
@@ -1153,18 +1203,22 @@ def fix_disaggregate_and_replace_datasets(
             subsets=subsets,
         )
     )
+    from_segment = cbase.segments.SegmentsSuper.USERCLASS.get_segment()
+    to_segment = cbase.segments.SegmentsSuper.PURPOSE.get_segment()
+    lookup_groupings = _lookup_groupings(from_segmentation, from_segment, to_segment)
+    lookup_purpose_values = sorted(
+        {purpose for values in lookup_groupings.values() for purpose in values}
+    )
     to_segmentation = cbase.Segmentation(
         cbase.SegmentationInput(
             enum_segments=[*segments, "p", "direction_od", "tp"],
             naming_order=["direction_od", "p", *segments, "tp"],
-            subsets=subsets | {"tp": time_periods},
+            subsets=subsets | {"tp": time_periods, "p": lookup_purpose_values},
         )
     )
 
     # Produce some random expected matrices and calculate inputs from these
     expected_matrices = random_matrices_data(zone_system, to_segmentation, seed=16879)
-    from_segment = cbase.segments.SegmentsSuper.USERCLASS.get_segment()
-    to_segment = cbase.segments.SegmentsSuper.PURPOSE.get_segment()
     agg_matrices = _build_disaggregate_inputs_from_lookup(
         from_segmentation,
         to_segmentation,
