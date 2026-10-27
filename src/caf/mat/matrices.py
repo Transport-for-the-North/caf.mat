@@ -23,7 +23,7 @@ import tqdm
 from caf.base import segmentation, segments
 
 # Local Imports
-from caf.mat import _mat, omx
+from caf.mat import _mat, cube, omx
 
 ##### CONSTANTS #####
 
@@ -1162,8 +1162,6 @@ class HDFMatrices(MatricesBase):
         overwrite: bool = False,
     ) -> pathlib.Path:
         """Convert HDF matrices to a CUBE .mat file."""
-        from caf.mat import cube
-
         converter = cube.CUBEMatConverter(voyager_path)
         return converter.from_omx(self._path, out_path, overwrite=overwrite)
 
