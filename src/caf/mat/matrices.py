@@ -6,7 +6,6 @@ import collections
 import collections.abc
 import dataclasses
 import enum
-import h5py
 import logging
 import pathlib
 import warnings
@@ -16,6 +15,7 @@ from typing import Self
 # Third Party
 import caf.base as cbase
 import caf.toolkit as ctk
+import h5py
 import numpy as np
 import pandas as pd
 import tables
