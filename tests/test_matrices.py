@@ -217,6 +217,36 @@ class TestHDFMatrices:
                 check_names=False,
             )
 
+    def test_save_and_load(
+        self, tmp_path: pathlib.Path, tp_hdf_matrices: "MatricesResults"
+    ) -> None:
+        """Test saving and loading HDF matrices with metadata."""
+        save_path = tp_hdf_matrices.test.save(tmp_path / "saved_hdf_matrices")
+        loaded = matrices.HDFMatrices.load(save_path)
+
+        assert loaded.type == tp_hdf_matrices.type_
+        assert loaded.segmentation == tp_hdf_matrices.segmentation_
+        assert loaded.zoning == tp_hdf_matrices.zoning_
+
+        for slice_ in tp_hdf_matrices.segmentation_.iter_slices():
+            expected = tp_hdf_matrices.data[slice_]
+            got = loaded.get_matrix(slice_).data
+            pd.testing.assert_frame_equal(
+                expected,
+                got,
+                check_index_type=False,
+                check_column_type=False,
+                check_names=False,
+            )
+
+    def test_load_missing_metadata(self, tmp_path: pathlib.Path) -> None:
+        """Test loading HDF matrices fails when metadata is missing."""
+        path = tmp_path / "missing-metadata.h5"
+        pd.DataFrame({"test": [1]}).to_hdf(path, key="test", mode="w", format="fixed")
+
+        with pytest.raises(ValueError, match="does not contain HDFMatrices metadata"):
+            matrices.HDFMatrices.load(path)
+
 
 ##### Common tests for matrices classes #####
 

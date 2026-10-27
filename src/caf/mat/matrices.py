@@ -872,6 +872,8 @@ class HDFMatrices(MatricesBase):
     """
 
     _default_key_template = "{type}_{slice_name}"
+    _metadata_key = "__caf_mat_metadata__"
+    _metadata_version = 1
 
     def __init__(
         self,
@@ -931,6 +933,33 @@ class HDFMatrices(MatricesBase):
             self._keys[slice_] = self._key_template.format(slice_name=slice_name)
         return self._keys[slice_]
 
+    @staticmethod
+    def _normalise_path(path: pathlib.Path) -> pathlib.Path:
+        """Return path with a default HDF suffix if one isn't provided."""
+        if "." not in path.name:
+            path = path.with_suffix(".h5")
+        return path.resolve()
+
+    def _metadata_frame(self) -> pd.DataFrame:
+        """Build metadata required for path-only loading."""
+        return pd.DataFrame(
+            [
+                {
+                    "version": self._metadata_version,
+                    "matrix_type": self._type.name,
+                    "key_template": self._raw_key_template,
+                }
+            ]
+        )
+
+    def _write_metadata(self, path: pathlib.Path) -> None:
+        """Write metadata, segmentation and zoning to file."""
+        self._metadata_frame().to_hdf(
+            path, key=self._metadata_key, mode="a", format="fixed"
+        )
+        self._segmentation.save(path, "hdf")
+        self._zoning.save(path, "hdf")
+
     def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:
         """Save the matrix to HDF, with a key based on the slice parameters."""
         self.validate_slice(slice_)
@@ -945,6 +974,7 @@ class HDFMatrices(MatricesBase):
             complib=self._complib,
         ) as store:
             store.put(key, matrix, format="fixed")
+        self._write_metadata(self._path)
         LOG.debug("Written %s matrix to %s", key, self._path)
 
     def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
@@ -998,6 +1028,64 @@ class HDFMatrices(MatricesBase):
                 if f"/{key}" not in keys:
                     return False
         return True
+
+    def save(self, path: pathlib.Path) -> pathlib.Path:
+        """Save matrices, segmentation and zoning to a single HDF file."""
+        path = self._normalise_path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with pd.HDFStore(
+            path,
+            mode="w",
+            complevel=self._complevel,
+            complib=self._complib,
+        ) as store:
+            for matrix in self:
+                key = self._get_key(matrix.slice)
+                store.put(key, matrix.data, format="fixed")
+            store.put(self._metadata_key, self._metadata_frame(), format="fixed")
+
+        self._segmentation.save(path, "hdf")
+        self._zoning.save(path, "hdf")
+        return path
+
+    @classmethod
+    def load(cls, path: pathlib.Path) -> "HDFMatrices":
+        """Load matrices and metadata from a single HDF file path."""
+        path = cls._normalise_path(path)
+        if not path.is_file():
+            raise FileNotFoundError(path)
+
+        try:
+            metadata = pd.read_hdf(path, key=cls._metadata_key, mode="r")
+        except KeyError as exc:
+            raise ValueError(f"{path} does not contain HDFMatrices metadata") from exc
+
+        if len(metadata) != 1:
+            raise ValueError(f"expected 1 metadata row in {path} not {len(metadata)}")
+
+        row = metadata.iloc[0]
+        try:
+            type_ = MatrixType[str(row["matrix_type"])]
+        except KeyError as exc:
+            raise ValueError(
+                f"invalid matrix type in metadata: {row['matrix_type']}"
+            ) from exc
+
+        key_template = str(row["key_template"])
+        segmentation_ = cbase.Segmentation.load(path, "hdf")
+        zoning = cbase.ZoningSystem.load(path, "hdf")
+        if not isinstance(zoning, cbase.ZoningSystem):
+            raise TypeError(f"expected one zoning system in {path} not {type(zoning)}")
+
+        return cls(
+            segmentation_=segmentation_,
+            zoning=zoning,
+            type_=type_,
+            path=path,
+            key_template=key_template,
+            check_file=True,
+        )
 
     def to_csv(
         self, folder: pathlib.Path, *, filename_template: str | None = None
