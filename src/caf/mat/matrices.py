@@ -557,11 +557,6 @@ def _validate_disaggregation_translation(
                 " segments in lookup"
             )
 
-        # Avoid repeated targets from duplicate lookup rows.
-        if len(to_segs) != len(set(to_segs)):
-            deduped = list(dict.fromkeys(to_segs))
-            groupings[from_seg] = deduped
-
 
 def _get_slice_disaggregation(
     from_: segmentation.Segmentation, to: segmentation.Segmentation
@@ -594,6 +589,15 @@ def _disaggregate_matrix(
 
         factor = np.divide(data, total, out=np.full_like(total, 0), where=mask)
         disaggregated = aggregate.data * factor
+
+        try:
+            existing = output.get_matrix(matrix.slice).data
+        except (KeyError, FileNotFoundError):
+            existing = None
+
+        if existing is not None:
+            disaggregated = disaggregated + existing
+
         output.set_matrix(disaggregated, matrix.slice)
 
 
