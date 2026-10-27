@@ -263,7 +263,7 @@ class TestHDFMatrices:
             assert np.array_equal(file.zones, tp_hdf_matrices.zoning_.zone_ids)
 
             for slice_ in tp_hdf_matrices.segmentation_.iter_slices():
-                key = tp_hdf_matrices.test._get_key(slice_)  # noqa: SLF001
+                key = tp_hdf_matrices.test._get_key(slice_)
                 assert key in file.matrix_levels
                 expected = tp_hdf_matrices.data[slice_]
                 got = file.get_matrix_level(key)
