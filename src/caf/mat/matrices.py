@@ -1154,6 +1154,19 @@ class HDFMatrices(MatricesBase):
         loaded._validate_omx_compatibility()
         return loaded
 
+    def to_mat(
+        self,
+        voyager_path: pathlib.Path,
+        out_path: pathlib.Path | None = None,
+        *,
+        overwrite: bool = False,
+    ) -> pathlib.Path:
+        """Convert HDF matrices to a CUBE .mat file."""
+        from caf.mat import cube
+
+        converter = cube.CUBEMatConverter(voyager_path)
+        return converter.from_omx(self._path, out_path, overwrite=overwrite)
+
     def to_csv(
         self, folder: pathlib.Path, *, filename_template: str | None = None
     ) -> MatrixFiles:
