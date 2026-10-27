@@ -954,9 +954,7 @@ class HDFMatrices(MatricesBase):
 
     def _write_metadata(self, path: pathlib.Path) -> None:
         """Write metadata, segmentation and zoning to file."""
-        self._metadata_frame().to_hdf(
-            path, key=self._metadata_key, mode="a", format="fixed"
-        )
+        self._metadata_frame().to_hdf(path, key=self._metadata_key, mode="a", format="fixed")
         self._segmentation.save(path, "hdf")
         self._zoning.save(path, "hdf")
 
@@ -1068,9 +1066,7 @@ class HDFMatrices(MatricesBase):
         try:
             type_ = MatrixType[str(row["matrix_type"])]
         except KeyError as exc:
-            raise ValueError(
-                f"invalid matrix type in metadata: {row['matrix_type']}"
-            ) from exc
+            raise ValueError(f"invalid matrix type in metadata: {row['matrix_type']}") from exc
 
         key_template = str(row["key_template"])
         segmentation_ = cbase.Segmentation.load(path, "hdf")
