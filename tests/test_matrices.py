@@ -17,7 +17,7 @@ import pytest
 from caf.base import segmentation, zoning
 
 # Local Imports
-from caf.mat import matrices
+from caf.mat import matrices, omx
 
 ##### CONSTANTS #####
 
@@ -222,6 +222,7 @@ class TestHDFMatrices:
     ) -> None:
         """Test saving and loading HDF matrices with metadata."""
         save_path = tp_hdf_matrices.test.save(tmp_path / "saved_hdf_matrices")
+        assert save_path.suffix == ".dmat"
         loaded = matrices.HDFMatrices.load(save_path)
 
         assert loaded.type == tp_hdf_matrices.type_
@@ -246,6 +247,33 @@ class TestHDFMatrices:
 
         with pytest.raises(ValueError, match="does not contain HDFMatrices metadata"):
             matrices.HDFMatrices.load(path)
+
+    def test_omx_file_compatibility(
+        self, tmp_path: pathlib.Path, tp_hdf_matrices: "MatricesResults"
+    ) -> None:
+        """Test saved HDFMatrices can be read by OMXFile."""
+        save_path = tp_hdf_matrices.test.save(tmp_path / "omx-compatible")
+
+        with omx.OMXFile(save_path, mode="r") as file:
+            expected_shape = (
+                len(tp_hdf_matrices.zoning_),
+                len(tp_hdf_matrices.zoning_),
+            )
+            assert file.shape == expected_shape
+            assert np.array_equal(file.zones, tp_hdf_matrices.zoning_.zone_ids)
+
+            for slice_ in tp_hdf_matrices.segmentation_.iter_slices():
+                key = tp_hdf_matrices.test._get_key(slice_)  # noqa: SLF001
+                assert key in file.matrix_levels
+                expected = tp_hdf_matrices.data[slice_]
+                got = file.get_matrix_level(key)
+                pd.testing.assert_frame_equal(
+                    expected,
+                    got,
+                    check_index_type=False,
+                    check_column_type=False,
+                    check_names=False,
+                )
 
 
 ##### Common tests for matrices classes #####

@@ -17,11 +17,12 @@ import caf.base as cbase
 import caf.toolkit as ctk
 import numpy as np
 import pandas as pd
+import tables
 import tqdm
 from caf.base import segmentation, segments
 
 # Local Imports
-from caf.mat import _mat
+from caf.mat import _mat, omx
 
 ##### CONSTANTS #####
 
@@ -843,7 +844,7 @@ class MatrixFiles(MatricesBase):
 
 
 class HDFMatrices(MatricesBase):
-    """Handle matrices stored in a single HDF file.
+    """Handle matrices stored in a single HDF file using OMX-compatible layout.
 
     Parameters
     ----------
@@ -872,6 +873,7 @@ class HDFMatrices(MatricesBase):
     """
 
     _default_key_template = "{type}_{slice_name}"
+    _default_save_suffix = ".dmat"
     _metadata_key = "__caf_mat_metadata__"
     _metadata_version = 1
 
@@ -907,11 +909,12 @@ class HDFMatrices(MatricesBase):
             raise FileNotFoundError(path)
 
         if check_file:
-            with pd.HDFStore(self._path, mode="r") as store:
-                keys = set(store.keys())
+            self._validate_omx_compatibility()
+            with omx.OMXFile(self._path, mode="r") as file:
+                levels = set(file.matrix_levels)
                 for slice_ in self._segmentation.iter_slices():
                     key = self._get_key(slice_)
-                    if f"/{key}" not in keys:
+                    if key not in levels:
                         raise FileNotFoundError(
                             f"{self._path} does not contain matrix key: {key}"
                         )
@@ -933,12 +936,43 @@ class HDFMatrices(MatricesBase):
             self._keys[slice_] = self._key_template.format(slice_name=slice_name)
         return self._keys[slice_]
 
-    @staticmethod
-    def _normalise_path(path: pathlib.Path) -> pathlib.Path:
-        """Return path with a default HDF suffix if one isn't provided."""
-        if "." not in path.name:
-            path = path.with_suffix(".h5")
+    @classmethod
+    def _normalise_path(cls, path: pathlib.Path, *, add_default_suffix: bool) -> pathlib.Path:
+        """Return a normalised absolute path, with optional default suffix."""
+        if add_default_suffix and "." not in path.name:
+            path = path.with_suffix(cls._default_save_suffix)
         return path.resolve()
+
+    @property
+    def _omx_shape(self) -> tuple[int, int]:
+        """Expected OMX matrix shape from zoning."""
+        size = len(self._zoning.zone_ids)
+        return (size, size)
+
+    def _ensure_omx_file(self) -> None:
+        """Create OMX file and required structure if it doesn't exist."""
+        if self._path.is_file():
+            return
+
+        with omx.OMXFile(
+            self._path,
+            mode="w",
+            omx_version=omx.OMXFile._EXPECTED_OMX_VERSION,  # noqa: SLF001
+            shape=self._omx_shape,
+        ) as file:
+            file.zones = self._zoning.zone_ids
+
+    def _validate_omx_compatibility(self) -> None:
+        """Raise ValueError if file doesn't look like expected OMX-compatible storage."""
+        with omx.OMXFile(self._path, mode="r") as file:
+            if file.shape != self._omx_shape:
+                expected_shape = self._omx_shape
+                raise ValueError(
+                    f"{self._path} shape {file.shape} does not match zoning shape "
+                    f"{expected_shape}"
+                )
+            if not np.array_equal(np.sort(file.zones), np.sort(self._zoning.zone_ids)):
+                raise ValueError(f"{self._path} zones don't match zoning system")
 
     def _metadata_frame(self) -> pd.DataFrame:
         """Build metadata required for path-only loading."""
@@ -961,17 +995,27 @@ class HDFMatrices(MatricesBase):
     def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:
         """Save the matrix to HDF, with a key based on the slice parameters."""
         self.validate_slice(slice_)
+        self._ensure_omx_file()
 
         key = self._get_key(slice_)
         self.validate_matrix(matrix, key)
 
-        with pd.HDFStore(
+        with omx.OMXFile(
             self._path,
             mode="a",
-            complevel=self._complevel,
-            complib=self._complib,
-        ) as store:
-            store.put(key, matrix, format="fixed")
+            filters=tables.Filters(
+                complevel=self._complevel,
+                complib=self._complib,
+                shuffle=False,
+            ),
+        ) as file:
+            try:
+                file.get_node(omx.OMXFile._DATA_NODE, key)  # noqa: SLF001
+            except tables.NoSuchNodeError:
+                pass
+            else:
+                file.remove_node(omx.OMXFile._DATA_NODE, key)  # noqa: SLF001
+            file.set_matrix_level(key, matrix)
         self._write_metadata(self._path)
         LOG.debug("Written %s matrix to %s", key, self._path)
 
@@ -979,11 +1023,10 @@ class HDFMatrices(MatricesBase):
         """Load the matrix from HDF."""
         self.validate_slice(slice_)
         key = self._get_key(slice_)
-
-        with pd.HDFStore(self._path, mode="r") as store:
-            if f"/{key}" not in set(store.keys()):
+        with omx.OMXFile(self._path, mode="r") as file:
+            if key not in file.matrix_levels:
                 raise KeyError(f"no matrix found for {slice_}")
-            data = store.get(key)
+            data = file.get_matrix_level(key)
 
         data.index.name = "origin"
         data.columns.name = "destination"
@@ -1019,30 +1062,39 @@ class HDFMatrices(MatricesBase):
         if not self._path.is_file():
             return False
 
-        with pd.HDFStore(self._path, mode="r") as store:
-            keys = set(store.keys())
-            for slice_ in self._segmentation.iter_slices():
-                key = self._get_key(slice_)
-                if f"/{key}" not in keys:
-                    return False
+        try:
+            with omx.OMXFile(self._path, mode="r") as file:
+                levels = set(file.matrix_levels)
+                for slice_ in self._segmentation.iter_slices():
+                    key = self._get_key(slice_)
+                    if key not in levels:
+                        return False
+        except (OSError, ValueError, KeyError):
+            return False
         return True
 
     def save(self, path: pathlib.Path) -> pathlib.Path:
         """Save matrices, segmentation and zoning to a single HDF file."""
-        path = self._normalise_path(path)
+        path = self._normalise_path(path, add_default_suffix=True)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        with pd.HDFStore(
+        with omx.OMXFile(
             path,
             mode="w",
-            complevel=self._complevel,
-            complib=self._complib,
-        ) as store:
+            omx_version=omx.OMXFile._EXPECTED_OMX_VERSION,  # noqa: SLF001
+            shape=self._omx_shape,
+            filters=tables.Filters(
+                complevel=self._complevel,
+                complib=self._complib,
+                shuffle=False,
+            ),
+        ) as file:
+            file.zones = self._zoning.zone_ids
             for matrix in self:
                 key = self._get_key(matrix.slice)
-                store.put(key, matrix.data, format="fixed")
-            store.put(self._metadata_key, self._metadata_frame(), format="fixed")
+                file.set_matrix_level(key, matrix.data)
 
+        self._metadata_frame().to_hdf(path, key=self._metadata_key, mode="a", format="fixed")
         self._segmentation.save(path, "hdf")
         self._zoning.save(path, "hdf")
         return path
@@ -1050,7 +1102,7 @@ class HDFMatrices(MatricesBase):
     @classmethod
     def load(cls, path: pathlib.Path) -> "HDFMatrices":
         """Load matrices and metadata from a single HDF file path."""
-        path = cls._normalise_path(path)
+        path = cls._normalise_path(path, add_default_suffix=True)
         if not path.is_file():
             raise FileNotFoundError(path)
 
@@ -1073,8 +1125,7 @@ class HDFMatrices(MatricesBase):
         zoning = cbase.ZoningSystem.load(path, "hdf")
         if not isinstance(zoning, cbase.ZoningSystem):
             raise TypeError(f"expected one zoning system in {path} not {type(zoning)}")
-
-        return cls(
+        loaded = cls(
             segmentation_=segmentation_,
             zoning=zoning,
             type_=type_,
@@ -1082,6 +1133,8 @@ class HDFMatrices(MatricesBase):
             key_template=key_template,
             check_file=True,
         )
+        loaded._validate_omx_compatibility()
+        return loaded
 
     def to_csv(
         self, folder: pathlib.Path, *, filename_template: str | None = None
