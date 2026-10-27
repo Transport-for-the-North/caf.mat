@@ -17,7 +17,7 @@ import pytest
 from caf.base import segmentation, zoning
 
 # Local Imports
-from caf.mat import matrices, omx
+from caf.mat import cube, matrices, omx
 
 ##### CONSTANTS #####
 
@@ -296,6 +296,45 @@ class TestHDFMatrices:
             check_column_type=False,
             check_names=False,
         )
+
+    def test_to_mat_uses_cube_converter(
+        self,
+        tmp_path: pathlib.Path,
+        tp_hdf_matrices: "MatricesResults",
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Test converting HDF matrices to CUBE .mat using CUBEMatConverter."""
+        voyager_path = tmp_path / "VOYAGER.exe"
+        voyager_path.write_text("", encoding="utf-8")
+        output_path = tmp_path / "converted.mat"
+
+        called: dict[str, pathlib.Path | bool | None] = {}
+
+        class _Converter:
+            def __init__(self, path: pathlib.Path) -> None:
+                called["voyager_path"] = path
+
+            def from_omx(
+                self,
+                omx_file: pathlib.Path,
+                out_path: pathlib.Path | None = None,
+                *,
+                overwrite: bool = False,
+            ) -> pathlib.Path:
+                called["omx_file"] = omx_file
+                called["out_path"] = out_path
+                called["overwrite"] = overwrite
+                return output_path
+
+        monkeypatch.setattr(cube, "CUBEMatConverter", _Converter)
+
+        result = tp_hdf_matrices.test.to_mat(voyager_path, output_path, overwrite=True)
+
+        assert result == output_path
+        assert called["voyager_path"] == voyager_path
+        assert called["omx_file"] == tp_hdf_matrices.test.path
+        assert called["out_path"] == output_path
+        assert called["overwrite"] is True
 
 
 ##### Common tests for matrices classes #####
