@@ -543,22 +543,24 @@ def _validate_disaggregation_translation(
     to_segment: segments.Segment,
     groupings: dict[int, list[int]],
 ) -> None:
-    """Check if any segment values are found in multiple lists.
+    """Validate lookup groups used for disaggregation translation.
 
     Raises
     ------
     ValueError
-        If the translations is a many-to-many lookup.
+        If any source segment maps to no target segments.
     """
-    unique_to_segs = set()
-    for to_segs in groupings.values():
-        for i in to_segs:
-            if i in unique_to_segs:
-                raise ValueError(
-                    f"{to_segment.name} segment {i} found in lookup"
-                    f" for multiple {from_segment.name} segments"
-                )
-        unique_to_segs.update(to_segs)
+    for from_seg, to_segs in groupings.items():
+        if len(to_segs) == 0:
+            raise ValueError(
+                f"{from_segment.name} segment {from_seg} has no {to_segment.name}"
+                " segments in lookup"
+            )
+
+        # Avoid repeated targets from duplicate lookup rows.
+        if len(to_segs) != len(set(to_segs)):
+            deduped = list(dict.fromkeys(to_segs))
+            groupings[from_seg] = deduped
 
 
 def _get_slice_disaggregation(
