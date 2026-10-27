@@ -980,9 +980,10 @@ def _build_disaggregate_inputs_from_lookup(
         to_segment,
     )
     agg_matrices = {}
+    sample = next(iter(expected_matrices.values()))
     for from_slice in from_segmentation.iter_slices():
         to_slices = disaggregations.get(from_slice, [])
-        total = 0
+        total = pd.DataFrame(0.0, index=sample.index, columns=sample.columns)
         for to_slice in to_slices:
             total += expected_matrices[to_slice]
         agg_matrices[from_slice] = total
