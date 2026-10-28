@@ -378,6 +378,7 @@ def _4d_constraint_gravity_model(
     constraint_area_trans: pd.DataFrame,
     z2s_cfg: dict[str, str],
     sector_target_matrix: MatrixFiles,
+    furness_sector_target: bool,
     out_dir: pathlib.Path,
     run_gm: bool,
     run_adjust: bool,
@@ -426,6 +427,8 @@ def _4d_constraint_gravity_model(
         - "req_sector_column": name of the column containing the required sector IDs
     sector_target_matrix : MatrixFiles
         MatrixFiles object for target matrices for sector-level constraint targets.
+    furness_sector_target : bool
+        Flag indicating whether to apply Furness adjustment to the sector target matrices.
     calibrate : bool
         Flag indicating whether to calibrate the gravity model (currently unused).
     out_dir : pathlib.Path
@@ -519,13 +522,17 @@ def _4d_constraint_gravity_model(
         col_sector.columns = ["model_zone_id", "trips"]
         row_sector = row.rename(trans).groupby("normits_id").sum().reset_index()
         row_sector.columns = ["model_zone_id", "trips"]
-        # sector_target_furnessed, _, _ = furness.furness_pandas_wrapper(
-        #     sector_target.data, row_sector, col_sector, tol=0.001
-        # )
-        # sector_target_furnessed = (
-        #     sector_target.data * row.sum() / sector_target.data.sum().sum()
-        # )
-        sector_target_furnessed = sector_target.data
+        
+        if furness_sector_target:
+            sector_target_furnessed, _, _ = furness.furness_pandas_wrapper(
+                sector_target.data, row_sector, col_sector, tol=0.001
+            )
+            sector_target_furnessed = (
+                sector_target.data * row.sum() / sector_target.data.sum().sum()
+            )
+        else:
+            sector_target_furnessed = sector_target.data
+
         LOG.info(
             "Ratio between Trip End productions and Target Sector Matrix productions: %s",
             row.sum() / sector_target_furnessed.sum(axis=1).sum(),
@@ -831,6 +838,7 @@ def main(cfg: DistributeConf):
             normits_noham_sector,
             z2s_cfg,
             adj_target_purpose,
+            adj_target_cfg["furness"],
             pathlib.Path(cfg.output_path),
             run_opts["run_gm"],
             run_opts["run_adjust"],

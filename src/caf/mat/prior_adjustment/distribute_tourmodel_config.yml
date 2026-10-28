@@ -99,6 +99,7 @@ adj_target_matrices:
   folder_path: I:\NorTMS rebase\10. distributions\phase_4_sectors_v2
   filename_template: "p3_mat_{slice_name}"
   #"tourmodel_{type}_{slice_name}.csv"
+  furness: False
 
 # ------------------------------------------------------------------
 # read_4dcons function flag and its inputs
