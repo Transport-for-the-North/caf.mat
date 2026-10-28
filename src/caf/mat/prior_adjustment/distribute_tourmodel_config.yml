@@ -44,7 +44,10 @@ direction_subset:
 # ------------------------------------------------------------------
 # TLD lookup file (zone-to-TLD-area mapping)
 # ------------------------------------------------------------------
-tld_lookup_path: I:\NorMITs Distribution\voa_gb_2023_uni\NorMITs_zone.csv
+tld_lookup:
+  path: I:\NorMITs Distribution\voa_gb_2023_uni\NorMITs_zone.csv
+  cat_col: "tld_area"
+  zone_col: ";normits_v3.3_id"
 
 # ------------------------------------------------------------------
 # Zoning systems (names passed to cb.ZoningSystem.get_zoning())
@@ -153,6 +156,10 @@ tld_files:
     - direction_od
   folder_path: D:\distribute_inputs\TLDs
   filename_template: "NTS_tld_{slice_name}.csv"
+  travelled_distance_column: "trav_dist"
+  cat_col: ";index"
+  max_col: "trav_dist"
+  trips_col: "trips"
 
 # ------------------------------------------------------------------
 # Trip end input files (.dvec format)

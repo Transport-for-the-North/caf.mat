@@ -66,7 +66,8 @@ class DistributeConf(BaseConfig):
     timeperiod_subset : Subset of time periods to include in the run.
     purpose_subset : Subset of purposes to include in the run.
     direction_subset : Subset of directions to include in the run.
-    tld_lookup_path : File path to the TLD lookup CSV file.
+    tld_lookup : Dictionary containing the TLD lookup configuration, 
+                including the file path, category column, and zone column.
     zone_system : Name of the zoning system used for matrices.
     sector_system : Name of the sector system used for related zone system.
     zone_to_sector_lookup : Dictionary containing the file path and column mapping for
@@ -97,7 +98,7 @@ class DistributeConf(BaseConfig):
     timeperiod_subset: int | list[int]
     purpose_subset: int | list[int]
     direction_subset: int | list[int]
-    tld_lookup_path: pathlib.Path
+    tld_lookup: dict[str, pathlib.Path | str]
     zone_system: str
     sector_system: str
     zone_to_sector_lookup: dict[str, pathlib.Path | list[str] | str | str]
@@ -368,7 +369,9 @@ def _4d_constraint_gravity_model(
     col_trip_ends: cbase.DVector,
     name: str,
     tlds: dict[str, pathlib.Path],
+    tld_cfg: dict[str, str],
     tld_zones: pd.Series,
+    tld_lookup_cfg: dict[str, str],
     cost_matrix: MatrixFiles,
     alternate_cost_matrix: MatrixFiles | None,
     relative_cost_steepness: float | None,
@@ -399,8 +402,15 @@ def _4d_constraint_gravity_model(
     tlds : dict[str, pathlib.Path]
         Dictionary mapping segment identifiers to Trip Length Distribution (TLD)
         file paths.
+    tld_cfg : dict[str, str]
+        Configuration dictionary for TLD files
     tld_zones : pd.Series
         Series containing TLD zone information indexed by zone identifiers.
+    tld_lookup_cfg : dict[str, str]
+        Configuration dictionary for the TLD lookup, containing keys:
+        - "path": file path to the TLD lookup CSV
+        - "cat_col": name of the column containing the TLD category
+        - "zone_col": name of the column containing the zone identifiers
     cost_matrix : MatrixFiles
         Cost matrix object containing distance file information.
     alternate_cost_matrix : MatrixFiles | None
@@ -498,11 +508,12 @@ def _4d_constraint_gravity_model(
             current_slice.aggregate(sector_target_matrix.segmentation.naming_order)
         )
         tld = pd.read_csv(
-            tlds[current_slice.aggregate(["m", "p", "direction_od"]).generate_name()]
+            tlds[current_slice.aggregate(tld_cfg["naming_order"]).generate_name()]
         )
-        tld["from"] = tld["trav_dist"].shift().fillna(0)
-        tld.loc[tld["from"] > tld["trav_dist"], "from"] = 0
-        # tld["ave_dist"] = (tld["trav_dist"] + tld["from"]) / 2
+        tld["from"] = tld[tld_cfg["travelled_distance_column"]].shift().fillna(0)
+        tld.loc[tld["from"] > tld[tld_cfg["travelled_distance_column"]], "from"] = 0
+        if "ave_dist" not in tld.columns:
+            tld["ave_dist"] = (tld[tld_cfg["travelled_distance_column"]] + tld["from"]) / 2
         trans = constraint_area_trans.set_index(z2s_cfg["index_column"])[z2s_cfg["req_sector_column"]].to_dict()
         col_sector = col.rename(trans).groupby("normits_id").sum().reset_index()
         col_sector.columns = ["model_zone_id", "trips"]
@@ -531,13 +542,13 @@ def _4d_constraint_gravity_model(
             tld,
             tld_zones,
             {i: cost_function.default_params for i in tld_zones["tld_area"].unique()},
-            tld_cat_col=";index",
+            tld_cat_col=tld_cfg["cat_col"],
             tld_min_col="from",
-            tld_max_col="trav_dist",
+            tld_max_col=tld_cfg["max_col"],
             tld_avg_col="ave_dist",
-            tld_trips_col="trips",
-            lookup_cat_col="tld_area",
-            lookup_zone_col=";normits_v3.3_id",
+            tld_trips_col=tld_cfg["trips_col"],
+            lookup_cat_col=tld_lookup_cfg["cat_col"],
+            lookup_zone_col=tld_lookup_cfg["zone_col"],
         )
 
         calib_gm = gravity_model.MultiAreaGravityModelCalibrator(
@@ -556,7 +567,7 @@ def _4d_constraint_gravity_model(
                 sector_target_furnessed,
                 calib_gm,
                 out_dir,
-                tld_zones[";normits_v3.3_id"],
+                tld_zones[tld_lookup_cfg["zone_col"]],
                 run_gm,
                 run_adjust,
                 adj_target_options,
@@ -631,7 +642,8 @@ def main(cfg: DistributeConf):
         }
 
         # --- Lookups and zoning systems --------------------------------------------
-        tld_lookup = pd.read_csv(cfg.tld_lookup_path)
+        tld_lookup_cfg = cfg.tld_lookup
+        tld_lookup = pd.read_csv(tld_lookup_cfg["path"])
         normits = cbase.ZoningSystem.get_zoning(cfg.zone_system)
         noham_sector = cbase.ZoningSystem.get_zoning(cfg.sector_system)
 
@@ -810,7 +822,9 @@ def main(cfg: DistributeConf):
             attr,
             cfg.gm_run_name,
             tlds,
+            tld_cfg,
             tld_lookup,
+            tld_lookup_cfg,
             costs,
             alternate_costs,
             cost_steepness,
