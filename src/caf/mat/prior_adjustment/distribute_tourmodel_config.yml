@@ -75,6 +75,8 @@ zone_to_sector_lookup:
     - lad_agg
     - cty_agg
     - tour
+  index_column: normits_v3.3_id
+  req_sector_column: tour
 
 
 # ------------------------------------------------------------------

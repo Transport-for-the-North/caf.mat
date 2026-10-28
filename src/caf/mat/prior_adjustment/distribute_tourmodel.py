@@ -70,7 +70,8 @@ class DistributeConf(BaseConfig):
     zone_system : Name of the zoning system used for matrices.
     sector_system : Name of the sector system used for related zone system.
     zone_to_sector_lookup : Dictionary containing the file path and column mapping for
-                            the zone to sector lookup CSV.
+                            the zone to sector lookup CSV. 
+                            Includes the index column and required sector column name.
     adj_target_matrices : Dictionary containing configuration for sector target matrices, 
                           including naming order, folder path, and filename template.
     cost_files : Dictionary containing configuration for cost matrix files, including
@@ -96,7 +97,7 @@ class DistributeConf(BaseConfig):
     tld_lookup_path: pathlib.Path
     zone_system: str
     sector_system: str
-    zone_to_sector_lookup: dict[str, pathlib.Path | list[str]]
+    zone_to_sector_lookup: dict[str, pathlib.Path | list[str] | str | str]
     adj_target_matrices: dict[str, list[str] | pathlib.Path | str]
     cost_files: dict[str, list[str] | pathlib.Path | str]
     comparison_cost_files: dict[str, bool | list[str] | int | pathlib.Path | str | float]
@@ -115,6 +116,7 @@ def seg_furness(
     current_slice,
     cost_distributions,
     constraint_area_trans,
+    z2s_cfg,
     sector_target_furnessed: pd.DataFrame,
     calib_gm: gravity_model.MultiAreaGravityModelCalibrator,
     out_dir: pathlib.Path,
@@ -140,6 +142,10 @@ def seg_furness(
         distribution data for gravity model calibration.
     constraint_area_trans : pd.DataFrame
         DataFrame mapping zone IDs (normits_id) to sector IDs (noham_sector_id).
+    z2s_cfg : dict[str, str]
+        Configuration dictionary for the zone-to-sector lookup, containing keys:
+        - "index_column": name of the column to use as the index for the lookup
+        - "req_sector_column": name of the column containing the required sector IDs
     sector_target_furnessed : pd.DataFrame
         Sector target matrix containing target values by origin and destination sector
         for the adjustment algorithm.
@@ -185,16 +191,16 @@ def seg_furness(
     )
 
     band_targets = band_targets.loc[used]
-    sec_look = constraint_area_trans.sort_values(by="normits_v3.3_id").set_index(
-        "normits_v3.3_id"
-    )["tour"]
+    sec_look = constraint_area_trans.sort_values(by=z2s_cfg["index_column"]).set_index(
+        z2s_cfg["index_column"]
+    )[z2s_cfg["req_sector_column"]]
     full_ind = (
         band_lookup.reset_index()
         .merge(sec_look, left_on="o_zon", right_index=True)
-        .rename(columns={"tour": "o_sec"})
+        .rename(columns={z2s_cfg["req_sector_column"]: "o_sec"})
     )
     full_ind = full_ind.merge(sec_look, left_on="d_zon", right_index=True).rename(
-        columns={"tour": "d_sec"}
+        columns={z2s_cfg["req_sector_column"]: "d_sec"}
     )
     if run_gm:
         gravity_model_results, dists = calib_gm.calibrate(  # pylint: disable=unused-variable
@@ -359,6 +365,7 @@ def _4d_constraint_gravity_model(
     alternate_cost_matrix: MatrixFiles | None,
     relative_cost_steepness: float | None,
     constraint_area_trans: pd.DataFrame,
+    z2s_cfg: dict[str, str],
     sector_target_matrix: MatrixFiles,
     out_dir: pathlib.Path,
     run_gm: bool,
@@ -388,13 +395,17 @@ def _4d_constraint_gravity_model(
         Series containing TLD zone information indexed by zone identifiers.
     cost_matrix : MatrixFiles
         Cost matrix object containing distance file information.
-    constraint_area_trans : pd.DataFrame
-        Translation/mapping dataframe between normits_id and noham_sector_id for
-        spatial constraint areas.
     alternate_cost_matrix : MatrixFiles | None
         Alternate cost matrix object for comparison purposes.
     relative_cost_steepness : float | None
         Steepness parameter for relative cost comparison.
+    constraint_area_trans : pd.DataFrame
+        Translation/mapping dataframe between normits_id and noham_sector_id for
+        spatial constraint areas.
+    z2s_cfg : dict[str, str]
+        Configuration dictionary for the zone-to-sector lookup, containing keys:
+        - "index_column": name of the column to use as the index for the lookup
+        - "req_sector_column": name of the column containing the required sector IDs
     sector_target_matrix : MatrixFiles
         MatrixFiles object for target matrices for sector-level constraint targets.
     calibrate : bool
@@ -484,7 +495,7 @@ def _4d_constraint_gravity_model(
         tld["from"] = tld["trav_dist"].shift().fillna(0)
         tld.loc[tld["from"] > tld["trav_dist"], "from"] = 0
         # tld["ave_dist"] = (tld["trav_dist"] + tld["from"]) / 2
-        trans = constraint_area_trans.set_index("normits_v3.3_id")["tour"].to_dict()
+        trans = constraint_area_trans.set_index(z2s_cfg["index_column"])[z2s_cfg["req_sector_column"]].to_dict()
         col_sector = col.rename(trans).groupby("normits_id").sum().reset_index()
         col_sector.columns = ["model_zone_id", "trips"]
         row_sector = row.rename(trans).groupby("normits_id").sum().reset_index()
@@ -533,6 +544,7 @@ def _4d_constraint_gravity_model(
                 current_slice,
                 cost_distributions,
                 constraint_area_trans,
+                z2s_cfg,
                 sector_target_furnessed,
                 calib_gm,
                 out_dir,
@@ -609,9 +621,10 @@ def main(cfg: DistributeConf):
         z2s_cfg = cfg.zone_to_sector_lookup
         normits_noham_sector = pd.read_csv(z2s_cfg["path"])
         normits_noham_sector.columns = z2s_cfg["columns"]
-        normits_noham_sector["tour"] = normits_noham_sector["tour"].replace(
-            noham_sector.name_to_id
-        )
+        normits_noham_sector[z2s_cfg["req_sector_column"]] = (
+            normits_noham_sector[z2s_cfg["req_sector_column"]]
+            .replace(noham_sector.name_to_id)
+            )
 
         # --- Split p into HB and NHB -----------------------------------------------
         hb_p_subset = (
@@ -785,6 +798,7 @@ def main(cfg: DistributeConf):
             alternate_costs,
             cost_steepness,
             normits_noham_sector,
+            z2s_cfg,
             adj_target_purpose,
             pathlib.Path(cfg.output_path),
             run_opts["run_gm"],
