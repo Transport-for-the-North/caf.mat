@@ -631,7 +631,7 @@ def main(cfg: DistributeConf):
 
     # Check if read_4dcons is needed and run it if so
     read_4dcons_cfg = cfg.read_4dcons_function
-    if read_4dcons_cfg["flag"]:
+    if read_4dcons_cfg["flag"] is True:
         adjusted_output = read_4dcons(read_4dcons_cfg["adjustment_type"],
                                       read_4dcons_cfg["level"],
                                       read_4dcons_cfg["input_files"],
