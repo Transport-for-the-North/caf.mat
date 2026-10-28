@@ -1,15 +1,15 @@
-.. caf.mat documentation master file.
+.. CAF.mat documentation master file.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive. See the
    `reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
    documentation for details.
 
-Welcome to caf.mat's documentation!
+Welcome to CAF.mat's documentation!
 ===========================================================
 
-Conversion tool for matrix formats
+Interacting with, and converting between formats of, transport modelling matrices.
 
-caf.mat source code is available on `GitHub <https://github.com/transport-for-the-north/caf.mat>`_.
+CAF.mat source code is available on `GitHub <https://github.com/transport-for-the-north/caf.mat>`_.
 
 
 Common Analytical Framework
@@ -19,13 +19,15 @@ This package is sits within the `Common Analytical Framework (CAF) <https://tran
 which is a collaboration between transport bodies in the UK to develop and maintain commonly use
 transport analytics and appraisal tools.
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+Contents
+--------
 
+.. toctree::
+   :maxdepth: 3
+
+   start
    user_guide
    api
-   examples/index
 
 
 Indices and tables
@@ -34,3 +36,5 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+
+.. todolist::

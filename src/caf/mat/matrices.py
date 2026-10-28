@@ -1,6 +1,4 @@
-# -*- coding: utf-8 -*-
 """Handling the PA and OD matrix files."""
-
 # Built-InsParty
 import abc
 import collections
@@ -10,18 +8,22 @@ import enum
 import logging
 import pathlib
 import warnings
-from typing import Callable, Iterator, Self, Type, TypeVar, Literal
+from collections.abc import Iterator
+from typing import Callable, Self, Type, TypeVar, Literal
 from numbers import Real
 
 # Third Party
-import caf.base as cb
+import caf.base as cbase
 import caf.toolkit as ctk
+import h5py
 import numpy as np
 import pandas as pd
+import tables
 import tqdm
+from caf.base import segmentation, segments
 
 # Local Imports
-from caf.mat import _mat, omx, cube
+from caf.mat import _mat, cube, omx
 
 ##### CONSTANTS #####
 
@@ -48,11 +50,11 @@ class MatrixType(enum.Enum):
     OD = enum.auto()
 
     @property
-    def direction_segment(self) -> cb.segments.Segment:
+    def direction_segment(self) -> segments.Segment:
         """Required direction segment for the matrix type."""
-        lookup: dict[MatrixType, cb.segments.Segment] = {
-            MatrixType.PA: cb.segments.SegmentsSuper.DIRECTION.get_segment(),
-            MatrixType.OD: cb.segments.SegmentsSuper.DIRECTION_OD.get_segment(),
+        lookup: dict[MatrixType, segments.Segment] = {
+            MatrixType.PA: segments.SegmentsSuper.DIRECTION.get_segment(),
+            MatrixType.OD: segments.SegmentsSuper.DIRECTION_OD.get_segment(),
         }
         return lookup[self]
 
@@ -62,7 +64,7 @@ class Matrix:
     """In-memory matrix."""
 
     data: pd.DataFrame
-    slice: cb.segmentation.SegmentationSlice
+    slice: cbase.segmentation.SegmentationSlice
 
 
 class MatricesBase(abc.ABC):
@@ -79,8 +81,8 @@ class MatricesBase(abc.ABC):
     """
 
     def __init__(
-        self, segmentation_: cb.Segmentation, zoning: cb.ZoningSystem, type_: MatrixType
-    ):
+        self, segmentation_: cbase.Segmentation, zoning: cbase.ZoningSystem, type_: MatrixType
+    ) -> None:
         self._segmentation = segmentation_
         self._zoning = zoning
         self._type = type_
@@ -102,12 +104,12 @@ class MatricesBase(abc.ABC):
             yield self.get_matrix(slice_=values)
 
     @property
-    def segmentation(self) -> cb.Segmentation:
+    def segmentation(self) -> cbase.Segmentation:
         """Copy of the matrix segmentation."""
         return self._segmentation.copy()
 
     @property
-    def zoning(self) -> cb.ZoningSystem:
+    def zoning(self) -> cbase.ZoningSystem:
         """Copy of the matrix zoning system."""
         return self._zoning.copy()
 
@@ -125,13 +127,13 @@ class MatricesBase(abc.ABC):
     @abc.abstractmethod
     def _get_matrix(
         self,
-        slice_: cb.segmentation.SegmentationSlice,  # type: ignore
+        slice_: "segmentation.SegmentationSlice",  # type: ignore[name-defined]
     ) -> Matrix:
         """Load the data for a single matrix."""
         raise NotImplementedError()
 
     def get_matrix(
-        self, slice_: cb.segmentation.SegmentationSlice | tuple[int] | dict[str, int]
+        self, slice_: cbase.segmentation.SegmentationSlice | tuple[int] | dict[str, int]
     ) -> Matrix:
         slice_ = self.validate_slice(slice_)
         return self._get_matrix(slice_)
@@ -140,7 +142,7 @@ class MatricesBase(abc.ABC):
     def _set_matrix(
         self,
         matrix: pd.DataFrame,
-        slice_: cb.segmentation.SegmentationSlice,  # type: ignore
+        slice_: "segmentation.SegmentationSlice",  # type: ignore[name-defined]
     ) -> None:
         """Save the data for a single matrix."""
         raise NotImplementedError()
@@ -148,7 +150,7 @@ class MatricesBase(abc.ABC):
     def set_matrix(
         self,
         matrix: pd.DataFrame,
-        slice_: cb.segmentation.SegmentationSlice | tuple[int] | dict[str, int],
+        slice_: cbase.segmentation.SegmentationSlice | tuple[int] | dict[str, int],
     ):
         slice_ = self.validate_slice(slice_)
         self._set_matrix(matrix, slice_)
@@ -158,8 +160,8 @@ class MatricesBase(abc.ABC):
         self,
         name: str,
         *,
-        segmentation_: cb.Segmentation | None = None,
-        zoning: cb.ZoningSystem | None = None,
+        segmentation_: cbase.Segmentation | None = None,
+        zoning: cbase.ZoningSystem | None = None,
         type_: MatrixType | None = None,
     ) -> Self:
         """Create a new instance of the matrices class with a new name.
@@ -177,8 +179,8 @@ class MatricesBase(abc.ABC):
     @property
     def has_time_periods(self) -> bool:
         """Return True if the segmentation contains time periods."""
-        # TODO(MB) check this method works correctly with all time periods Segments
-        # TODO(MB) get information about the time format, e.g. avg hour / period
+        # TODO(MB): check this method works correctly with all time periods Segments #25
+        # TODO(MB): get information about the time format, e.g. avg hour / period #24
         return self._segmentation.has_time_period_segments()
 
     @property
@@ -187,7 +189,7 @@ class MatricesBase(abc.ABC):
         segment = self.type.direction_segment.name
         return segment in (i.name for i in self.segmentation.segments)
 
-    def _get_direction_subset(self) -> None | set[int]:
+    def _get_direction_subset(self) -> set[int] | None:
         if not self.has_type_segment:
             return None
 
@@ -204,32 +206,28 @@ class MatricesBase(abc.ABC):
         """Return True if segmentation contains home-based direction only."""
         subset = self._get_direction_subset()
 
-        # TODO(MB) can this hardcoding be removed and instead obtained from caf.base?
+        # TODO(MB): can this hardcoding be removed and instead obtained from caf.base? #24
         # Does subset contain one, or both (OD), of the home-based directions
-        if subset is not None and subset <= {1, 2}:
-            return True
-        return False
+        return bool(subset is not None and subset <= {1, 2})
 
     @property
     def is_non_home_based_only(self) -> bool:
         """Return True if segmentation contains non-home-based direction only."""
         subset = self._get_direction_subset()
 
-        # TODO(MB) can this hardcoding be removed and instead obtained from caf.base?
-        if subset == {0}:
-            return True
-        return False
+        # TODO(MB): can this hardcoding be removed and instead obtained from caf.base? #24
+        return subset == {0}
 
     def validate_slice(
         self,
-        slice_: cb.segmentation.SegmentationSlice | tuple[int] | dict[str, int],  # type: ignore
-    ) -> cb.segmentation.SegmentationSlice:
+        slice_: "segmentation.SegmentationSlice" | tuple[int] | dict[str, int],  # type: ignore[name-defined]
+    ) -> cbase.segmentation.SegmentationSlice:
         """Raise ValueError if slice not present in segmentation."""
         if isinstance(slice_, tuple):
-            slice_ = cb.segmentation.SegmentationSlice.from_tuple(slice_,
+            slice_ = cbase.segmentation.SegmentationSlice.from_tuple(slice_,
                                                                   self.segmentation.naming_order)
         elif isinstance(slice_, dict):
-            slice_ = cb.segmentation.SegmentationSlice(
+            slice_ = cbase.segmentation.SegmentationSlice(
                 slice_, self.segmentation.naming_order
             )
         if slice_ not in self.segmentation.iter_slices():
@@ -302,7 +300,7 @@ class MatricesBase(abc.ABC):
     
     def to_omx(self,
                omx_path: pathlib.Path,
-               name_conversion: dict[cb.segmentation.SegmentationSlice, str] | None = None) -> None:
+               name_conversion: dict[segmentation.SegmentationSlice, str] | None = None) -> None:
         """
         Save a set of matrices to an omx file
 
@@ -310,7 +308,7 @@ class MatricesBase(abc.ABC):
         ----------
         omx_path : pathlib.Path
             Path to the omx file to save to.
-        name_conversion : dict[cb.segmentation.SegmentationSlice, str] | None, optional
+        name_conversion : dict[segmentation.SegmentationSlice, str] | None, optional
             A dictionary defining names for matrix levels in the omx file, if you don't want to use 
             the names generated from the slices of the segmentation. This also can control the order.
         """
@@ -333,7 +331,7 @@ class MatricesBase(abc.ABC):
     def to_mat(self,
                mat_path: pathlib.Path,
                cube_path: pathlib.Path,
-               name_conversion: dict[cb.segmentation.SegmentationSlice,str] | None = None,
+               name_conversion: dict[segmentation.SegmentationSlice,str] | None = None,
                ) -> None:
         omx_path = mat_path.with_suffix('.omx')
         self.to_omx(omx_path,
@@ -351,7 +349,7 @@ class MatricesBase(abc.ABC):
 
     def aggregate(
         self,
-        segmentation_: cb.segmentation.Segmentation,  # type: ignore
+        segmentation_: "segmentation.Segmentation",  # type: ignore[name-defined]
         output_name: str = "{name}-aggregated",
         progress_bar: bool = True,
     ) -> Self:
@@ -441,7 +439,7 @@ class MatricesBase(abc.ABC):
         
     
     def compile_highway(self,
-                        occupancies: cb.DVector,
+                        occupancies: cbase.DVector,
                         tp_factors: dict[int, int],
                         output_name: str,
                         progress_bar: bool = True):
@@ -453,7 +451,7 @@ class MatricesBase(abc.ABC):
 
         Parameters
         ----------
-        occupancies : cb.DVector
+        occupancies : cbase.DVector
             DVector containing occupancy factors. This should include direction_od, tp and m segments. 
             It can either contain p or userclass, but must contain one or the other.
         tp_factors : dict[int, int]
@@ -467,12 +465,12 @@ class MatricesBase(abc.ABC):
         -------
         Self
         """
-        new_seg_in = cb.SegmentationInput(
+        new_seg_in = cbase.SegmentationInput(
             enum_segments=['m','userclass','tp'],
             naming_order=['m','userclass','tp'],
             subsets={'m': [3], 'tp': self.segmentation.input.subsets['tp']}
         )
-        new_seg = cb.Segmentation(new_seg_in)
+        new_seg = cbase.Segmentation(new_seg_in)
 
         output = self.new(
             output_name.format(name=self.name), segmentation_=new_seg
@@ -509,7 +507,7 @@ class MatricesBase(abc.ABC):
                 else:
                     occ_slice = to_slice.data
                     occ_slice['direction_od'] = from_slice.data['direction_od']
-                    mat /= occupancies.get_slice(cb.segmentation.SegmentationSlice(occ_slice))
+                    mat /= occupancies.get_slice(segmentation.SegmentationSlice(occ_slice))
                 if from_slice.data['direction_od'] == 2:
                     mat = mat.T
                 total += mat
@@ -576,8 +574,8 @@ class MatricesBase(abc.ABC):
     def disaggregate(
         self,
         targets: "MatricesBase",
-        from_segment: cb.segments.Segment | None = None,
-        to_segment: cb.segments.Segment | None = None,
+        from_segment: segments.Segment | None = None,
+        to_segment: segments.Segment | None = None,
         *,
         output_name: str = "{name}-disaggregated",
         progress_bar: bool = True,
@@ -596,7 +594,7 @@ class MatricesBase(abc.ABC):
         from_segment
             Optional segment to be removed and replaced by `to_segment`,
             mandatory if `to_segment` is given.
-        to_segment : cb.segments.Segment | None, optional
+        to_segment : segments.Segment | None, optional
             Optional segment to replace the `from_segment`,
             mandatory if `from_segment` is given.
         output_name
@@ -625,8 +623,7 @@ class MatricesBase(abc.ABC):
         """
         if targets.type != self.type:
             raise ValueError(
-                f"targets should be the same type as aggregate"
-                f"({self.type}) not {targets.type}"
+                f"targets should be the same type as aggregate({self.type}) not {targets.type}"
             )
 
         if self.zoning != targets.zoning:
@@ -700,11 +697,9 @@ class MatricesBase(abc.ABC):
     def _validate_disaggregations(
         self,
         targets: "MatricesBase",
-        from_segment: cb.segments.Segment | None,
-        to_segment: cb.segments.Segment | None,
-    ) -> dict[
-        cb.segmentation.SegmentationSlice, list[cb.segmentation.SegmentationSlice]
-    ]:  # type: ignore
+        from_segment: segments.Segment | None,
+        to_segment: segments.Segment | None,
+    ) -> dict["segmentation.SegmentationSlice", list["segmentation.SegmentationSlice"]]:  # type: ignore[name-defined]
         """Calculate and validate disaggregation slices."""
         if from_segment is not None and to_segment is not None:
             disaggregations = _get_disaggregation_translation(
@@ -736,8 +731,8 @@ class MatricesBase(abc.ABC):
         params.update(overrides)
         return self.__class__(**params)
     
-    def subset(self, seg_subset: cb.Segmentation | dict[str, list[int]]):
-        if isinstance(seg_subset, cb.Segmentation):
+    def subset(self, seg_subset: cbase.Segmentation | dict[str, list[int]]):
+        if isinstance(seg_subset, cbase.Segmentation):
             return self.copy(segmentation_=seg_subset)
         new_seg = self.segmentation.copy()
         for seg, vals in seg_subset.items():
@@ -819,13 +814,13 @@ class MatricesBase(abc.ABC):
             inters.set_matrix(matrix, slice_)
         return inters
 
-    def intras(self) -> cb.DVector:
+    def intras(self) -> cbase.DVector:
         """
         Return intrazonal demand as a DVector.
 
         Returns
         -------
-        cb.DVector
+        cbase.DVector
             The intrazonal demand (i.e. leading diagonal) of the matrix.
         """
         data: dict[tuple[int, ...], pd.Series] = {}
@@ -835,7 +830,7 @@ class MatricesBase(abc.ABC):
             data[slice_.as_tuple()] = pd.Series(intras, index=matrix.index)
         dvec_data = pd.concat(data, axis=1).T
         dvec_data.index.names = self.segmentation.naming_order
-        return cb.DVector(
+        return cbase.DVector(
             segmentation=self.segmentation,
             import_data=dvec_data,
             zoning_system=self.zoning,
@@ -843,7 +838,7 @@ class MatricesBase(abc.ABC):
 
     def translate_zoning(
         self,
-        new_zoning: cb.ZoningSystem,
+        new_zoning: cbase.ZoningSystem,
         translation: pd.DataFrame | ctk.translation.ZoneCorrespondence | None = None,
     ) -> Self:
         """
@@ -851,7 +846,7 @@ class MatricesBase(abc.ABC):
 
         Parameters
         ----------
-        new_zoning : cb.ZoningSystem
+        new_zoning : cbase.ZoningSystem
             The zoning system to translate to.
         translation : pd.DataFrame | ctk.translation.ZoneCorrespondence | None = None
             The translation vector to use. If this is not provided, an attempt will be made to find it
@@ -881,13 +876,13 @@ class MatricesBase(abc.ABC):
             translated.set_matrix(translated_matrix, slice_)
         return translated
 
-    def to_dvector(self) -> dict[str, cb.DVector]:
+    def to_dvector(self) -> dict[str, cbase.DVector]:
         """
         Convert matrices to two DVectors, being sums over rows and columns.
 
         Returns
         -------
-        dict[str, cb.DVector]
+        dict[str, cbase.DVector]
             A dictionary of either p/a or o/d to DVectors, depending on the matrices' type.
         """
         rows = {}
@@ -900,13 +895,13 @@ class MatricesBase(abc.ABC):
             cols[slice_.as_tuple()] = column
         rows = pd.concat(rows, axis=1).T
         rows.index.names = self.segmentation.naming_order
-        rows = cb.DVector(
+        rows = cbase.DVector(
             import_data=rows, segmentation=self.segmentation, zoning_system=self.zoning
         )
 
         cols = pd.concat(cols, axis=1).T
         cols.index.names = self.segmentation.naming_order
-        cols = cb.DVector(
+        cols = cbase.DVector(
             import_data=cols, segmentation=self.segmentation, zoning_system=self.zoning
         )
         if self.type.name == "PA":
@@ -915,7 +910,7 @@ class MatricesBase(abc.ABC):
 
     def _generic_dunder(
         self,
-        other: MATRICES | cb.DVector | Real,
+        other: MATRICES | cbase.DVector | Real,
         mat_method,
         method_name,
     ):
@@ -958,7 +953,7 @@ class MatricesBase(abc.ABC):
                     product = mat_method(
                         self.get_matrix(slice_).data, other.get_matrix(slice_).data
                     )
-            elif isinstance(other, cb.DVector):
+            elif isinstance(other, cbase.DVector):
                 other_slice = other.get_slice(
                     slice_.aggregate(other.segmentation.naming_order)
                 )
@@ -996,11 +991,11 @@ def _short_list(values: collections.abc.Sequence, length: int = 10) -> str:
 
 
 def _get_disaggregation_translation(
-    from_segmentation: cb.segmentation.Segmentation,
-    from_segment: cb.segments.Segment,
-    to_segment: cb.segments.Segment,
-    target_segmentation: cb.segmentation.Segmentation,
-) -> dict[cb.segmentation.SegmentationSlice, list[cb.segmentation.SegmentationSlice]]:
+    from_segmentation: segmentation.Segmentation,
+    from_segment: segments.Segment,
+    to_segment: segments.Segment,
+    target_segmentation: segmentation.Segmentation,
+) -> dict[segmentation.SegmentationSlice, list[segmentation.SegmentationSlice]]:
     """Produce slice disaggregations with a single segment lookup."""
     try:
         to_segmentation, lookup = from_segmentation.translate_segment(
@@ -1042,31 +1037,28 @@ def _get_disaggregation_translation(
 
 
 def _validate_disaggregation_translation(
-    from_segment: cb.segments.Segment,
-    to_segment: cb.segments.Segment,
+    from_segment: segments.Segment,
+    to_segment: segments.Segment,
     groupings: dict[int, list[int]],
-):
-    """Check if any segment values are found in multiple lists.
+) -> None:
+    """Validate lookup groups used for disaggregation translation.
 
     Raises
     ------
     ValueError
-        If the translations is a many-to-many lookup.
+        If any source segment maps to no target segments.
     """
-    unique_to_segs = set()
-    for to_segs in groupings.values():
-        for i in to_segs:
-            if i in unique_to_segs:
-                raise ValueError(
-                    f"{to_segment.name} segment {i} found in lookup"
-                    f" for multiple {from_segment.name} segments"
-                )
-        unique_to_segs.update(to_segs)
+    for from_seg, to_segs in groupings.items():
+        if len(to_segs) == 0:
+            raise ValueError(
+                f"{from_segment.name} segment {from_seg} has no {to_segment.name}"
+                " segments in lookup"
+            )
 
 
 def _get_slice_disaggregation(
-    from_: cb.segmentation.Segmentation, to: cb.segmentation.Segmentation
-) -> dict[cb.segmentation.SegmentationSlice, list[cb.segmentation.SegmentationSlice]]:
+    from_: segmentation.Segmentation, to: segmentation.Segmentation
+) -> dict[segmentation.SegmentationSlice, list[segmentation.SegmentationSlice]]:
     """Produce slice disaggregations without any segment lookup."""
     disaggregations = collections.defaultdict(list)
     for from_slice in from_.iter_slices():
@@ -1080,7 +1072,7 @@ def _disaggregate_matrix(
     aggregate: Matrix,
     targets: list[Matrix],
     output: MatricesBase,
-):
+) -> None:
     """Disaggregate a single matrix and save outputs."""
     total = sum(i.data for i in targets).to_numpy()
     mask = total != 0
@@ -1095,6 +1087,18 @@ def _disaggregate_matrix(
 
         factor = np.divide(data, total, out=np.full_like(total, 0), where=mask)
         disaggregated = aggregate.data * factor
+
+        try:
+            existing_matrix = output.get_matrix(matrix.slice)
+            existing = existing_matrix.data
+            if existing.isna().all().all():
+                existing = None
+        except (KeyError, FileNotFoundError):
+            existing = None
+
+        if existing is not None:
+            disaggregated = disaggregated + existing
+
         output.set_matrix(disaggregated, matrix.slice)
 
 
@@ -1119,16 +1123,16 @@ class MemoryMatrices(MatricesBase):
 
     def __init__(
         self,
-        segmentation_: cb.Segmentation,
-        zoning: cb.ZoningSystem,
+        segmentation_: cbase.Segmentation,
+        zoning: cbase.ZoningSystem,
         type_: MatrixType,
         matrices: list[Matrix] | None = None,
         *,
         name: str | None = None,
         mutable: bool = True
-    ):
+    ) -> None:
         super().__init__(segmentation_, zoning, type_)
-        self._matrices: dict[cb.segmentation.SegmentationSlice, pd.DataFrame] = {}
+        self._matrices: dict[segmentation.SegmentationSlice, pd.DataFrame] = {}
 
         if matrices is not None:
             for matrix in matrices:
@@ -1144,8 +1148,13 @@ class MemoryMatrices(MatricesBase):
         """Name of the matrices."""
         return self._name
 
-    def new(
-        self, name, *, segmentation_=None, zoning=None, type_=None
+    def new(  # noqa: D102
+        self,
+        name: str,
+        *,
+        segmentation_: cbase.Segmentation | None = None,
+        zoning: cbase.ZoningSystem | None = None,
+        type_: MatrixType | None = None,
     ) -> "MemoryMatrices":
         return MemoryMatrices(
             segmentation_=self._segmentation
@@ -1183,13 +1192,10 @@ class MemoryMatrices(MatricesBase):
             else:
                 mat.data.to_csv(folder / f"{name}_{slice_.generate_name()}.csv")
 
-    def exists(self) -> bool:
-        for slice_ in self.segmentation.iter_slices():
-            if slice_ not in self._matrices:
-                return False
-        return True
+    def exists(self) -> bool:  # noqa: D102
+        return all(slice_ in self._matrices for slice_ in self.segmentation.iter_slices())
 
-    def _get_matrix(self, slice_: cb.segmentation.SegmentationSlice) -> Matrix:
+    def _get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
         """Get in-memory matrix."""
 
         if slice_ not in self._matrices:
@@ -1197,8 +1203,8 @@ class MemoryMatrices(MatricesBase):
         return Matrix(self._matrices[slice_], slice_)
 
     def _set_matrix(
-        self, matrix: pd.DataFrame, slice_: cb.segmentation.SegmentationSlice
-    ):
+        self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice
+    ) -> None:
         """Store matrix in class (in-memory)."""
         if not self.mutable:
             raise PermissionError("This set of matrices is immutable. This is most likely because it is a copy, and so can't be altered.")
@@ -1238,15 +1244,15 @@ class MatrixFiles(MatricesBase):
 
     def __init__(
         self,
-        segmentation_: cb.Segmentation,
-        zoning: cb.ZoningSystem,
+        segmentation_: cbase.Segmentation,
+        zoning: cbase.ZoningSystem,
         type_: MatrixType,
         folder: pathlib.Path,
         *,
         filename_template: str | None = None,
         check_files: bool = True,
         mutable: bool = True
-    ):
+    ) -> None:
         super().__init__(segmentation_, zoning, type_)
 
         if filename_template is None:
@@ -1286,7 +1292,7 @@ class MatrixFiles(MatricesBase):
         """Path to folder containing the matrices."""
         return self._folder
 
-    def _get_filename(self, slice_: cb.segmentation.SegmentationSlice) -> str:
+    def _get_filename(self, slice_: segmentation.SegmentationSlice) -> str:
         """Get filename for given slice, generates it if not already present."""
         if slice_ not in self._filenames:
             slice_name = self._segmentation.generate_slice_name(slice_)
@@ -1297,7 +1303,7 @@ class MatrixFiles(MatricesBase):
         return self._filenames[slice_]
 
     def _set_matrix(
-        self, matrix: pd.DataFrame, slice_: cb.segmentation.SegmentationSlice
+        self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice
     ) -> None:
         """Save the matrix to a CSV, with a filename based on the slice parameters."""
         if not self._mutable:
@@ -1309,7 +1315,7 @@ class MatrixFiles(MatricesBase):
         matrix.to_csv(path)
         LOG.debug("Written: %s", path)
 
-    def _get_matrix(self, slice_: cb.segmentation.SegmentationSlice) -> Matrix:
+    def _get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
         """Load the matrix from a CSV."""
         filename = self._get_filename(slice_)
         path = ctk.io.find_file_with_name(self._folder, filename, self._file_suffixes)
@@ -1322,12 +1328,12 @@ class MatrixFiles(MatricesBase):
         self.validate_matrix(data, filename)
         return Matrix(data, slice_)
 
-    def new(
+    def new(  # noqa: D102
         self,
         name: str,
         *,
-        segmentation_: cb.Segmentation | None = None,
-        zoning: cb.ZoningSystem | None = None,
+        segmentation_: cbase.Segmentation | None = None,
+        zoning: cbase.ZoningSystem | None = None,
         type_: MatrixType | None = None,
     ) -> Self:
         folder = self._folder.with_name(name)
@@ -1356,7 +1362,7 @@ class MatrixFiles(MatricesBase):
         params.update(overrides)
         return self.__class__(**params)
 
-    def exists(self) -> bool:
+    def exists(self) -> bool:  # noqa: D102
         try:
             with warnings.catch_warnings():
                 warnings.filterwarnings(
@@ -1372,6 +1378,367 @@ class MatrixFiles(MatricesBase):
         except FileNotFoundError:
             return False
         return True
+
+    def to_hdf(
+        self,
+        path: pathlib.Path,
+        *,
+        key_template: str | None = None,
+        complevel: int = 9,
+        complib: str = "zlib",
+    ) -> "HDFMatrices":
+        """Convert CSV matrices to HDF matrices."""
+        output = HDFMatrices(
+            segmentation_=self._segmentation,
+            zoning=self._zoning,
+            type_=self._type,
+            path=path,
+            key_template=key_template,
+            check_file=False,
+            complevel=complevel,
+            complib=complib,
+        )
+        for matrix in self:
+            output.set_matrix(matrix.data, matrix.slice)
+        return output
+
+
+class HDFMatrices(MatricesBase):
+    """Handle matrices stored in a single HDF file using OMX-compatible layout.
+
+    Parameters
+    ----------
+    segmentation_
+        Segmentation for the matrices.
+    zoning
+        ZoningSystem for all the matrices.
+    type_
+        Type of the matrices.
+    path
+        Path to HDF file for storing matrices in.
+    key_template
+        Template for HDF dataset keys of individual matrices,
+        if None defaults to "{type}_{slice_name}".
+        Template will be infilled with the following:
+        - {type} - name of the matrix `type_` e.g. "OD";
+        - {slice_name} - the name of the individual slice e.g. "p1_m3_nhb"
+          from :class:`SegmentationSlice`.
+    check_file
+        If True (default) raises an error if the HDF file doesn't already
+        exist with datasets for all slices in segmentation.
+    complevel
+        Compression level used when writing matrices.
+    complib
+        Compression library used when writing matrices.
+    """
+
+    _default_key_template = "{type}_{slice_name}"
+    _default_save_suffix = ".dmat"
+    _metadata_key = "__caf_mat_metadata__"
+    _metadata_version = 1
+
+    def __init__(
+        self,
+        segmentation_: cbase.Segmentation,
+        zoning: cbase.ZoningSystem,
+        type_: MatrixType,
+        path: pathlib.Path,
+        *,
+        key_template: str | None = None,
+        check_file: bool = True,
+        complevel: int = 9,
+        complib: str = "zlib",
+    ) -> None:
+        super().__init__(segmentation_, zoning, type_)
+
+        if key_template is None:
+            key_template = self._default_key_template
+
+        self._raw_key_template = key_template
+        self._key_template = key_template.format(
+            type=self.type.name, slice_name="{slice_name}"
+        )
+        self._path = path.resolve()
+        self._keys: dict[segmentation.SegmentationSlice, str] = {}
+        self._complevel = complevel
+        self._complib = complib
+
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+
+        if check_file and not self._path.is_file():
+            raise FileNotFoundError(path)
+
+        if check_file:
+            self._validate_omx_compatibility()
+            with omx.OMXFile(self._path, mode="r") as file:
+                levels = set(file.matrix_levels)
+                for slice_ in self._segmentation.iter_slices():
+                    key = self._get_key(slice_)
+                    if key not in levels:
+                        raise FileNotFoundError(
+                            f"{self._path} does not contain matrix key: {key}"
+                        )
+
+    @property
+    def name(self) -> str:
+        """Name of the matrices."""
+        return self._path.stem
+
+    @property
+    def path(self) -> pathlib.Path:
+        """Path to HDF file containing the matrices."""
+        return self._path
+
+    def _get_key(self, slice_: segmentation.SegmentationSlice) -> str:
+        """Get HDF key for given slice, generates it if not already present."""
+        if slice_ not in self._keys:
+            slice_name = self._segmentation.generate_slice_name(slice_)
+            self._keys[slice_] = self._key_template.format(slice_name=slice_name)
+        return self._keys[slice_]
+
+    @classmethod
+    def _normalise_path(cls, path: pathlib.Path, *, add_default_suffix: bool) -> pathlib.Path:
+        """Return a normalised absolute path, with optional default suffix."""
+        if add_default_suffix and "." not in path.name:
+            path = path.with_suffix(cls._default_save_suffix)
+        return path.resolve()
+
+    @property
+    def _omx_shape(self) -> tuple[int, int]:
+        """Expected OMX matrix shape from zoning."""
+        size = len(self._zoning.zone_ids)
+        return (size, size)
+
+    def _ensure_omx_file(self) -> None:
+        """Create OMX file and required structure if it doesn't exist."""
+        if self._path.is_file():
+            return
+
+        with omx.OMXFile(
+            self._path,
+            mode="w",
+            omx_version="0.2",
+            shape=self._omx_shape,
+        ) as file:
+            file.zones = self._zoning.zone_ids
+
+    def _validate_omx_compatibility(self) -> None:
+        """Raise ValueError if file doesn't look like expected OMX-compatible storage."""
+        with omx.OMXFile(self._path, mode="r") as file:
+            if file.shape != self._omx_shape:
+                expected_shape = self._omx_shape
+                raise ValueError(
+                    f"{self._path} shape {file.shape} does not match zoning shape "
+                    f"{expected_shape}"
+                )
+            if not np.array_equal(np.sort(file.zones), np.sort(self._zoning.zone_ids)):
+                raise ValueError(f"{self._path} zones don't match zoning system")
+
+    def _metadata_frame(self) -> pd.DataFrame:
+        """Build metadata required for path-only loading."""
+        return pd.DataFrame(
+            [
+                {
+                    "version": self._metadata_version,
+                    "matrix_type": self._type.name,
+                    "key_template": self._raw_key_template,
+                }
+            ]
+        )
+
+    def _write_metadata(self, path: pathlib.Path) -> None:
+        """Write metadata, segmentation and zoning to file."""
+        self._metadata_frame().to_hdf(path, key=self._metadata_key, mode="a", format="fixed")
+        zoning_key = f"zoning_{self._zoning.name}"
+        zoning_meta_key = f"zoning_meta_{self._zoning.name}"
+        with h5py.File(path, "a") as file:
+            has_segmentation = "segmentation" in file
+            has_zoning = zoning_key in file
+            has_zoning_meta = zoning_meta_key in file
+
+        if not has_segmentation:
+            self._segmentation.save(path, "hdf")
+
+        if not has_zoning:
+            self._zoning.zones_data.reset_index().to_hdf(path, key=zoning_key, mode="a")
+
+        if not has_zoning_meta:
+            with h5py.File(path, "a") as file:
+                file.create_dataset(
+                    zoning_meta_key,
+                    data=self._zoning.metadata.to_yaml().encode("utf-8"),
+                )
+
+    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:
+        """Save the matrix to HDF, with a key based on the slice parameters."""
+        self.validate_slice(slice_)
+        self._ensure_omx_file()
+
+        key = self._get_key(slice_)
+        self.validate_matrix(matrix, key)
+
+        with omx.OMXFile(
+            self._path,
+            mode="a",
+            filters=tables.Filters(
+                complevel=self._complevel,
+                complib=self._complib,
+                shuffle=False,
+            ),
+        ) as file:
+            try:
+                file.get_node("/data", key)
+            except tables.NoSuchNodeError:
+                pass
+            else:
+                file.remove_node("/data", key)
+            file.set_matrix_level(key, matrix)
+        self._write_metadata(self._path)
+        LOG.debug("Written %s matrix to %s", key, self._path)
+
+    def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
+        """Load the matrix from HDF."""
+        self.validate_slice(slice_)
+        key = self._get_key(slice_)
+        with omx.OMXFile(self._path, mode="r") as file:
+            if key not in file.matrix_levels:
+                raise KeyError(f"no matrix found for {slice_}")
+            data = file.get_matrix_level(key)
+
+        data.index.name = "origin"
+        data.columns.name = "destination"
+        self.validate_matrix(data, key)
+        return Matrix(data, slice_)
+
+    def new(  # noqa: D102
+        self,
+        name: str,
+        *,
+        segmentation_: cbase.Segmentation | None = None,
+        zoning: cbase.ZoningSystem | None = None,
+        type_: MatrixType | None = None,
+    ) -> Self:
+        if pathlib.Path(name).suffix:
+            path = self._path.with_name(name)
+        else:
+            suffix = self._path.suffix or ".h5"
+            path = self._path.with_name(f"{name}{suffix}")
+
+        return self.__class__(
+            segmentation_=self._segmentation if segmentation_ is None else segmentation_,
+            zoning=self._zoning if zoning is None else zoning,
+            type_=self._type if type_ is None else type_,
+            path=path,
+            key_template=self._raw_key_template,
+            check_file=False,
+            complevel=self._complevel,
+            complib=self._complib,
+        )
+
+    def exists(self) -> bool:  # noqa: D102
+        if not self._path.is_file():
+            return False
+
+        try:
+            with omx.OMXFile(self._path, mode="r") as file:
+                levels = set(file.matrix_levels)
+                for slice_ in self._segmentation.iter_slices():
+                    key = self._get_key(slice_)
+                    if key not in levels:
+                        return False
+        except (OSError, ValueError, KeyError):
+            return False
+        return True
+
+    def save(self, path: pathlib.Path) -> pathlib.Path:
+        """Save matrices, segmentation and zoning to a single HDF file."""
+        path = self._normalise_path(path, add_default_suffix=True)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with omx.OMXFile(
+            path,
+            mode="w",
+            omx_version="0.2",
+            shape=self._omx_shape,
+            filters=tables.Filters(
+                complevel=self._complevel,
+                complib=self._complib,
+                shuffle=False,
+            ),
+        ) as file:
+            file.zones = self._zoning.zone_ids
+            for matrix in self:
+                key = self._get_key(matrix.slice)
+                file.set_matrix_level(key, matrix.data)
+
+        self._metadata_frame().to_hdf(path, key=self._metadata_key, mode="a", format="fixed")
+        self._segmentation.save(path, "hdf")
+        self._zoning.save(path, "hdf")
+        return path
+
+    @classmethod
+    def load(cls, path: pathlib.Path) -> "HDFMatrices":
+        """Load matrices and metadata from a single HDF file path."""
+        path = cls._normalise_path(path, add_default_suffix=True)
+        if not path.is_file():
+            raise FileNotFoundError(path)
+
+        try:
+            metadata = pd.read_hdf(path, key=cls._metadata_key, mode="r")
+        except KeyError as exc:
+            raise ValueError(f"{path} does not contain HDFMatrices metadata") from exc
+
+        if len(metadata) != 1:
+            raise ValueError(f"expected 1 metadata row in {path} not {len(metadata)}")
+
+        row = metadata.iloc[0]
+        try:
+            type_ = MatrixType[str(row["matrix_type"])]
+        except KeyError as exc:
+            raise ValueError(f"invalid matrix type in metadata: {row['matrix_type']}") from exc
+
+        key_template = str(row["key_template"])
+        segmentation_ = cbase.Segmentation.load(path, "hdf")
+        zoning = cbase.ZoningSystem.load(path, "hdf")
+        if not isinstance(zoning, cbase.ZoningSystem):
+            raise TypeError(f"expected one zoning system in {path} not {type(zoning)}")
+        loaded = cls(
+            segmentation_=segmentation_,
+            zoning=zoning,
+            type_=type_,
+            path=path,
+            key_template=key_template,
+            check_file=True,
+        )
+        loaded._validate_omx_compatibility()
+        return loaded
+
+    def to_mat(
+        self,
+        voyager_path: pathlib.Path,
+        out_path: pathlib.Path | None = None,
+        *,
+        overwrite: bool = False,
+    ) -> pathlib.Path:
+        """Convert HDF matrices to a CUBE .mat file."""
+        converter = cube.CUBEMatConverter(voyager_path)
+        return converter.from_omx(self._path, out_path, overwrite=overwrite)
+
+    def to_csv(
+        self, folder: pathlib.Path, *, filename_template: str | None = None
+    ) -> MatrixFiles:
+        """Convert HDF matrices to CSV matrix files."""
+        output = MatrixFiles(
+            segmentation_=self._segmentation,
+            zoning=self._zoning,
+            type_=self._type,
+            folder=folder,
+            filename_template=filename_template,
+            check_files=False,
+        )
+        for matrix in self:
+            output.set_matrix(matrix.data, matrix.slice)
+        return output
 
 
 class LongMatrices(MatricesBase):
@@ -1408,14 +1775,14 @@ class LongMatrices(MatricesBase):
 
     def __init__(
         self,
-        segmentation_: cb.Segmentation,
-        zoning: cb.ZoningSystem,
+        segmentation_: cbase.Segmentation,
+        zoning: cbase.ZoningSystem,
         type_: MatrixType,
         *,
         data: pd.DataFrame | None = None,
         name: str = "LongMatrix",
         columns: list[str] | None = None,
-    ):
+    ) -> None:
         super().__init__(segmentation_, zoning, type_)
         self._name = name
         self._index = self._get_index_names(segmentation_)
@@ -1430,11 +1797,11 @@ class LongMatrices(MatricesBase):
         self._columns = columns
 
     @classmethod
-    def _get_index_names(cls, segmentation_: cb.segmentation.Segmentation) -> list[str]:
+    def _get_index_names(cls, segmentation_: segmentation.Segmentation) -> list[str]:
         return [*segmentation_.naming_order, cls._origin_column, cls._dest_column]
 
     @property
-    def name(self) -> str:
+    def name(self) -> str:  # noqa: D102
         return self._name
 
     def _create_empty_data(
@@ -1468,10 +1835,8 @@ class LongMatrices(MatricesBase):
 
         return data, columns
 
-    def _validate_data(
-        self, data: pd.DataFrame, columns: list[str] | None = None
-    ) -> tuple[pd.DataFrame, list[str]]:
-        """Validate the data has correct indices and columns."""
+    def _validate_index(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Validate the data has the correct indices."""
         index = set(self._index)
         if set(data.index.names) != index:
             # If single index assume segmentation indices are columns
@@ -1486,7 +1851,8 @@ class LongMatrices(MatricesBase):
 
             data = data.set_index(self._index)
 
-        assert isinstance(data.index, pd.MultiIndex)
+        if not isinstance(data.index, pd.MultiIndex):
+            raise TypeError(f"data should have a MultiIndex not {type(data.index)}")
 
         if not data.index.dtypes.apply(pd.api.types.is_integer_dtype).all():
             try:
@@ -1501,15 +1867,22 @@ class LongMatrices(MatricesBase):
                     f"indices should be integers not {data.index.dtype.name}"
                 ) from exc
 
+        if data.index.has_duplicates:
+            raise ValueError(f"duplicate indices found in {self.name}")
+        return data
+
+    def _validate_data(
+        self, data: pd.DataFrame, columns: list[str] | None = None
+    ) -> tuple[pd.DataFrame, list[str]]:
+        """Validate the data has correct indices and columns."""
+        data = self._validate_index(data)
+
         try:
             data = data.astype(float)
         except ValueError as exc:
             raise ValueError(
                 f"matrix data should be numeric not {data.dtypes.to_list()}"
             ) from exc
-
-        if data.index.has_duplicates:
-            raise ValueError(f"duplicate indices found in {self.name}")
 
         if columns is None:
             columns = data.columns.to_list()
@@ -1534,9 +1907,8 @@ class LongMatrices(MatricesBase):
         """Return a copy of the underlying DataFrame."""
         return self._data.copy(deep)
 
-    def _get_matrix(
-        self, slice_: cb.segmentation.SegmentationSlice
-    ) -> Matrix | pd.DataFrame:
+    def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix | pd.DataFrame:  # noqa: D102
+        self.validate_slice(slice_)
         data: pd.DataFrame = self._data.loc[slice_.as_tuple()].copy()
         if len(data.columns) > 1:
             return data
@@ -1546,15 +1918,17 @@ class LongMatrices(MatricesBase):
         data.name = None
         return Matrix(data.unstack(), slice_)
 
-    def _set_matrix(
-        self, matrix: pd.DataFrame, slice_: cb.segmentation.SegmentationSlice
-    ):
+    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:  # noqa: D102
+        self.validate_slice(slice_)
+
         if matrix.index.nlevels == 1:
             self.validate_matrix(matrix, str(slice_))
             matrix.index.name = self._origin_column
             matrix.columns.name = self._dest_column
 
-            assert self._columns is not None
+            if self._columns is None:
+                raise TypeError("columns should be defined")
+
             matrix = matrix.stack().to_frame(name=self._columns[0])
 
         if matrix.index.names != [self._origin_column, self._dest_column]:
@@ -1570,10 +1944,11 @@ class LongMatrices(MatricesBase):
 
         matrix = matrix.copy()
         matrix.index = pd.MultiIndex.from_tuples(
-            [slice_.as_tuple() + (i, j) for i, j in matrix.index]
+            [(*slice_.as_tuple(), i, j) for i, j in matrix.index]
         )
 
-        # Cannot set multiple rows with index directly, so instead concat new columns and update
+        # Cannot set multiple rows with index directly,
+        # so instead concat new columns and update
         matrix.columns = [f"{i}_set" for i in matrix.columns]
         updated = pd.concat([self._data, matrix], axis=1)
         updated.index.names = self._data.index.names
@@ -1584,8 +1959,13 @@ class LongMatrices(MatricesBase):
 
         self._data = updated[self._data.columns]
 
-    def new(
-        self, name: str, *, segmentation_=None, zoning=None, type_=None
+    def new(  # noqa: D102
+        self,
+        name: str,
+        *,
+        segmentation_: cbase.Segmentation | None = None,
+        zoning: cbase.ZoningSystem | None = None,
+        type_: MatrixType | None = None,
     ) -> "LongMatrices":
         return LongMatrices(
             segmentation_=self.segmentation if segmentation_ is None else segmentation_,
@@ -1595,7 +1975,7 @@ class LongMatrices(MatricesBase):
             columns=self._columns,
         )
 
-    def exists(self) -> bool:
+    def exists(self) -> bool:  # noqa: D102
         try:
             self._validate_data(self._data)
         except ValueError:
@@ -1606,8 +1986,8 @@ class LongMatrices(MatricesBase):
     @classmethod
     def from_csv(
         cls,
-        segmentation_: cb.Segmentation,
-        zoning: cb.ZoningSystem,
+        segmentation_: cbase.Segmentation,
+        zoning: cbase.ZoningSystem,
         type_: MatrixType,
         path: pathlib.Path,
         *,

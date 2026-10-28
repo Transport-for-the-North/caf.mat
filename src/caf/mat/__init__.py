@@ -1,3 +1,3 @@
-"""CAF tool for handling demand matrices in various formats."""
+"""Interacting with, and converting between formats of, transport modelling matrices."""
 
 from ._version import __version__

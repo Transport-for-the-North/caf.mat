@@ -6,25 +6,28 @@ on:
   pull_request:
     branches: main
 
+permissions:
+  contents: read
+
 jobs:
   test:
+    timeout-minutes: 10
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-        cache: 'pip'
+        cache: "pip"
         cache-dependency-path: |
           requirements.txt
           requirements_dev.txt
-          requirements_sparse.txt
 
     - name: Install dependencies
       run: |
@@ -33,8 +36,14 @@ jobs:
         pip install -r requirements_dev.txt
 
     - name: Test with PyTest
-      run:
-        pytest
+      run: pytest
 
     - name: Upload coverage reports to Codecov with GitHub Action
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+
+    - name: Upload test results to Codecov
+      uses: codecov/test-results-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 SATURN .UFM Files to CSVs
 =========================
@@ -53,8 +52,8 @@ def parse_args() -> tuple[pathlib.Path, pathlib.Path]:
     return args.saturn_path, args.matrix_folder
 
 
-def main():
-    """Main function for running converting SATURN UFMs to CSVs."""
+def main() -> None:
+    """Convert SATURN UFMs to CSVs."""
     saturn_path, matrix_folder = parse_args()
     converter = UFMConverter(saturn_path)
 

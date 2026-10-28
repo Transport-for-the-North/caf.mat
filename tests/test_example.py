@@ -1,5 +1,6 @@
-# -*- coding: utf-8 -*-
-"""Tests for the {} module"""
+"""Tests for the {} module."""
+
+# # # IMPORTS # # #
 
 
 # # # CONSTANTS # # #
@@ -10,5 +11,8 @@
 
 # # # TESTS # # #
 class TestFunctionName:
-    def test_something(self):
+    """Example test class."""
+
+    def test_something(self) -> None:
+        """Example unit test."""
         assert True

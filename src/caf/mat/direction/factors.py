@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Time period and from / to home factors required for PA and OD conversions."""
 
 ##### IMPORTS #####
@@ -11,7 +10,7 @@ from collections.abc import Collection, Mapping, Sequence
 from typing import Self
 
 # Third Party
-import caf.base as base  # isort conflict pylint: disable=consider-using-from-import
+import caf.base as cbase
 import caf.toolkit as ctk
 import numpy as np
 import pandas as pd
@@ -31,7 +30,7 @@ class UnexpectedPhiFactorsWarning(UserWarning):
     """Warning for unexpected input for PhiFactors, which can be handled."""
 
 
-class InvalidPhiFactors(ValueError):
+class InvalidPhiFactorsError(ValueError):
     """Error for invalid input for PhiFactors."""
 
 
@@ -97,7 +96,8 @@ class PhiFactors:
         period_filter: Collection[int] | None = None,
         additional_segments: Sequence[str] | None = None,
         segment_filters: Mapping[str, Sequence[int]] | None = None,
-    ):
+    ) -> None:
+
         self._tp_segment = self._tp_segment_enum.get_segment()
 
         subsets: dict[str, Sequence[int]] = {}
@@ -125,7 +125,7 @@ class PhiFactors:
             self._tp_segment.name
         )
 
-        # TODO(MB) This could be a parameter which warns user if not already sums to 1
+        # TODO(MB): This could be a parameter which warns user if not already sums to 1 #27
         # Normalise time period factors, so time period from sums to 1
         # i.e. all trips leaving in 1 time period must return at some point
         self._data = self._data.div(self._data.sum(axis=1), axis=0)
@@ -145,14 +145,14 @@ class PhiFactors:
 
             missing = expected_columns - columns
             if len(missing) > 0:
-                raise InvalidPhiFactors(
+                raise InvalidPhiFactorsError(
                     f"{len(missing)} expected columns missing {missing}"
                 )
 
         data = data[list(expected_columns)]
 
         if len(data.columns) == 0:
-            raise InvalidPhiFactors("no time period columns")
+            raise InvalidPhiFactorsError("no time period columns")
 
         return data
 
@@ -163,11 +163,12 @@ class PhiFactors:
         subsets: dict[str, Sequence[int]],
     ) -> tuple[segmentation.Segmentation, pd.DataFrame]:
         if additional_segments is None:
-            enum_segments = [self._tp_segment_enum]
-            naming = [self._tp_segment.name]
+            enum_segments: list[str] | list[segments.SegmentsSuper] = [self._tp_segment_enum]
+            naming: list[str] = [self._tp_segment.name]
         else:
-            enum_segments = list(additional_segments) + [self._tp_segment.name]
-            naming = enum_segments
+            enum_segments = [*list(additional_segments), self._tp_segment.name]
+            # enum_segments is list[str] at this point
+            naming = enum_segments  # type: ignore[assignment]
 
         mask = np.full(len(data), True)
         for seg, values in subsets.items():
@@ -175,16 +176,18 @@ class PhiFactors:
         data = data.loc[mask]
 
         segmentation_ = segmentation.Segmentation(
+            # Can handle enum_segments as list[str], caf.base type annotations need updating
             segmentation.SegmentationInput(
-                enum_segments=enum_segments,
+                enum_segments=enum_segments,  # type: ignore[arg-type]
                 naming_order=naming,
                 subsets={i: list(j) for i, j in subsets.items()},
             )
         )
         index = segmentation_.ind()
-        segmentation_, _, _ = segmentation.Segmentation.validate_segmentation(
+        validation = segmentation.Segmentation.validate_segmentation(
             data, segmentation_, cut_read=True
         )
+        segmentation_ = validation[0]
 
         data = data.reindex(index=index, fill_value=0)
 
@@ -254,7 +257,8 @@ class PhiFactors:
             path, "Tour Proportions", dtype=dtypes, usecols=list(dtypes.keys())
         )
         data = data.rename(
-            columns=segment_columns | dict(zip(period_columns, cls._period_columns))
+            columns=segment_columns
+            | dict(zip(period_columns, cls._period_columns, strict=True))
         )
 
         if translate_segments is not None:
@@ -355,7 +359,7 @@ class OccupanciesParameters:
 
 def _validate_occupancy_columns(
     driver_column: str | None, total_column: str | None, occupancy_column: str | None
-):
+) -> None:
     if occupancy_column is None and (total_column is None or driver_column is None):
         raise ValueError(
             "if occupancy column isn't given then total_column and"
@@ -375,7 +379,7 @@ def load_occupancies(
     total_column: str | None = "total",
     occupancy_column: str | None = None,
     translate_segments: dict[str, str] | None = None,
-) -> base.DVector:
+) -> cbase.DVector:
     """Load occupancy factors from a CSV.
 
     Parameters
@@ -401,7 +405,7 @@ def load_occupancies(
 
     Returns
     -------
-    base.DVector
+    caf.base.DVector
         Occupancies data as a DVector.
 
     Raises
@@ -411,7 +415,7 @@ def load_occupancies(
         when translating) and `total_column` or `driver_column` isn't
         provided to recalculate the occupancies.
     """
-    # TODO(MB) Reimplement this as a class which supports matrices (LongMatrices)
+    # TODO(MB): Reimplement this as a class which supports matrices (LongMatrices) #26
     _validate_occupancy_columns(driver_column, total_column, occupancy_column)
 
     dtypes = {
@@ -464,13 +468,13 @@ def load_occupancies(
 
     segmentation_ = segmentation.Segmentation(
         segmentation.SegmentationInput(
-            enum_segments=columns,  # type: ignore
+            enum_segments=columns,  # type: ignore[arg-type]
             naming_order=columns,
         )
     )
 
     try:
-        return base.DVector(segmentation_, data)
+        return cbase.DVector(segmentation_, data)
     except segmentation.SegmentationError:
         LOG.exception("error creating DVector for occupancies, trying cut_read=True")
-        return base.DVector(segmentation_, data, cut_read=True)
+        return cbase.DVector(segmentation_, data, cut_read=True)

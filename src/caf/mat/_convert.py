@@ -12,8 +12,7 @@ See Also
 
 ##### IMPORTS #####
 
-# Built-Ins
-import datetime
+import datetime as dt
 import logging
 import os
 import pathlib
@@ -147,7 +146,7 @@ def _validate_paths(
     *formats: _mat.MatrixFileFormat,
     saturn_path: pathlib.Path | None = None,
     voyager_path: pathlib.Path | None = None,
-):
+) -> None:
     """Raise error if paths are None when required by `formats`."""
     if _mat.MatrixFileFormat.UFM in formats:
         if saturn_path is None:
@@ -244,11 +243,17 @@ class ConvertArguments(_mat.ArgumentHandler):
     from_: _mat.MatrixFileFormat | None = pydantic.Field(None, alias="from")
     """Format to convert from, if not given inferred from file extension."""
     saturn_folder: pydantic.DirectoryPath | None = _SATURN_PATH
-    """Path to folder containing SATURN executables, required when converting to / from UFMs."""
+    """Path to folder containing SATURN executables.
+
+    Required when converting to / from UFMs."""
     voyager_path: pydantic.FilePath | None = _VOYAGER_PATH
-    """Path to CUBE Voyager executable file, required when converting to / from CUBE .MAT files."""
+    """Path to CUBE Voyager executable file.
+
+    Required when converting to / from CUBE .MAT files."""
     output: pathlib.Path | None = None
-    """Path to save converted matrix to, if not given uses same file name (with new extension)."""
+    """Path to save converted matrix to.
+
+    If not given uses same file name (with new extension)."""
     overwrite: bool = False
     """If given will overwrite existing output files, use with caution."""
 
@@ -276,4 +281,4 @@ class ConvertArguments(_mat.ArgumentHandler):
             folder = self.output.parent
         else:
             folder = self.path.parent
-        return folder / f"caf.mat-convert-{datetime.date.today():%Y%m%d}.log"
+        return folder / f"caf.mat-convert-{dt.date.today():%Y%m%d}.log"

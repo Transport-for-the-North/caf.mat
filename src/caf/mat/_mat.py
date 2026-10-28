@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Main module for caf.mat package."""
 
 ##### IMPORTS #####
@@ -48,7 +47,7 @@ class MatrixFileFormat(enum.StrEnum):
     LONG_CSV = enum.auto()
 
     @classmethod
-    def _missing_(cls, value) -> Self | None:
+    def _missing_(cls, value) -> Self | None:  # noqa: ANN001 - value is anything
         value = str(value).lower()
         for member in cls:
             if member.value == value:

@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 """Compare OD to PA outputs from CAF.mat to original process."""
 
 ##### IMPORTS #####
 
 # Built-Ins
-import datetime
+import datetime as dt
 import logging
 import pathlib
 import warnings
@@ -19,7 +18,7 @@ import pydantic
 from pydantic import dataclasses
 
 # Local Imports
-import caf.mat
+import caf.mat as cmat
 
 ##### CONSTANTS #####
 
@@ -32,7 +31,8 @@ CONFIG_PATH = pathlib.Path(__file__).with_name("od2pa_comparison.yml")
 
 
 class MatrixComparison:
-    def __init__(self, old: pd.DataFrame, new: pd.DataFrame):
+    """Compare two different matrices."""
+    def __init__(self, old: pd.DataFrame, new: pd.DataFrame) -> None:
         self._old = old
         self._new = new
         self._difference = None
@@ -40,12 +40,14 @@ class MatrixComparison:
 
     @property
     def difference(self) -> pd.DataFrame:
+        """Subtract old from new."""
         if self._difference is None:
             self._difference = self._new - self._old
         return self._difference.copy()
 
     @property
     def percentage_difference(self) -> pd.DataFrame:
+        """Calculate percentage change from old to new."""
         if self._percentage is None:
             old = self._old.to_numpy()
             new = self._new.to_numpy()
@@ -74,6 +76,7 @@ class MatrixComparison:
         }
 
     def compare(self) -> dict[str, float]:
+        """Calculate comparison statistics between old and new matrices."""
         old = self._old.to_numpy()
         new = self._new.to_numpy()
         percentage = self.percentage_difference.to_numpy()
@@ -102,12 +105,14 @@ class MatrixComparison:
         return comparison
 
     def comparison_summary(self) -> str:
+        """Produce a text summary of the comparison statistics."""
         template = (
             "\tOld Total: {old_total:.1e}\n\tNew Total: {new_total:.1e}"
             "\n\tTotal Difference: {total_difference:.1e} ({total_percentage_difference:.1%})"
             "\n\tMax Abs Difference: {max_abs_difference:.1e}"
             " ({abs_difference_nans:,.0f} NaNs)"
-            "\n\tMax %% Difference: {max_percentage_difference:.1e} ({percentage_difference_nans:,.0f} Nans"
+            "\n\tMax %% Difference: {max_percentage_difference:.1e}"
+            " ({percentage_difference_nans:,.0f} Nans"
             " {percentage_difference_infs:,.0f} Infs)"
         )
 
@@ -120,7 +125,8 @@ def compare_matrices(
     output_folder: pathlib.Path,
     old_format: Literal["square", "long", "tp"] = "square",
     new_format: Literal["square", "long"] = "square",
-):
+) -> None:
+    """Perform comparison of multiple pairs of matrices."""
     output_folder.mkdir(exist_ok=True)
 
     summary_data = {}
@@ -134,7 +140,8 @@ def compare_matrices(
 
             new = ctk.io.read_csv_matrix(new_path, format_=new_format)
         except FileNotFoundError as exc:
-            LOG.error("File doesn't exist: %s", exc)
+            # Not logging the full traceback
+            LOG.error("File doesn't exist: %s", exc)  # noqa: TRY400
             continue
 
         if not old.index.equals(new.index):
@@ -179,12 +186,17 @@ class _Parameters(ctk.BaseConfig):
 
 
 def main() -> None:
+    """Compare matrices in multiple folders, parameters read from config.
+
+    See Also
+    --------
+    :const:`CONFIG_PATH`
+        Expected location of config file.
+    """
     parameters = _Parameters.load_yaml(CONFIG_PATH)
 
-    details = ctk.ToolDetails("caf.mat.compare", caf.mat.__version__)
-    output_folder = (
-        parameters.output_folder / f"OD2PA_comparison-{datetime.date.today():%Y%m%d}"
-    )
+    details = ctk.ToolDetails("caf.mat.compare", cmat.__version__)
+    output_folder = parameters.output_folder / f"OD2PA_comparison-{dt.date.today():%Y%m%d}"
     output_folder.mkdir(exist_ok=True)
 
     log_file = output_folder / "compare.log"

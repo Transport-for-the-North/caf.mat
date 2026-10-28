@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Module for converting matrices to/from CUBE's .mat format."""
 
 ##### IMPORTS #####
@@ -29,13 +28,13 @@ class CUBEMatConverter:
 
     Parameters
     ----------
-    cube_path : Path
+    voyager_path : Path
         Path to the CUBE Voyager executable file.
 
     Raises
     ------
     FileNotFoundError
-        If `cube_voyager_path` doesn't exist, or isn't a file.
+        If `voyager_path` doesn't exist, or isn't a file.
     """
 
     def __init__(self, voyager_path: Path) -> None:
@@ -46,7 +45,8 @@ class CUBEMatConverter:
         if self.voyager_path.name.lower().strip() != "voyager.exe":
             warnings.warn(
                 "CUBE Voyager executable is usually named "
-                f"'VOYAGER.exe', is '{self.voyager_path.name}' correct?"
+                f"'VOYAGER.exe', is '{self.voyager_path.name}' correct?",
+                stacklevel=2,
             )
 
     def from_csv(
@@ -198,7 +198,7 @@ class CUBEMatConverter:
         ]
 
         LOG.debug("Running CUBE Voyager command: %s", " ".join(args))
-        comp_proc = subprocess.run(args, capture_output=True, check=False)
+        comp_proc = subprocess.run(args, capture_output=True, check=False)  # noqa: S603 - executable defined by user
         LOG.debug(
             "CUBE output:%s%s",
             _stdout_decode(comp_proc.stdout),
@@ -233,16 +233,15 @@ class CUBEMatConverter:
         """Cleanup script file and logs."""
         script_path.unlink()
         script_path.with_name("TPPL.PRJ").unlink()
-        del_pat = re.compile(r"(cmat.*)\.(prn|var)", re.I)
+        del_pat = re.compile(r"(cmat.*)\.(prn|var)", re.IGNORECASE)
         for path in script_path.parent.iterdir():
             match = del_pat.match(path.name)
             if match:
                 path.unlink()
 
     def folder_to_omx(self, folder: Path, glob: str = "*.mat") -> list[Path]:
-        """Conver all ".mat" files in `folder` to OMX."""
-        # TODO(MB): This could be made more efficient by writing a single script
-        # to convert all files instead of iteratively calling to_omx
+        """Convert all ".mat" files in `folder` to OMX."""
+        # TODO(MB): This could be made more efficient by writing a single script #28
         omx_paths = []
         for path in folder.glob(glob):
             out_path = self.to_omx(path)
@@ -279,8 +278,7 @@ class CUBEMatConverter:
         out_path = out_path.resolve()
 
         LOG.info(
-            'Converting "%s" to MAT file with Cube Voyager,'
-            " this might take several minutes",
+            'Converting "%s" to MAT file with Cube Voyager, this might take several minutes',
             omx_file.name,
         )
 
