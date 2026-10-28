@@ -304,7 +304,7 @@ def read_4dcons(tor_cons: str,
                 moira_fldr: pathlib.Path, 
                 out_fldr: pathlib.Path) -> dict:
 
-    out_fldr.mkdir(parents=True, exist_ok=True)
+    pathlib.Path(out_fldr).mkdir(parents=True, exist_ok=True)
     
     # process sectoral constraint
     lev_tour =  level
