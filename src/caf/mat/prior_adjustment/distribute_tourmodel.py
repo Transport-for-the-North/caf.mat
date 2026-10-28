@@ -9,7 +9,7 @@ import os
 import pathlib
 
 # Third Party
-import caf.base as cb
+import caf.base as cbase
 import pandas as pd
 import numpy as np
 from caf.distribute import cost_functions, furness, gravity_model
@@ -364,8 +364,8 @@ def read_4dcons(tor_cons: str,
 
 # pylint: disable=too-many-arguments
 def _4d_constraint_gravity_model(
-    row_trip_ends: cb.DVector,
-    col_trip_ends: cb.DVector,
+    row_trip_ends: cbase.DVector,
+    col_trip_ends: cbase.DVector,
     name: str,
     tlds: dict[str, pathlib.Path],
     tld_zones: pd.Series,
@@ -390,9 +390,9 @@ def _4d_constraint_gravity_model(
 
     Parameters
     ----------
-    row_trip_ends : cb.DVector
+    row_trip_ends : cbase.DVector
         Origin (row) trip ends vector with segmentation information.
-    col_trip_ends : cb.DVector
+    col_trip_ends : cbase.DVector
         Destination (column) trip ends vector with segmentation information.
     name : str
         Identifier name for the gravity model run.
@@ -632,8 +632,8 @@ def main(cfg: DistributeConf):
 
         # --- Lookups and zoning systems --------------------------------------------
         tld_lookup = pd.read_csv(cfg.tld_lookup_path)
-        normits = cb.ZoningSystem.get_zoning(cfg.zone_system)
-        noham_sector = cb.ZoningSystem.get_zoning(cfg.sector_system)
+        normits = cbase.ZoningSystem.get_zoning(cfg.zone_system)
+        noham_sector = cbase.ZoningSystem.get_zoning(cfg.sector_system)
 
         z2s_cfg = cfg.zone_to_sector_lookup
         normits_noham_sector = pd.read_csv(z2s_cfg["path"])
@@ -657,8 +657,8 @@ def main(cfg: DistributeConf):
 
         # --- Adjustment target matrix segmentation and MatrixFiles -----------------
         adj_target_cfg = cfg.adj_target_matrices
-        full_seg_p = cb.Segmentation(
-            cb.SegmentationInput(
+        full_seg_p = cbase.Segmentation(
+            cbase.SegmentationInput(
                 enum_segments=adj_target_cfg["naming_order"],
                 naming_order=adj_target_cfg["naming_order"],
                 subsets={
@@ -679,8 +679,8 @@ def main(cfg: DistributeConf):
 
         # --- Cost files ------------------------------------------------------------
         cost_cfg = cfg.cost_files
-        cost_seg = cb.Segmentation(
-            cb.SegmentationInput(
+        cost_seg = cbase.Segmentation(
+            cbase.SegmentationInput(
                 enum_segments=cost_cfg["naming_order"],
                 naming_order=cost_cfg["naming_order"],
                 subsets={"m": _use_as_list(m_subset), "tp": _use_as_list(tp_subset)},
@@ -699,8 +699,8 @@ def main(cfg: DistributeConf):
         alternate_costs = None
         cost_steepness = None
         if alternate_costs_cfg["check"]:
-            alternate_costs_seg = cb.Segmentation(
-                cb.SegmentationInput(
+            alternate_costs_seg = cbase.Segmentation(
+                cbase.SegmentationInput(
                     enum_segments=alternate_costs_cfg["naming_order"],
                     naming_order=alternate_costs_cfg["naming_order"],
                     subsets={"m": _use_as_list(alternate_costs_cfg["mode"]), "tp": _use_as_list(tp_subset)},
@@ -719,8 +719,8 @@ def main(cfg: DistributeConf):
 
         # --- TLD files -------------------------------------------------------------
         tld_cfg = cfg.tld_files
-        tld_seg = cb.Segmentation(
-            cb.SegmentationInput(
+        tld_seg = cbase.Segmentation(
+            cbase.SegmentationInput(
                 enum_segments=tld_cfg["naming_order"],
                 naming_order=tld_cfg["naming_order"],
                 subsets={
@@ -743,7 +743,7 @@ def main(cfg: DistributeConf):
         dvec_map = {}
         if 0 in direction_od_list:
             prod_nhb = (
-                cb.DVector.load(te_cfg["prod_nhb"])
+                cbase.DVector.load(te_cfg["prod_nhb"])
                 .aggregate(["p", "m", "tp"])
                 .filter_segment_value("p", nhb_p_subset, keep_filtered=True)
                 .filter_segment_value("m", m_subset, keep_filtered=True)
@@ -751,7 +751,7 @@ def main(cfg: DistributeConf):
                 .aggregate_comp_zones(normits)
             )
             attr_nhb = (
-                cb.DVector.load(te_cfg["attr_nhb"])
+                cbase.DVector.load(te_cfg["attr_nhb"])
                 .aggregate(["p", "m", "tp"])
                 .filter_segment_value("p", nhb_p_subset, keep_filtered=True)
                 .filter_segment_value("m", m_subset, keep_filtered=True)
@@ -761,7 +761,7 @@ def main(cfg: DistributeConf):
             dvec_map[0] = (prod_nhb, attr_nhb)
         if 1 in direction_od_list:
             hb_prod_fr = (
-                cb.DVector.load(te_cfg["hb_prod_fr"])
+                cbase.DVector.load(te_cfg["hb_prod_fr"])
                 .aggregate(["p", "m", "tp"])
                 .filter_segment_value("p", hb_p_subset, keep_filtered=True)
                 .filter_segment_value("m", m_subset, keep_filtered=True)
@@ -769,7 +769,7 @@ def main(cfg: DistributeConf):
                 .aggregate_comp_zones(normits)
             )
             hb_attr_fr = (
-                cb.DVector.load(te_cfg["hb_attr_fr"])
+                cbase.DVector.load(te_cfg["hb_attr_fr"])
                 .aggregate(["p", "m", "tp"])
                 .filter_segment_value("p", hb_p_subset, keep_filtered=True)
                 .filter_segment_value("m", m_subset, keep_filtered=True)
@@ -779,7 +779,7 @@ def main(cfg: DistributeConf):
             dvec_map[1] = (hb_prod_fr, hb_attr_fr)
         if 2 in direction_od_list:
             hb_prod_to = (
-                cb.DVector.load(te_cfg["hb_prod_to"])
+                cbase.DVector.load(te_cfg["hb_prod_to"])
                 .aggregate(["p", "m", "tp"])
                 .filter_segment_value("p", hb_p_subset, keep_filtered=True)
                 .filter_segment_value("m", m_subset, keep_filtered=True)
@@ -787,7 +787,7 @@ def main(cfg: DistributeConf):
                 .aggregate_comp_zones(normits)
             )
             hb_attr_to = (
-                cb.DVector.load(te_cfg["hb_attr_to"])
+                cbase.DVector.load(te_cfg["hb_attr_to"])
                 .aggregate(["p", "m", "tp"])
                 .filter_segment_value("p", hb_p_subset, keep_filtered=True)
                 .filter_segment_value("m", m_subset, keep_filtered=True)
@@ -799,9 +799,9 @@ def main(cfg: DistributeConf):
         prod = pd.concat({k: v[0].data for k, v in dvec_map.items()})
         attr = pd.concat({k: v[1].data for k, v in dvec_map.items()})
         prod.index.names = ["direction_od", "p", "m", "tp"]
-        prod = cb.DVector(import_data=prod, segmentation=full_seg_p, zoning_system=normits)
+        prod = cbase.DVector(import_data=prod, segmentation=full_seg_p, zoning_system=normits)
         attr.index.names = ["direction_od", "p", "m", "tp"]
-        attr = cb.DVector(import_data=attr, segmentation=full_seg_p, zoning_system=normits)
+        attr = cbase.DVector(import_data=attr, segmentation=full_seg_p, zoning_system=normits)
 
         # --- Run -------------------------------------------------------------------
         run_opts = cfg.run_options
