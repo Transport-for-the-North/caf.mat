@@ -74,6 +74,9 @@ class DistributeConf(BaseConfig):
                             Includes the index column and required sector column name.
     adj_target_matrices : Dictionary containing configuration for sector target matrices, 
                           including naming order, folder path, and filename template.
+    read_4dcons_function : Dictionary containing configuration for the read_4dcons function, 
+                           including flag, adjustment type, level, input files, 
+                           adjustment files, and output path.
     cost_files : Dictionary containing configuration for cost matrix files, including
                 naming order, folder path, and filename template.
     tld_files : Dictionary containing configuration for TLD files, including naming
@@ -99,6 +102,7 @@ class DistributeConf(BaseConfig):
     sector_system: str
     zone_to_sector_lookup: dict[str, pathlib.Path | list[str] | str | str]
     adj_target_matrices: dict[str, list[str] | pathlib.Path | str]
+    read_4dcons_function: dict[str, str | bool | pathlib.Path]
     cost_files: dict[str, list[str] | pathlib.Path | str]
     comparison_cost_files: dict[str, bool | list[str] | int | pathlib.Path | str | float]
     tld_files: dict[str, list[str] | pathlib.Path | str]
@@ -293,10 +297,14 @@ def dfr_capval(dfr: pd.Series, chg_xmax: float = 1e+64, chg_xmin: float = None) 
     out = np.where(dfr > chg_xmax, chg_xmax, np.where(dfr < chg_xmin, chg_xmin, dfr))
     return pd.Series(out, index=dfr.index)
 
-def read_4dcons(tor_cons: str, tour_fldr: pathlib.Path, moira_fldr: pathlib.Path, out_fldr: pathlib.Path) -> dict:
+def read_4dcons(tor_cons: str, 
+                level: str,
+                tour_fldr: pathlib.Path, 
+                moira_fldr: pathlib.Path, 
+                out_fldr: pathlib.Path) -> dict:
         
     # process sectoral constraint
-    lev_tour =  "tour"
+    lev_tour =  level
     csv_tour = pd.read_csv(tour_fldr / 
                                 f"matrix_output_{lev_tour}_4d.csv")
     md, tsx_incl = [6], [1,2,3,4]
@@ -597,6 +605,15 @@ def main(cfg: DistributeConf):
         cfg.to_yaml(),
     )
 
+    # Check if read_4dcons is needed and run it if so
+    read_4dcons_cfg = cfg.read_4dcons_function
+    if read_4dcons_cfg["flag"]:
+        adjusted_output = read_4dcons(read_4dcons_cfg["adjustment_type"],
+                                      read_4dcons_cfg["level"],
+                                      read_4dcons_cfg["input_files"],
+                                      read_4dcons_cfg["adj_files"],
+                                      read_4dcons_cfg["output_path"])
+
     # To improve memory efficiency, each tp is processed separately.
     # This ensures the loaded DVectors aren't too large but multiprocessing will still work
     for tp_subset in cfg.timeperiod_subset:
@@ -809,11 +826,6 @@ def main(cfg: DistributeConf):
 
 
 if __name__ == "__main__":
-
-    tour = read_4dcons( 'moira',
-                       pathlib.Path(r"D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend"),
-                       pathlib.Path(r"I:\NorMITs Distribution\voa_gb_2023_uni_i1\iter3a_rail_only\inputs"),
-                       pathlib.Path(r"D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend\sectors_moira"))
 
     distribute_config = DistributeConf.load_yaml(
         pathlib.Path(__file__).parent / "distribute_tourmodel_config.yml"

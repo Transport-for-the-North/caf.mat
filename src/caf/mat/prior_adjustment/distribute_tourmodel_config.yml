@@ -98,6 +98,19 @@ adj_target_matrices:
   #"tourmodel_{type}_{slice_name}.csv"
 
 # ------------------------------------------------------------------
+# read_4dcons function flag and its inputs
+# This function was mainly during rail distribution, to adjust
+# the sector target matrices with MOIRA data
+# ------------------------------------------------------------------
+read_4dcons_function:
+  flag: False
+  adjustment_type: "moira" # moira or wavelength
+  level: "tour" # tour or gor
+  input_files: D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend
+  adj_files: I:\NorMITs Distribution\voa_gb_2023_uni_i1\iter3a_rail_only\inputs
+  output_path: D:\TM_Adjusted_Emp\NorMITs Demand_Nhan\NoTEM\tripend\sectors_moira
+
+# ------------------------------------------------------------------
 # Cost files (MatrixFiles)
 # ------------------------------------------------------------------
 cost_files:
