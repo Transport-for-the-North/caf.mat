@@ -228,8 +228,10 @@ def main(cfg: DistributeConf):
     if not ca_cfg.run:
         return
 
-    mode = cfg.mode_subset
+    m_subset = cfg.mode_subset
     tp_subset = cfg.timeperiod_subset
+    p_subset = cfg.purpose_subset
+    direction_od_subset = cfg.direction_subset
     zones_path = cfg.tld_lookup_path
     dvec_dir = cfg.trip_ends["prod_nhb"].parent.parent
     home_dir = cfg.output_path / "canca"
@@ -256,7 +258,12 @@ def main(cfg: DistributeConf):
     normits = cb.ZoningSystem.get_zoning(cfg.zone_system)
     segmentation_input = cb.SegmentationInput(naming_order=['m','p','tp','direction_od','ca'],
                                                 enum_segments=['direction_od','m','p','tp','ca'],
-                                                subsets={'m':_use_as_list(mode)})
+                                                subsets={
+                                                    "m": _use_as_list(m_subset),
+                                                    "p": _use_as_list(p_subset),
+                                                    "tp": _use_as_list(tp_subset),
+                                                    "direction_od": _use_as_list(direction_od_subset),
+                                                })
     ca_seg = cb.Segmentation(segmentation_input)
 
     # Combine hb_fr/hb_to/nhb DVectors per direction into a single CA-segmented DVector
@@ -287,7 +294,7 @@ def main(cfg: DistributeConf):
         full.index.names = ['direction_od'] + source_names
         full = full.groupby(level=full.index.names).sum()
         full.index = full.index.reorder_levels(ca_seg.naming_order)
-        dvecs[direction] = cb.DVector(ca_seg, full.xs(mode[0], level='m', drop_level=False), normits)
+        dvecs[direction] = cb.DVector(ca_seg, full.xs(m_subset[0], level='m', drop_level=False), normits)
         del hb_fr, hb_to, nhb
 
     tlds = pd.read_csv(ca_cfg.tlds_path, index_col=[0,1,2,3,4,5])['trips']
@@ -299,7 +306,7 @@ def main(cfg: DistributeConf):
         cb.SegmentationInput(
             enum_segments=cost_cfg["naming_order"],
             naming_order=cost_cfg["naming_order"],
-            subsets={"m": _use_as_list(mode), "tp": _use_as_list(tp_subset)},
+            subsets={"m": _use_as_list(m_subset), "tp": _use_as_list(tp_subset)},
         )
     )
     cost_matrix = MatrixFiles(
@@ -314,8 +321,8 @@ def main(cfg: DistributeConf):
         main_logger.info(f"Processing time period: {tp}")
         prod = dvecs['orig'].filter_segment_value('tp', tp, keep_filtered=True)
         attr = dvecs['dest'].filter_segment_value('tp', tp, keep_filtered=True)
-        agg_mat = DistributionMatrixReader(cfg, mode_subset=mode, tp_subset=tp)
-        cost_slice = {"m": mode[0], "tp": tp}
+        agg_mat = DistributionMatrixReader(cfg, mode_subset=m_subset, tp_subset=tp)
+        cost_slice = {"m": m_subset[0], "tp": tp}
         costs = cost_matrix.get_matrix(cost_slice).data
 
         main_logger.info(f"Loaded data for tp {tp}: {len(tlds)} TLD records, {len(zones)} zones")
