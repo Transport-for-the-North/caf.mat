@@ -303,7 +303,9 @@ def read_4dcons(tor_cons: str,
                 tour_fldr: pathlib.Path, 
                 moira_fldr: pathlib.Path, 
                 out_fldr: pathlib.Path) -> dict:
-        
+
+    out_fldr.mkdir(parents=True, exist_ok=True)
+    
     # process sectoral constraint
     lev_tour =  level
     csv_tour = pd.read_csv(tour_fldr / 
@@ -522,7 +524,7 @@ def _4d_constraint_gravity_model(
         col_sector.columns = ["model_zone_id", "trips"]
         row_sector = row.rename(trans).groupby("normits_id").sum().reset_index()
         row_sector.columns = ["model_zone_id", "trips"]
-        
+
         if furness_sector_target:
             sector_target_furnessed, _, _ = furness.furness_pandas_wrapper(
                 sector_target.data, row_sector, col_sector, tol=0.001
