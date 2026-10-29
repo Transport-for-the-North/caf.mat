@@ -588,9 +588,13 @@ def _4d_constraint_gravity_model(
         trans = constraint_area_trans.set_index(z2s_cfg["index_column"])[
             z2s_cfg["req_sector_column"]
         ].to_dict()
-        col_sector = col.rename(trans).groupby(model_zone_system.column_name).sum().reset_index()
+        col_sector = (
+            col.rename(trans).groupby(model_zone_system.column_name).sum().reset_index()
+        )
         col_sector.columns = ["model_zone_id", "trips"]
-        row_sector = row.rename(trans).groupby(model_zone_system.column_name).sum().reset_index()
+        row_sector = (
+            row.rename(trans).groupby(model_zone_system.column_name).sum().reset_index()
+        )
         row_sector.columns = ["model_zone_id", "trips"]
 
         if furness_sector_target:
@@ -740,9 +744,11 @@ def main(cfg: DistributeConf):
         z2s_cfg = cfg.zone_to_sector_lookup
         zone_to_sector_lookup_df = pd.read_csv(z2s_cfg["path"])
         zone_to_sector_lookup_df.columns = z2s_cfg["columns"]
-        zone_to_sector_lookup_df[z2s_cfg["req_sector_column"]] = zone_to_sector_lookup_df[
-            z2s_cfg["req_sector_column"]
-        ].replace(model_sector_system.name_to_id)
+        zone_to_sector_lookup_df[z2s_cfg["req_sector_column"]] = (
+            zone_to_sector_lookup_df[z2s_cfg["req_sector_column"]].replace(
+                model_sector_system.name_to_id
+            )
+        )
 
         # --- Split p into HB and NHB -----------------------------------------------
         hb_p_subset = (

@@ -13,8 +13,7 @@ import pandas as pd
 from caf.distribute import furness
 from caf.mat.dia.distribution_matrix_source import DistributionMatrixReader
 from caf.mat.matrices import MatricesBase, MatrixFiles, MatrixType
-from caf.mat.prior_adjustment.distribute_tourmodel import (DistributeConf,
-                                                           _use_as_list)
+from caf.mat.prior_adjustment.distribute_tourmodel import DistributeConf, _use_as_list
 from caf.toolkit.concurrency import multiprocess
 
 
