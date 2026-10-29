@@ -103,7 +103,9 @@ class DistributeConf(BaseConfig):
     sector_system: str
     zone_to_sector_lookup: dict[str, pathlib.Path | list[str] | str | str]
     adj_target_matrices: dict[str, list[str] | pathlib.Path | str]
-    read_4dcons_function: dict[str, str | bool | pathlib.Path]
+    read_4dcons_function: dict[
+        str, bool | str | str | pathlib.Path | pathlib.Path | pathlib.Path
+    ]
     cost_files: dict[str, list[str] | pathlib.Path | str]
     comparison_cost_files: dict[
         str, bool | list[str] | int | pathlib.Path | str | float
@@ -688,6 +690,11 @@ def _use_as_list(input_list: int | list[int]) -> list[int]:
     return input_list if isinstance(input_list, list) else [input_list]
 
 
+def _as_bool(value: bool | str) -> bool:
+    """Convert a config flag to bool; strictyaml loads dict values as strings."""
+    return value if isinstance(value, bool) else str(value).strip().lower() == "true"
+
+
 def main(cfg: DistributeConf):
     """
     Main function to execute the 4D constraint gravity model with post ME furness adjustment.
@@ -710,7 +717,7 @@ def main(cfg: DistributeConf):
 
     # Check if read_4dcons is needed and run it if so
     read_4dcons_cfg = cfg.read_4dcons_function
-    if read_4dcons_cfg["flag"] is True:
+    if _as_bool(read_4dcons_cfg["flag"]):
         adjusted_output = read_4dcons(  # pylint: disable=unused-variable
             read_4dcons_cfg["adjustment_type"],
             read_4dcons_cfg["level"],
@@ -805,7 +812,7 @@ def main(cfg: DistributeConf):
         alternate_costs_cfg = cfg.comparison_cost_files
         alternate_costs = None
         cost_steepness = None
-        if alternate_costs_cfg["check"]:
+        if _as_bool(alternate_costs_cfg["check"]):
             alternate_costs_seg = cbase.Segmentation(
                 cbase.SegmentationInput(
                     enum_segments=alternate_costs_cfg["naming_order"],
@@ -934,7 +941,7 @@ def main(cfg: DistributeConf):
             zone_to_sector_lookup_df,
             z2s_cfg,
             adj_target_purpose,
-            adj_target_cfg["furness"],
+            _as_bool(adj_target_cfg["furness"]),
             pathlib.Path(cfg.output_path),
             run_opts["run_gm"],
             run_opts["run_adjust"],
