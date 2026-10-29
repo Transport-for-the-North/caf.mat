@@ -67,6 +67,178 @@ class Matrix:
     slice: cbase.segmentation.SegmentationSlice
 
 
+@dataclasses.dataclass
+class _LazyOperation:
+    """Stored operation in a lazy matrices pipeline."""
+
+    name: str
+    args: tuple
+    kwargs: dict[str, object]
+
+
+class _LazyMatricesPipeline:
+    """Lazily compose matrices operations and materialise at the end."""
+
+    def __init__(self, source: "MatricesBase") -> None:
+        self._source = source
+        self._operations: list[_LazyOperation] = []
+
+    def _append(self, name: str, *args, **kwargs) -> "_LazyMatricesPipeline":
+        self._operations.append(_LazyOperation(name=name, args=args, kwargs=kwargs))
+        return self
+
+    def translate_zoning(
+        self,
+        new_zoning: cbase.ZoningSystem,
+        translation: pd.DataFrame | ctk.translation.ZoneCorrespondence | None = None,
+    ) -> "_LazyMatricesPipeline":
+        """Queue `translate_zoning`."""
+        return self._append(
+            "translate_zoning",
+            new_zoning,
+            translation=translation,
+        )
+
+    def aggregate(
+        self,
+        segmentation_: "segmentation.Segmentation",  # type: ignore[name-defined]
+        output_name: str = "{name}-aggregated",
+        progress_bar: bool = True,
+    ) -> "_LazyMatricesPipeline":
+        """Queue `aggregate`."""
+        return self._append(
+            "aggregate",
+            segmentation_,
+            output_name=output_name,
+            progress_bar=progress_bar,
+        )
+
+    def __getattr__(self, name: str):
+        """Queue unknown method calls for deferred execution."""
+        if name.startswith("_"):
+            raise AttributeError(name)
+
+        def queue_operation(*args, **kwargs):
+            return self._append(name, *args, **kwargs)
+
+        return queue_operation
+
+    @staticmethod
+    def _extract_translate_args(
+        operation: _LazyOperation,
+    ) -> tuple[cbase.ZoningSystem, pd.DataFrame | ctk.translation.ZoneCorrespondence | None]:
+        """Extract arguments from a queued translate operation."""
+        if "new_zoning" in operation.kwargs:
+            new_zoning = operation.kwargs["new_zoning"]
+        elif operation.args:
+            new_zoning = operation.args[0]
+        else:
+            raise ValueError("missing new_zoning for translate_zoning")
+
+        translation = operation.kwargs.get("translation")
+        if len(operation.args) > 1 and "translation" not in operation.kwargs:
+            translation = operation.args[1]
+        return new_zoning, translation  # type: ignore[return-value]
+
+    @staticmethod
+    def _extract_aggregate_args(
+        operation: _LazyOperation,
+    ) -> tuple["segmentation.Segmentation", str, bool]:
+        """Extract arguments from a queued aggregate operation."""
+        if "segmentation_" in operation.kwargs:
+            segmentation_ = operation.kwargs["segmentation_"]
+        elif operation.args:
+            segmentation_ = operation.args[0]
+        else:
+            raise ValueError("missing segmentation_ for aggregate")
+
+        output_name = operation.kwargs.get("output_name", "{name}-aggregated")
+        progress_bar = operation.kwargs.get("progress_bar", True)
+        if len(operation.args) > 1 and "output_name" not in operation.kwargs:
+            output_name = operation.args[1]
+        if len(operation.args) > 2 and "progress_bar" not in operation.kwargs:
+            progress_bar = operation.args[2]
+        return segmentation_, output_name, progress_bar  # type: ignore[return-value]
+
+    def _fused_translate_then_aggregate(
+        self,
+        matrices_: "MatricesBase",
+        translate_operation: _LazyOperation,
+        aggregate_operation: _LazyOperation,
+    ) -> "MatricesBase":
+        """Execute `translate_zoning(...).aggregate(...)` in one pass."""
+        new_zoning, translation = self._extract_translate_args(translate_operation)
+        segmentation_, output_name, progress_bar = self._extract_aggregate_args(aggregate_operation)
+
+        if not segmentation_.is_subset(matrices_.segmentation):
+            raise ValueError("cannot aggregate to segmentation which isn't a subset")
+
+        if translation is None:
+            translation = matrices_.zoning.translate(new_zoning)
+        elif isinstance(translation, pd.DataFrame):
+            translation = ctk.translation.ZoneCorrespondence(
+                translation,
+                matrices_.zoning.column_name,
+                new_zoning.column_name,
+                matrices_.zoning.translation_column_name(new_zoning),
+            )
+
+        output = matrices_.new(
+            output_name.format(name=matrices_.name),
+            segmentation_=segmentation_,
+            zoning=new_zoning,
+        )
+
+        if progress_bar:
+            iterator = tqdm.tqdm(
+                segmentation_.iter_slices(),
+                total=len(segmentation_),
+                desc=f"Translating and aggregating {matrices_.name}",
+            )
+        else:
+            iterator = segmentation_.iter_slices()
+
+        for to_slice in iterator:
+            total = 0
+            for from_slice in matrices_.segmentation.iter_slices(to_slice.data):
+                matrix = matrices_.get_matrix(from_slice)
+                translated_matrix = ctk.translation.pandas_matrix_zone_translation(
+                    matrix.data, translation
+                )
+                total += translated_matrix
+
+            output.set_matrix(total, to_slice)
+        return output
+
+    def collect(self) -> "MatricesBase":
+        """Materialise the lazy pipeline to a concrete matrices object."""
+        current: MatricesBase = self._source
+        idx = 0
+        while idx < len(self._operations):
+            operation = self._operations[idx]
+            if (
+                operation.name == "translate_zoning"
+                and idx + 1 < len(self._operations)
+                and self._operations[idx + 1].name == "aggregate"
+            ):
+                current = self._fused_translate_then_aggregate(
+                    current,
+                    operation,
+                    self._operations[idx + 1],
+                )
+                idx += 2
+                continue
+
+            method = getattr(current, operation.name)
+            current = method(*operation.args, **operation.kwargs)
+            idx += 1
+        return current
+
+    def execute(self) -> "MatricesBase":
+        """Alias for collect()."""
+        return self.collect()
+
+
 class MatricesBase(abc.ABC):
     """Abstract base class for handling matrices split by segmentation.
 
@@ -346,6 +518,10 @@ class MatricesBase(abc.ABC):
             f"{self.__class__.__name__}(name={self.name}, type={self.type.name},"
             f" segmentation={self.segmentation.names}, zoning={self.zoning.name})"
         )
+
+    def lazy(self) -> _LazyMatricesPipeline:
+        """Create a lazy operation pipeline from this matrices object."""
+        return _LazyMatricesPipeline(self)
 
     def aggregate(
         self,

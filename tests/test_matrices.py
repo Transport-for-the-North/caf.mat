@@ -1666,6 +1666,58 @@ class TestMatrices:
     @pytest.mark.parametrize(
         "matrices_",
         [
+            "aggregate_memory_matrices",
+            "aggregate_matrices_files",
+            "aggregate_long_matrices",
+        ],
+    )
+    def test_lazy_translate_then_aggregate(
+        self, request: pytest.FixtureRequest, matrices_: str
+    ) -> None:
+        """Test lazy translate_zoning().aggregate() matches eager execution."""
+        result: AggregateMatrices = request.getfixturevalue(matrices_)
+
+        new_zoning = cbase.ZoningSystem(
+            "translated",
+            pd.DataFrame({"zone_id": [10, 20]}),
+            zoning.ZoningSystemMetaData(name="translated"),
+        )
+        source_zone = result.input_.zoning
+        translation = pd.DataFrame(
+            {
+                source_zone.column_name: [1, 2, 3],
+                new_zoning.column_name: [10, 20, 20],
+                source_zone.translation_column_name(new_zoning): [1.0, 1.0, 1.0],
+            }
+        )
+
+        eager = result.input_.translate_zoning(new_zoning, translation).aggregate(
+            result.to_segmentation, progress_bar=False
+        )
+        lazy = (
+            result.input_
+            .lazy()
+            .translate_zoning(new_zoning, translation=translation)
+            .aggregate(result.to_segmentation, progress_bar=False)
+            .collect()
+        )
+
+        assert isinstance(lazy, type(result.input_))
+        assert lazy.segmentation == eager.segmentation
+        assert lazy.zoning == eager.zoning
+
+        for slice_ in eager.segmentation.iter_slices():
+            pd.testing.assert_frame_equal(
+                eager.get_matrix(slice_).data,
+                lazy.get_matrix(slice_).data,
+                check_column_type=False,
+                check_index_type=False,
+                check_names=False,
+            )
+
+    @pytest.mark.parametrize(
+        "matrices_",
+        [
             "disaggregate_memory_matrices",
             "disaggregate_matrices_files",
             "disaggregate_long_matrices",
