@@ -2,19 +2,21 @@
 CA/NCA process to produce matrices at a more detailed segmentation
 """
 
-from caf.distribute import furness
-import pandas as pd
-import caf.base as cb
-from pathlib import Path
-import caf.toolkit as ctk
-from caf.mat.matrices import MatricesBase, MatrixFiles, MatrixType
 import logging
-from caf.toolkit.concurrency import multiprocess
-import numpy as np
 import os
+from pathlib import Path
 
+import caf.base as cb
+import caf.toolkit as ctk
+import numpy as np
+import pandas as pd
+from caf.distribute import furness
 from caf.mat.dia.distribution_matrix_source import DistributionMatrixReader
-from caf.mat.prior_adjustment.distribute_tourmodel import DistributeConf, _use_as_list
+from caf.mat.matrices import MatricesBase, MatrixFiles, MatrixType
+from caf.mat.prior_adjustment.distribute_tourmodel import (DistributeConf,
+                                                           _use_as_list)
+from caf.toolkit.concurrency import multiprocess
+
 
 def smart_downcast(arr):
     """Conservatively downcast to most efficient dtype"""

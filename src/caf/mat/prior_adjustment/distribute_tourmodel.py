@@ -10,14 +10,13 @@ import pathlib
 
 # Third Party
 import caf.base as cbase
-import pandas as pd
 import numpy as np
+import pandas as pd
 from caf.distribute import cost_functions, furness, gravity_model
-from caf.toolkit.concurrency import multiprocess
-from caf.toolkit.config_base import BaseConfig
-
 # Local Imports
 from caf.mat.matrices import MatrixFiles, MatrixType
+from caf.toolkit.concurrency import multiprocess
+from caf.toolkit.config_base import BaseConfig
 
 _ADJ_CHOICE_CONFIG = {
     (True, False, False, False): ("0_dist_adj", ["dist"]),
