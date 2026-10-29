@@ -3,7 +3,7 @@
 ##### IMPORTS #####
 
 # Built-Ins
-import datetime
+import datetime as dt
 import logging
 import pathlib
 import warnings
@@ -197,9 +197,7 @@ def main() -> None:
     parameters = _Parameters.load_yaml(CONFIG_PATH)
 
     details = ctk.ToolDetails("caf.mat.compare", cmat.__version__)
-    output_folder = (
-        parameters.output_folder / f"OD2PA_comparison-{datetime.date.today():%Y%m%d}"
-    )
+    output_folder = parameters.output_folder / f"OD2PA_comparison-{dt.date.today():%Y%m%d}"
     output_folder.mkdir(exist_ok=True)
 
     log_file = output_folder / "compare.log"
