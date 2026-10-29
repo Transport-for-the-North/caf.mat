@@ -25,17 +25,17 @@ def smart_downcast(arr):
         arr_f32 = arr.astype(np.float32).astype(np.float64)
         max_error = np.abs(arr - arr_f32).max()
         arr_max = np.abs(arr).max()
-        
+
         # Only downcast if max value is reasonable for float32 and error is very small
         if 1e-6 < arr_max < 1e6 and max_error / arr_max < 1e-10:
             return arr.astype(np.float32)
-    
+
     elif arr.dtype == np.int64:
-        if arr.max() < 2**31 - 1 and arr.min() > -2**31:
+        if arr.max() < 2**31 - 1 and arr.min() > -(2**31):
             return arr.astype(np.int32)
-        if arr.max() < 2**16 - 1 and arr.min() > -2**16:
+        if arr.max() < 2**16 - 1 and arr.min() > -(2**16):
             return arr.astype(np.int16)
-    
+
     return arr  # Return original if no downcast possible
 
 
@@ -51,70 +51,85 @@ def _ensure_ca_segment(dvec: cb.DVector) -> cb.DVector:
         f"found {segment_names}."
     )
 
-def multi_loop(triple_inputs, mat, hdf_file, tld_ref, segmentation, zoning): #pylint: disable=too-many-locals
+
+def multi_loop(
+    triple_inputs, mat, hdf_file, tld_ref, segmentation, zoning
+):  # pylint: disable=too-many-locals
     """Perform multi-loop distribution for a given segment."""
     # Create separate log file for each process/iteration
     log_dir = hdf_file.parent.parent / "logs"
     log_dir.mkdir(exist_ok=True)
-    
+
     # Extract segment name from hdf_file path for unique log naming
     segment_name = hdf_file.stem.replace("matrices_", "")
     process_id = os.getpid()  # Get process ID for uniqueness
     log_file = log_dir / f"{segment_name}_pid{process_id}.log"
-    
+
     # Set up per-process logging
     logger = logging.getLogger(f"distribute_{segment_name}")
     logger.setLevel(logging.INFO)
-    
+
     # Remove any existing handlers to avoid duplicates
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
-    
+
     # Create file handler for this process
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.INFO)
-    
+
     # Create formatter
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
     file_handler.setFormatter(formatter)
-    
+
     # Add handler to main process logger
     logger.addHandler(file_handler)
-    
+
     # Also attach the same handler to furness logger so its internal logs go to this file
     furness_logger = logging.getLogger("caf.distribute.furness")
     furness_logger.setLevel(logging.INFO)
     furness_logger.addHandler(file_handler)
     furness_logger.propagate = False
-    
+
     logger.info("Starting processing for segment: %s", segment_name)
 
-    furnessed, rmse, checkers = furness.segmentation_furness(triple_inputs,
-                                                mat,
-                                                (5430,5430),
-                                                tol=1e-5,
-                                                )
+    furnessed, rmse, checkers = furness.segmentation_furness(
+        triple_inputs,
+        mat,
+        (5430, 5430),
+        tol=1e-5,
+    )
     logger.info("Finished furness with RMSE: %s", rmse)
-    checkers.reset_index(level='target_prop', inplace=True)
-    checkers = checkers[checkers['target_prop'] > 0]
+    checkers.reset_index(level="target_prop", inplace=True)
+    checkers = checkers[checkers["target_prop"] > 0]
     tld_ref = tld_ref[tld_ref > 0]
-    tld_ref.index.names = segmentation + ['area', 'from', 'to']
-    checkers['from'] = tld_ref.index.get_level_values('from')
-    checkers['to'] = tld_ref.index.get_level_values('to')
-    checkers.set_index(['from','to'], append=True, inplace=True)
+    tld_ref.index.names = segmentation + ["area", "from", "to"]
+    checkers["from"] = tld_ref.index.get_level_values("from")
+    checkers["to"] = tld_ref.index.get_level_values("to")
+    checkers.set_index(["from", "to"], append=True, inplace=True)
     furnessed.columns = zoning
-    furnessed.index = furnessed.index.set_levels(zoning, level='o')
-    furnessed.to_hdf(hdf_file, key='data')
-    checkers.to_hdf(hdf_file, key='checks')
-    
+    furnessed.index = furnessed.index.set_levels(zoning, level="o")
+    furnessed.to_hdf(hdf_file, key="data")
+    checkers.to_hdf(hdf_file, key="checks")
+
     logger.info("Completed processing and saved to %s", hdf_file)
-    
+
     # Clean up handlers
     logger.removeHandler(file_handler)
     furness_logger.removeHandler(file_handler)
     file_handler.close()
 
-def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.DataFrame, costs: pd.DataFrame, home_dir: Path, zones): #pylint: disable=too-many-locals
+
+def dist(
+    attr: cb.DVector,
+    prod: cb.DVector,
+    agg_mat: MatricesBase,
+    tlds: pd.DataFrame,
+    costs: pd.DataFrame,
+    home_dir: Path,
+    zones,
+):  # pylint: disable=too-many-locals
     """
     Produce new matrices at a more detailed segmentation than an existing distribution.
     Parameters
@@ -124,11 +139,11 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
     prod : cb.DVector
         Production trip ends at the more detailed level of segmentation.
     agg_mat : MatricesBase
-        Existing distribution at more aggregate segmentation. The segmentation must be a subset of 
-        attr and prod segmentations. All three of these first three inputs should "match" (e.g. sum 
+        Existing distribution at more aggregate segmentation. The segmentation must be a subset of
+        attr and prod segmentations. All three of these first three inputs should "match" (e.g. sum
         the same at the appropriate levels of zone and segmentation.)
     tlds : pd.Series
-        Tlds at the detailed level of segmentation. These must be multiindexed with index levels matching 
+        Tlds at the detailed level of segmentation. These must be multiindexed with index levels matching
         the more detailed segmentation, plus 'tld_area' and 'trav_dist'.
     costs : pd.DataFrame
         Costs at the same zoning as everything else.
@@ -138,12 +153,12 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
         _description_
     """
     # Set up logging for this distribution run
-    LOG = logging.getLogger("main") # pylint: disable=invalid-name
+    LOG = logging.getLogger("main")  # pylint: disable=invalid-name
     LOG.setLevel(logging.INFO)  # Only log warnings and errors
 
     output_dir = home_dir / "outputs"
     output_dir.mkdir(exist_ok=True, parents=True)
-    
+
     tld_seg_agg = [i for i in agg_mat.segmentation.names if i in tlds.index.names]
     tld_seg_full = [i for i in prod.segmentation.names if i in tlds.index.names]
     inputs = []
@@ -154,55 +169,108 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
         col_tot = 0
         # Adjust to matrix
         adjustor = {}
-        for area in zones['tld_area'].unique():
-            tld_zones = zones[zones['tld_area'] == area].index
-            tld = tlds.groupby(tld_seg_agg + ['tld_area','trav_dist']).sum().loc[seg_slice.aggregate(tld_seg_agg).as_tuple()].loc[area].to_frame()
-            tld['comp'] = ctk.cost_utils.cost_distribution(mat[tld_zones], costs[tld_zones], max_bounds=tld.index, min_bounds=tld.reset_index()['trav_dist'].shift().fillna(0))
+        for area in zones["tld_area"].unique():
+            tld_zones = zones[zones["tld_area"] == area].index
+            tld = (
+                tlds.groupby(tld_seg_agg + ["tld_area", "trav_dist"])
+                .sum()
+                .loc[seg_slice.aggregate(tld_seg_agg).as_tuple()]
+                .loc[area]
+                .to_frame()
+            )
+            tld["comp"] = ctk.cost_utils.cost_distribution(
+                mat[tld_zones],
+                costs[tld_zones],
+                max_bounds=tld.index,
+                min_bounds=tld.reset_index()["trav_dist"].shift().fillna(0),
+            )
             tld /= tld.sum()
-            tld['adj'] = tld['comp'] / tld['trips']
-            adjustor[area] = tld['adj']
+            tld["adj"] = tld["comp"] / tld["trips"]
+            adjustor[area] = tld["adj"]
         adjustor = pd.concat(adjustor)
-        adjustor[adjustor>20] = 20
+        adjustor[adjustor > 20] = 20
         tld_dicts = {}
         for te_seg in prod.segmentation.iter_slices(filter_=seg_slice.data):
             props = {}
             tld_dict = {}
-            for area in zones['tld_area'].unique():
-                tld = tlds.xs(te_seg.aggregate(tld_seg_full).as_tuple(), level=tld_seg_full).loc[area].copy().sort_index().reset_index()
-                tld['from'] = tld['trav_dist'].shift().fillna(0)
-                tld  = tld.set_index(['from','trav_dist']).squeeze().fillna(0).mul(adjustor.loc[area])
-                tld.name = 'trips'
+            for area in zones["tld_area"].unique():
+                tld = (
+                    tlds.xs(
+                        te_seg.aggregate(tld_seg_full).as_tuple(), level=tld_seg_full
+                    )
+                    .loc[area]
+                    .copy()
+                    .sort_index()
+                    .reset_index()
+                )
+                tld["from"] = tld["trav_dist"].shift().fillna(0)
+                tld = (
+                    tld.set_index(["from", "trav_dist"])
+                    .squeeze()
+                    .fillna(0)
+                    .mul(adjustor.loc[area])
+                )
+                tld.name = "trips"
                 tld /= tld.sum()
-                tld_zones = zones[zones['tld_area'] == area].index
+                tld_zones = zones[zones["tld_area"] == area].index
                 prop, unique = furness.cost_to_prop(
-                costs[tld_zones],
-                tld.reset_index(),
-                'trips'
-            )
+                    costs[tld_zones], tld.reset_index(), "trips"
+                )
                 tld_dict[area] = tld
-                
+
                 props[area] = furness.PropsInput(prop, tld_zones, unique)
             tld_dicts[te_seg.as_tuple()] = pd.concat(tld_dict)
             row = prod.get_slice(te_seg).values
             row_tot += row
             col = attr.get_slice(te_seg).values
             col_tot += col
-            triple_inputs[te_seg.generate_name()] = furness.SegInput(props, col_targets=col, row_targets=row)
+            triple_inputs[te_seg.generate_name()] = furness.SegInput(
+                props, col_targets=col, row_targets=row
+            )
         tld_ref = pd.concat(tld_dicts)
         rmse = furness.calc_rmse(col_tot, mat, row_tot)
         if rmse > 1e-6:
             mat_row = mat.sum(axis=1)
             mat_col = mat.sum(axis=0)
             for seg_input in triple_inputs.values():
-                seg_input.row_targets = np.divide(seg_input.row_targets, row_tot, where=row_tot != 0,out=np.ones_like(row_tot, dtype=float)) * mat_row
-                seg_input.col_targets = np.divide(seg_input.col_targets, col_tot, where=col_tot != 0,out=np.ones_like(col_tot, dtype=float)) * mat_col
-            LOG.warning("for %s, rmse of tripends to target mat = %s", seg_slice.generate_name(), rmse)
+                seg_input.row_targets = (
+                    np.divide(
+                        seg_input.row_targets,
+                        row_tot,
+                        where=row_tot != 0,
+                        out=np.ones_like(row_tot, dtype=float),
+                    )
+                    * mat_row
+                )
+                seg_input.col_targets = (
+                    np.divide(
+                        seg_input.col_targets,
+                        col_tot,
+                        where=col_tot != 0,
+                        out=np.ones_like(col_tot, dtype=float),
+                    )
+                    * mat_col
+                )
+            LOG.warning(
+                "for %s, rmse of tripends to target mat = %s",
+                seg_slice.generate_name(),
+                rmse,
+            )
         hdf_file = output_dir / f"matrices_{seg_slice.generate_name()}.hdf"
         # seed = mat.copy()
         # seed.columns.name = 'd'
         # seed.index = seed.index.set_levels(seed.columns, level='o')
         # seed = seed.stack().to_xarray()
-        inputs.append((triple_inputs, mat, hdf_file, tld_ref, prod.segmentation.naming_order, prod.zoning_system.zone_ids))
+        inputs.append(
+            (
+                triple_inputs,
+                mat,
+                hdf_file,
+                tld_ref,
+                prod.segmentation.naming_order,
+                prod.zoning_system.zone_ids,
+            )
+        )
         del triple_inputs, mat, tld_ref
         # furnessed, rmse, checkers = furness.segmentation_furness(triple_inputs,
         #                                         mat,
@@ -212,7 +280,7 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
         #                                         #outer_max_iters=10,
         #                                         #max_iters=50
         #                                         )
-        
+
         # checkers.reset_index(level='target_prop', inplace=True)
         # tld_ref.index.names = prod.segmentation.naming_order + ['area', 'from', 'to']
         # checkers['from'] = tld_ref.index.get_level_values('from')
@@ -225,7 +293,8 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
     del agg_mat, prod, attr
     multiprocess(multi_loop, arg_list=inputs)
 
-def main(cfg: DistributeConf): #pylint: disable=too-many-locals
+
+def main(cfg: DistributeConf):  # pylint: disable=too-many-locals
     """
     Run the CA/NCA disaggregation stage, reading the gravity model/adjustment stage's
     output matrices directly via DistributionMatrixReader. Needs a run flag, whether it is required
@@ -256,49 +325,65 @@ def main(cfg: DistributeConf): #pylint: disable=too-many-locals
 
     main_handler = logging.FileHandler(main_log_file)
     main_handler.setLevel(logging.INFO)
-    main_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    main_formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
     main_handler.setFormatter(main_formatter)
     main_logger.addHandler(main_handler)
 
     main_logger.info("Starting distribution process")
 
     normits = cb.ZoningSystem.get_zoning(cfg.zone_system)
-    segmentation_input = cb.SegmentationInput(naming_order=['m','p','tp','direction_od','ca'],
-                                                enum_segments=['direction_od','m','p','tp','ca'],
-                                                subsets={
-                                                    "m": _use_as_list(m_subset),
-                                                    "p": _use_as_list(p_subset),
-                                                    "tp": _use_as_list(tp_subset),
-                                                    "direction_od": _use_as_list(direction_od_subset),
-                                                })
+    segmentation_input = cb.SegmentationInput(
+        naming_order=["m", "p", "tp", "direction_od", "ca"],
+        enum_segments=["direction_od", "m", "p", "tp", "ca"],
+        subsets={
+            "m": _use_as_list(m_subset),
+            "p": _use_as_list(p_subset),
+            "tp": _use_as_list(tp_subset),
+            "direction_od": _use_as_list(direction_od_subset),
+        },
+    )
     ca_seg = cb.Segmentation(segmentation_input)
 
     # Combine hb_fr/hb_to/nhb DVectors per direction into a single CA-segmented DVector
     dvecs = {}
-    for direction in ['orig','dest']:
-        
+    for direction in ["orig", "dest"]:
+
         if direction == "orig":
             direction_sub = "prod"
         elif direction == "dest":
             direction_sub = "attr"
-        
+
         hb_fr = _ensure_ca_segment(
-            cb.DVector.load(dvec_dir / direction / cfg.trip_ends[f"hb_{direction_sub}_fr"].name) #pylint: disable=possibly-used-before-assignment
+            cb.DVector.load(
+                dvec_dir
+                / direction
+                / cfg.trip_ends[
+                    f"hb_{direction_sub}_fr"  # pylint: disable=possibly-used-before-assignment
+                ].name
+            )
         )
         hb_to = _ensure_ca_segment(
-            cb.DVector.load(dvec_dir / direction / cfg.trip_ends[f"hb_{direction_sub}_to"].name)
+            cb.DVector.load(
+                dvec_dir / direction / cfg.trip_ends[f"hb_{direction_sub}_to"].name
+            )
         )
         nhb = _ensure_ca_segment(
-            cb.DVector.load(dvec_dir / direction / cfg.trip_ends[f"{direction_sub}_nhb"].name)
+            cb.DVector.load(
+                dvec_dir / direction / cfg.trip_ends[f"{direction_sub}_nhb"].name
+            )
         )
         hb_fr = hb_fr.aggregate(["m", "tp", "p", "ca"])
         hb_to = hb_to.aggregate(["m", "tp", "p", "ca"])
         nhb = nhb.aggregate(["m", "tp", "p", "ca"])
         source_names = hb_fr.segmentation.naming_order
         if any(dvec.segmentation.naming_order != source_names for dvec in (hb_to, nhb)):
-            raise ValueError("DVector segmentations do not match after CA normalization.")
-        full = pd.concat({0:nhb.data,1:hb_fr.data,2:hb_to.data})
-        full.index.names = ['direction_od'] + source_names
+            raise ValueError(
+                "DVector segmentations do not match after CA normalization."
+            )
+        full = pd.concat({0: nhb.data, 1: hb_fr.data, 2: hb_to.data})
+        full.index.names = ["direction_od"] + source_names
         full = full.groupby(level=full.index.names).sum()
         full.index = full.index.reorder_levels(ca_seg.naming_order)
         # Rows outside the configured subsets would not match ca_seg's expected index
@@ -308,8 +393,8 @@ def main(cfg: DistributeConf): #pylint: disable=too-many-locals
         dvecs[direction] = cb.DVector(ca_seg, full[keep], normits)
         del hb_fr, hb_to, nhb
 
-    tlds = pd.read_csv(ca_cfg.tlds_path, index_col=[0,1,2,3,4,5])['trips']
-    tlds = tlds.rename({'hb_fr':1, 'hb_to':2, 'nhb':0})
+    tlds = pd.read_csv(ca_cfg.tlds_path, index_col=[0, 1, 2, 3, 4, 5])["trips"]
+    tlds = tlds.rename({"hb_fr": 1, "hb_to": 2, "nhb": 0})
     zones = pd.read_csv(zones_path, index_col=0).sort_index().reset_index(drop=True)
 
     cost_cfg = cfg.cost_files
@@ -330,8 +415,8 @@ def main(cfg: DistributeConf): #pylint: disable=too-many-locals
 
     for tp in _use_as_list(tp_subset):
         main_logger.info("Processing time period: %s", tp)
-        prod = dvecs['orig'].filter_segment_value('tp', tp, keep_filtered=True)
-        attr = dvecs['dest'].filter_segment_value('tp', tp, keep_filtered=True)
+        prod = dvecs["orig"].filter_segment_value("tp", tp, keep_filtered=True)
+        attr = dvecs["dest"].filter_segment_value("tp", tp, keep_filtered=True)
         agg_mat = DistributionMatrixReader(cfg, mode_subset=m_subset, tp_subset=tp)
         cost_slice = {"m": m_subset[0], "tp": tp}
         costs = cost_matrix.get_matrix(cost_slice).data
@@ -351,6 +436,8 @@ def main(cfg: DistributeConf): #pylint: disable=too-many-locals
 
 if __name__ == "__main__":
     distribute_config = DistributeConf.load_yaml(
-        Path(__file__).parent.parent / "prior_adjustment" / "distribute_tourmodel_config.yml"
+        Path(__file__).parent.parent
+        / "prior_adjustment"
+        / "distribute_tourmodel_config.yml"
     )
     main(distribute_config)

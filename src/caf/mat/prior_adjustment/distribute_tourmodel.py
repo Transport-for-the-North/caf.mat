@@ -13,6 +13,7 @@ import caf.base as cbase
 import numpy as np
 import pandas as pd
 from caf.distribute import cost_functions, furness, gravity_model
+
 # Local Imports
 from caf.mat.matrices import MatrixFiles, MatrixType
 from caf.toolkit.concurrency import multiprocess
@@ -65,17 +66,17 @@ class DistributeConf(BaseConfig):
     timeperiod_subset : Subset of time periods to include in the run.
     purpose_subset : Subset of purposes to include in the run.
     direction_subset : Subset of directions to include in the run.
-    tld_lookup : Dictionary containing the TLD lookup configuration, 
+    tld_lookup : Dictionary containing the TLD lookup configuration,
                 including the file path, category column, and zone column.
     zone_system : Name of the zoning system used for matrices.
     sector_system : Name of the sector system used for related zone system.
     zone_to_sector_lookup : Dictionary containing the file path and column mapping for
-                            the zone to sector lookup CSV. 
+                            the zone to sector lookup CSV.
                             Includes the index column and required sector column name.
-    adj_target_matrices : Dictionary containing configuration for sector target matrices, 
+    adj_target_matrices : Dictionary containing configuration for sector target matrices,
                           including naming order, folder path, and filename template.
-    read_4dcons_function : Dictionary containing configuration for the read_4dcons function, 
-                           including flag, adjustment type, level, input files, 
+    read_4dcons_function : Dictionary containing configuration for the read_4dcons function,
+                           including flag, adjustment type, level, input files,
                            adjustment files, and output path.
     cost_files : Dictionary containing configuration for cost matrix files, including
                 naming order, folder path, and filename template.
@@ -104,7 +105,9 @@ class DistributeConf(BaseConfig):
     adj_target_matrices: dict[str, list[str] | pathlib.Path | str]
     read_4dcons_function: dict[str, str | bool | pathlib.Path]
     cost_files: dict[str, list[str] | pathlib.Path | str]
-    comparison_cost_files: dict[str, bool | list[str] | int | pathlib.Path | str | float]
+    comparison_cost_files: dict[
+        str, bool | list[str] | int | pathlib.Path | str | float
+    ]
     tld_files: dict[str, list[str] | pathlib.Path | str]
     trip_ends: dict[str, pathlib.Path]
     gm_run_name: str
@@ -207,14 +210,16 @@ def seg_furness(
         columns={z2s_cfg["req_sector_column"]: "d_sec"}
     )
     if run_gm:
-        gravity_model_results, dists = calib_gm.calibrate(  # pylint: disable=unused-variable
-            cost_distributions,
-            csv_logging_path,
-            output_path,
-            gravity_model.GMCalibParams(furness_jac=True, ftol=1e-2, xtol=1e-2),
-            alternate_cost_matrix=alternate_cost,
-            relative_cost_steepness=relative_cost_steepness,
-            return_distributions=True,
+        gravity_model_results, dists = (  # pylint: disable=unused-variable
+            calib_gm.calibrate(
+                cost_distributions,
+                csv_logging_path,
+                output_path,
+                gravity_model.GMCalibParams(furness_jac=True, ftol=1e-2, xtol=1e-2),
+                alternate_cost_matrix=alternate_cost,
+                relative_cost_steepness=relative_cost_steepness,
+                return_distributions=True,
+            )
         )
     if run_adjust:
 
@@ -234,7 +239,9 @@ def seg_furness(
             mat = mat.set_index(tld_lookup)
             mat.columns = tld_lookup
         else:
-            mat = pd.read_csv(os.path.join(output_path, "overall_matrix.csv"), index_col=0)
+            mat = pd.read_csv(
+                os.path.join(output_path, "overall_matrix.csv"), index_col=0
+            )
             mat.columns = mat.columns.astype(int)
 
         mat = mat.stack()
@@ -244,7 +251,9 @@ def seg_furness(
         reindexer = full_ind.set_index(["o_zon", "d_zon"])
         seed_mat = (
             reindexer.join(mat)
-            .set_index(["area", "band_start", "band_end", "o_sec", "d_sec"], append=True)
+            .set_index(
+                ["area", "band_start", "band_end", "o_sec", "d_sec"], append=True
+            )
             .squeeze()
         )
         triple_targ = band_targets
@@ -253,7 +262,9 @@ def seg_furness(
 
         o_target = pd.Series(calib_gm.row_targets, index=calib_gm.cost_matrix_df.index)
         o_target.index.name = "o_zon"
-        d_target = pd.Series(calib_gm.col_targets, index=calib_gm.cost_matrix_df.columns)
+        d_target = pd.Series(
+            calib_gm.col_targets, index=calib_gm.cost_matrix_df.columns
+        )
         d_target.index.name = "d_zon"
 
         # pre-furness checks
@@ -292,17 +303,23 @@ def seg_furness(
         for i, out_filename in raw_factors_output_dict.items():
             adj_factors[i].to_csv(out_filename)
 
-def dfr_capval(dfr: pd.Series, chg_xmax: float = 1e+64, chg_xmin: float = None) -> pd.Series:
+
+def dfr_capval(
+    dfr: pd.Series, chg_xmax: float = 1e64, chg_xmin: float = None
+) -> pd.Series:
     """Cap values of a series between a minimum and maximum."""
     chg_xmin = 1 / chg_xmax if chg_xmin is None else chg_xmin
     out = np.where(dfr > chg_xmax, chg_xmax, np.where(dfr < chg_xmin, chg_xmin, dfr))
     return pd.Series(out, index=dfr.index)
 
-def read_4dcons(tor_cons: str, 
-                level: str,
-                tour_fldr: pathlib.Path, 
-                moira_fldr: pathlib.Path, 
-                out_fldr: pathlib.Path) -> dict:
+
+def read_4dcons(
+    tor_cons: str,
+    level: str,
+    tour_fldr: pathlib.Path,
+    moira_fldr: pathlib.Path,
+    out_fldr: pathlib.Path,
+) -> dict:
     """Read tour model matrices and build sectoral constraint files.
 
     Filters the tour model output to mode 6 and periods 1-4, rescales trips
@@ -330,62 +347,83 @@ def read_4dcons(tor_cons: str,
         written CSV files. NHB purposes are offset by 10 for 11-18.
     """
     out_fldr.mkdir(parents=True, exist_ok=True)
-    
+
     # process sectoral constraint
-    lev_tour =  level
-    csv_tour = pd.read_csv(tour_fldr / 
-                                f"matrix_output_{lev_tour}_4d.csv")
-    md, tsx_incl = [6], [1,2,3,4]
-    csv_tour = (csv_tour.loc[csv_tour["mode"].isin(md) & csv_tour["period"].isin(tsx_incl)]
-                .reset_index(drop=True))
+    lev_tour = level
+    csv_tour = pd.read_csv(tour_fldr / f"matrix_output_{lev_tour}_4d.csv")
+    md, tsx_incl = [6], [1, 2, 3, 4]
+    csv_tour = csv_tour.loc[
+        csv_tour["mode"].isin(md) & csv_tour["period"].isin(tsx_incl)
+    ].reset_index(drop=True)
     col_name = {"orig tlc": "taz_o", "dest tlc": "taz_d"}
     col_zone, col_purp = list(col_name.values()), []
     if md == [6]:  # use moira adjustment
-        sec_mowl = pd.read_csv(moira_fldr / 
-                                    f"{tor_cons}_{lev_tour}_trips.csv")
+        sec_mowl = pd.read_csv(moira_fldr / f"{tor_cons}_{lev_tour}_trips.csv")
         sec_mowl = sec_mowl.rename(columns=col_name).set_index(col_zone + col_purp)
-        sec_fact = csv_tour.groupby(col_zone + col_purp)[['trips']].sum()
-        sec_fact = pd.concat([sec_fact, sec_mowl.rename(columns={"trips": "trips_wl"})], axis=1)
+        sec_fact = csv_tour.groupby(col_zone + col_purp)[["trips"]].sum()
+        sec_fact = pd.concat(
+            [sec_fact, sec_mowl.rename(columns={"trips": "trips_wl"})], axis=1
+        )
         sec_fact.loc[sec_fact["trips_wl"].isna(), "trips_wl"] = sec_fact["trips"]
-        
+
         # normalise to 100%
         if len(col_purp) > 0:
-            tmp = (sec_fact.groupby(col_purp)["trips"].transform('sum')
-                    .div(sec_fact.groupby(col_purp)["trips_wl"].transform('sum')))
+            tmp = (
+                sec_fact.groupby(col_purp)["trips"]
+                .transform("sum")
+                .div(sec_fact.groupby(col_purp)["trips_wl"].transform("sum"))
+            )
         else:
-            tmp = sec_fact['trips'].sum() / sec_fact['trips_wl'].sum()
-            
+            tmp = sec_fact["trips"].sum() / sec_fact["trips_wl"].sum()
+
         sec_fact["trips_wl"] = sec_fact["trips_wl"].mul(tmp)
         sec_fact["fact"] = sec_fact["trips_wl"].div(sec_fact["trips"]).fillna(1)
-        sec_fact['fact'] = dfr_capval(sec_fact['fact'], 50)
+        sec_fact["fact"] = dfr_capval(sec_fact["fact"], 50)
 
         # update tour
-        csv_tour = pd.merge(csv_tour, sec_fact["fact"].reset_index(), how="left",
-                            on=col_zone + col_purp)
-        csv_tour["trips_adj"] = csv_tour["trips"].mul(csv_tour["fact"]).fillna(csv_tour["trips"])
+        csv_tour = pd.merge(
+            csv_tour, sec_fact["fact"].reset_index(), how="left", on=col_zone + col_purp
+        )
+        csv_tour["trips_adj"] = (
+            csv_tour["trips"].mul(csv_tour["fact"]).fillna(csv_tour["trips"])
+        )
         tmp_grby = ["mode", "purpose", "period", "direction"]
-        tmp = (csv_tour.groupby(tmp_grby)["trips"].transform("sum")
-                .div(csv_tour.groupby(tmp_grby)["trips_adj"].transform("sum")))
-        csv_tour['trips_adj'] = csv_tour['trips_adj'].mul(tmp)
-        csv_tour = csv_tour.drop(columns=col_purp + ["fact", "trips"], errors="ignore").rename(columns={'trips_adj':'trips'})
+        tmp = (
+            csv_tour.groupby(tmp_grby)["trips"]
+            .transform("sum")
+            .div(csv_tour.groupby(tmp_grby)["trips_adj"].transform("sum"))
+        )
+        csv_tour["trips_adj"] = csv_tour["trips_adj"].mul(tmp)
+        csv_tour = csv_tour.drop(
+            columns=col_purp + ["fact", "trips"], errors="ignore"
+        ).rename(columns={"trips_adj": "trips"})
 
     # output
-    dix_list = csv_tour['direction'].unique()
-    csv_dict = {pp: {di: {} for di in dix_list} for pp in [1,2,3,4,5,6,7,8,11,12,13,14,15,16,17,18]}
+    dix_list = csv_tour["direction"].unique()
+    csv_dict = {
+        pp: {di: {} for di in dix_list}
+        for pp in [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 17, 18]
+    }
     csv_tour[col_zone] = csv_tour[col_zone].astype("category")
-    for pp in [1,2,3,4,5,6,7,8]:
+    for pp in [1, 2, 3, 4, 5, 6, 7, 8]:
         for di in dix_list:
             if di == "nhb":
                 output_pp = pp + 10
             else:
-                output_pp = pp    
+                output_pp = pp
             for ts in tsx_incl:
-                dfr = csv_tour.loc[csv_tour['mode'].isin(md) & (csv_tour['purpose'] == pp) &
-                                    (csv_tour['period'] == ts) & (csv_tour['direction'] == di)]
-                dfr = dfr.groupby(col_zone, observed=False)[['trips']].sum().reset_index()
+                dfr = csv_tour.loc[
+                    csv_tour["mode"].isin(md)
+                    & (csv_tour["purpose"] == pp)
+                    & (csv_tour["period"] == ts)
+                    & (csv_tour["direction"] == di)
+                ]
+                dfr = (
+                    dfr.groupby(col_zone, observed=False)[["trips"]].sum().reset_index()
+                )
                 # dfr = dfr.rename(columns={col: f';{col}' for col in col_zone})
                 out_name = f"sec_m{md[0]}_p{output_pp}_ts{ts}_{di}.csv"
-                dfr.to_csv(out_fldr / out_name, index=False)  
+                dfr.to_csv(out_fldr / out_name, index=False)
                 csv_dict[output_pp][di][ts] = out_fldr / out_name
     return csv_dict
 
@@ -515,7 +553,7 @@ def _4d_constraint_gravity_model(
         LOG.info(
             "Difference between the input trip end productions and attractions: %s, as a percentage of the input productions: %s%%",
             row.sum() - col.sum(),
-            (row.sum() - col.sum()) / row.sum() * 100
+            (row.sum() - col.sum()) / row.sum() * 100,
         )
         cost = cost_matrix.get_matrix(
             current_slice.aggregate(cost_matrix.segmentation.naming_order)
@@ -528,9 +566,7 @@ def _4d_constraint_gravity_model(
             if len(alt_modes) != 1:
                 raise ValueError(f"Expected a single alternate mode, got {alt_modes}")
             # tp (and any other shared segment) follows current_slice; m comes from the alternate subset
-            alt_slice = {
-                name: current_slice.get(name) for name in alt_seg.naming_order
-            }
+            alt_slice = {name: current_slice.get(name) for name in alt_seg.naming_order}
             alt_slice["m"] = alt_modes.pop()
             alternate_cost = alternate_cost_matrix.get_matrix(alt_slice).data
 
@@ -543,8 +579,12 @@ def _4d_constraint_gravity_model(
         tld["from"] = tld[tld_cfg["travelled_distance_column"]].shift().fillna(0)
         tld.loc[tld["from"] > tld[tld_cfg["travelled_distance_column"]], "from"] = 0
         if "ave_dist" not in tld.columns:
-            tld["ave_dist"] = (tld[tld_cfg["travelled_distance_column"]] + tld["from"]) / 2
-        trans = constraint_area_trans.set_index(z2s_cfg["index_column"])[z2s_cfg["req_sector_column"]].to_dict()
+            tld["ave_dist"] = (
+                tld[tld_cfg["travelled_distance_column"]] + tld["from"]
+            ) / 2
+        trans = constraint_area_trans.set_index(z2s_cfg["index_column"])[
+            z2s_cfg["req_sector_column"]
+        ].to_dict()
         col_sector = col.rename(trans).groupby("normits_id").sum().reset_index()
         col_sector.columns = ["model_zone_id", "trips"]
         row_sector = row.rename(trans).groupby("normits_id").sum().reset_index()
@@ -568,9 +608,16 @@ def _4d_constraint_gravity_model(
             "Ratio between Trip End attractions and Target Sector Matrix attractions: %s",
             col.sum() / sector_target_furnessed.sum(axis=0).sum(),
         )
-        LOG.info("Running Gravity Model: %s, for slice %s, with calibration set to %s", name, current_slice, run_gm)
+        LOG.info(
+            "Running Gravity Model: %s, for slice %s, with calibration set to %s",
+            name,
+            current_slice,
+            run_gm,
+        )
 
-        cost_function = cost_functions.BuiltInCostFunction.LOG_NORMAL.get_cost_function()
+        cost_function = (
+            cost_functions.BuiltInCostFunction.LOG_NORMAL.get_cost_function()
+        )
 
         cost_distributions = gravity_model.MultiCostDistribution.from_pandas(
             tld,
@@ -610,7 +657,9 @@ def _4d_constraint_gravity_model(
             )
         )
 
-    multiprocess(seg_furness, arg_list=inputs, process_count=0 if not run_gm else max_process)
+    multiprocess(
+        seg_furness, arg_list=inputs, process_count=0 if not run_gm else max_process
+    )
 
 
 def _use_as_list(input_list: int | list[int]) -> list[int]:
@@ -640,7 +689,9 @@ def main(cfg: DistributeConf):
     log_path = pathlib.Path(cfg.output_path).parent / f"{cfg.gm_run_name}.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     file_handler = logging.FileHandler(log_path)
-    file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    )
     LOG.setLevel(logging.INFO)
     LOG.addHandler(file_handler)
 
@@ -653,11 +704,13 @@ def main(cfg: DistributeConf):
     # Check if read_4dcons is needed and run it if so
     read_4dcons_cfg = cfg.read_4dcons_function
     if read_4dcons_cfg["flag"] is True:
-        adjusted_output = read_4dcons(read_4dcons_cfg["adjustment_type"], # pylint: disable=unused-variable
-                                      read_4dcons_cfg["level"],
-                                      pathlib.Path(read_4dcons_cfg["input_files"]),
-                                      pathlib.Path(read_4dcons_cfg["adj_files"]),
-                                      pathlib.Path(read_4dcons_cfg["output_path"]))
+        adjusted_output = read_4dcons(  # pylint: disable=unused-variable
+            read_4dcons_cfg["adjustment_type"],
+            read_4dcons_cfg["level"],
+            pathlib.Path(read_4dcons_cfg["input_files"]),
+            pathlib.Path(read_4dcons_cfg["adj_files"]),
+            pathlib.Path(read_4dcons_cfg["output_path"]),
+        )
 
     # To improve memory efficiency, each tp is processed separately.
     # This ensures the loaded DVectors aren't too large but multiprocessing will still work
@@ -684,10 +737,9 @@ def main(cfg: DistributeConf):
         z2s_cfg = cfg.zone_to_sector_lookup
         normits_noham_sector = pd.read_csv(z2s_cfg["path"])
         normits_noham_sector.columns = z2s_cfg["columns"]
-        normits_noham_sector[z2s_cfg["req_sector_column"]] = (
-            normits_noham_sector[z2s_cfg["req_sector_column"]]
-            .replace(noham_sector.name_to_id)
-            )
+        normits_noham_sector[z2s_cfg["req_sector_column"]] = normits_noham_sector[
+            z2s_cfg["req_sector_column"]
+        ].replace(noham_sector.name_to_id)
 
         # --- Split p into HB and NHB -----------------------------------------------
         hb_p_subset = (
@@ -749,7 +801,10 @@ def main(cfg: DistributeConf):
                 cbase.SegmentationInput(
                     enum_segments=alternate_costs_cfg["naming_order"],
                     naming_order=alternate_costs_cfg["naming_order"],
-                    subsets={"m": _use_as_list(alternate_costs_cfg["mode"]), "tp": _use_as_list(tp_subset)},
+                    subsets={
+                        "m": _use_as_list(alternate_costs_cfg["mode"]),
+                        "tp": _use_as_list(tp_subset),
+                    },
                 )
             )
             alternate_costs = MatrixFiles(
@@ -845,9 +900,13 @@ def main(cfg: DistributeConf):
         prod = pd.concat({k: v[0].data for k, v in dvec_map.items()})
         attr = pd.concat({k: v[1].data for k, v in dvec_map.items()})
         prod.index.names = ["direction_od", "p", "m", "tp"]
-        prod = cbase.DVector(import_data=prod, segmentation=full_seg_p, zoning_system=normits)
+        prod = cbase.DVector(
+            import_data=prod, segmentation=full_seg_p, zoning_system=normits
+        )
         attr.index.names = ["direction_od", "p", "m", "tp"]
-        attr = cbase.DVector(import_data=attr, segmentation=full_seg_p, zoning_system=normits)
+        attr = cbase.DVector(
+            import_data=attr, segmentation=full_seg_p, zoning_system=normits
+        )
 
         # --- Run -------------------------------------------------------------------
         run_opts = cfg.run_options
