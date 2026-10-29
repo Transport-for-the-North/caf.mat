@@ -148,7 +148,7 @@ def seg_furness(
         Cost distribution object with a distributions attribute containing
         distribution data for gravity model calibration.
     constraint_area_trans : pd.DataFrame
-        DataFrame mapping zone IDs (normits_id) to sector IDs (noham_sector_id).
+        DataFrame mapping zone IDs to sector IDs.
     z2s_cfg : dict[str, str]
         Configuration dictionary for the zone-to-sector lookup, containing keys:
         - "index_column": name of the column to use as the index for the lookup
@@ -440,6 +440,7 @@ def _4d_constraint_gravity_model(
     cost_matrix: MatrixFiles,
     alternate_cost_matrix: MatrixFiles | None,
     relative_cost_steepness: float | None,
+    model_zone_system: cbase.ZoningSystem,
     constraint_area_trans: pd.DataFrame,
     z2s_cfg: dict[str, str],
     sector_target_matrix: MatrixFiles,
@@ -483,8 +484,10 @@ def _4d_constraint_gravity_model(
         Alternate cost matrix object for comparison purposes.
     relative_cost_steepness : float | None
         Steepness parameter for relative cost comparison.
+    model_zone_system : cbase.ZoningSystem
+        Zoning system object for the model zones.
     constraint_area_trans : pd.DataFrame
-        Translation/mapping dataframe between normits_id and noham_sector_id for
+        Translation/mapping dataframe between zone IDs and sector IDs for
         spatial constraint areas.
     z2s_cfg : dict[str, str]
         Configuration dictionary for the zone-to-sector lookup, containing keys:
@@ -585,9 +588,9 @@ def _4d_constraint_gravity_model(
         trans = constraint_area_trans.set_index(z2s_cfg["index_column"])[
             z2s_cfg["req_sector_column"]
         ].to_dict()
-        col_sector = col.rename(trans).groupby("normits_id").sum().reset_index()
+        col_sector = col.rename(trans).groupby(model_zone_system.column_name).sum().reset_index()
         col_sector.columns = ["model_zone_id", "trips"]
-        row_sector = row.rename(trans).groupby("normits_id").sum().reset_index()
+        row_sector = row.rename(trans).groupby(model_zone_system.column_name).sum().reset_index()
         row_sector.columns = ["model_zone_id", "trips"]
 
         if furness_sector_target:
@@ -731,15 +734,15 @@ def main(cfg: DistributeConf):
         # --- Lookups and zoning systems --------------------------------------------
         tld_lookup_cfg = cfg.tld_lookup
         tld_lookup = pd.read_csv(tld_lookup_cfg["path"])
-        normits = cbase.ZoningSystem.get_zoning(cfg.zone_system)
-        noham_sector = cbase.ZoningSystem.get_zoning(cfg.sector_system)
+        model_zone_system = cbase.ZoningSystem.get_zoning(cfg.zone_system)
+        model_sector_system = cbase.ZoningSystem.get_zoning(cfg.sector_system)
 
         z2s_cfg = cfg.zone_to_sector_lookup
-        normits_noham_sector = pd.read_csv(z2s_cfg["path"])
-        normits_noham_sector.columns = z2s_cfg["columns"]
-        normits_noham_sector[z2s_cfg["req_sector_column"]] = normits_noham_sector[
+        zone_to_sector_lookup_df = pd.read_csv(z2s_cfg["path"])
+        zone_to_sector_lookup_df.columns = z2s_cfg["columns"]
+        zone_to_sector_lookup_df[z2s_cfg["req_sector_column"]] = zone_to_sector_lookup_df[
             z2s_cfg["req_sector_column"]
-        ].replace(noham_sector.name_to_id)
+        ].replace(model_sector_system.name_to_id)
 
         # --- Split p into HB and NHB -----------------------------------------------
         hb_p_subset = (
@@ -769,7 +772,7 @@ def main(cfg: DistributeConf):
         )
         adj_target_purpose = MatrixFiles(
             full_seg_p,
-            noham_sector,
+            model_sector_system,
             MatrixType.OD,
             pathlib.Path(adj_target_cfg["folder_path"]),
             filename_template=adj_target_cfg["filename_template"],
@@ -786,7 +789,7 @@ def main(cfg: DistributeConf):
         )
         costs = MatrixFiles(
             cost_seg,
-            normits,
+            model_zone_system,
             MatrixType.OD,
             pathlib.Path(cost_cfg["folder_path"]),
             filename_template=cost_cfg["filename_template"],
@@ -809,7 +812,7 @@ def main(cfg: DistributeConf):
             )
             alternate_costs = MatrixFiles(
                 alternate_costs_seg,
-                normits,
+                model_zone_system,
                 MatrixType.OD,
                 pathlib.Path(alternate_costs_cfg["folder_path"]),
                 filename_template=alternate_costs_cfg["filename_template"],
@@ -849,7 +852,7 @@ def main(cfg: DistributeConf):
                 .filter_segment_value("p", nhb_p_subset, keep_filtered=True)
                 .filter_segment_value("m", m_subset, keep_filtered=True)
                 .filter_segment_value("tp", tp_subset, keep_filtered=True)
-                .aggregate_comp_zones(normits)
+                .aggregate_comp_zones(model_zone_system)
             )
             attr_nhb = (
                 cbase.DVector.load(te_cfg["attr_nhb"])
@@ -857,7 +860,7 @@ def main(cfg: DistributeConf):
                 .filter_segment_value("p", nhb_p_subset, keep_filtered=True)
                 .filter_segment_value("m", m_subset, keep_filtered=True)
                 .filter_segment_value("tp", tp_subset, keep_filtered=True)
-                .aggregate_comp_zones(normits)
+                .aggregate_comp_zones(model_zone_system)
             )
             dvec_map[0] = (prod_nhb, attr_nhb)
         if 1 in direction_od_list:
@@ -867,7 +870,7 @@ def main(cfg: DistributeConf):
                 .filter_segment_value("p", hb_p_subset, keep_filtered=True)
                 .filter_segment_value("m", m_subset, keep_filtered=True)
                 .filter_segment_value("tp", tp_subset, keep_filtered=True)
-                .aggregate_comp_zones(normits)
+                .aggregate_comp_zones(model_zone_system)
             )
             hb_attr_fr = (
                 cbase.DVector.load(te_cfg["hb_attr_fr"])
@@ -875,7 +878,7 @@ def main(cfg: DistributeConf):
                 .filter_segment_value("p", hb_p_subset, keep_filtered=True)
                 .filter_segment_value("m", m_subset, keep_filtered=True)
                 .filter_segment_value("tp", tp_subset, keep_filtered=True)
-                .aggregate_comp_zones(normits)
+                .aggregate_comp_zones(model_zone_system)
             )
             dvec_map[1] = (hb_prod_fr, hb_attr_fr)
         if 2 in direction_od_list:
@@ -885,7 +888,7 @@ def main(cfg: DistributeConf):
                 .filter_segment_value("p", hb_p_subset, keep_filtered=True)
                 .filter_segment_value("m", m_subset, keep_filtered=True)
                 .filter_segment_value("tp", tp_subset, keep_filtered=True)
-                .aggregate_comp_zones(normits)
+                .aggregate_comp_zones(model_zone_system)
             )
             hb_attr_to = (
                 cbase.DVector.load(te_cfg["hb_attr_to"])
@@ -893,7 +896,7 @@ def main(cfg: DistributeConf):
                 .filter_segment_value("p", hb_p_subset, keep_filtered=True)
                 .filter_segment_value("m", m_subset, keep_filtered=True)
                 .filter_segment_value("tp", tp_subset, keep_filtered=True)
-                .aggregate_comp_zones(normits)
+                .aggregate_comp_zones(model_zone_system)
             )
             dvec_map[2] = (hb_prod_to, hb_attr_to)
 
@@ -901,11 +904,11 @@ def main(cfg: DistributeConf):
         attr = pd.concat({k: v[1].data for k, v in dvec_map.items()})
         prod.index.names = ["direction_od", "p", "m", "tp"]
         prod = cbase.DVector(
-            import_data=prod, segmentation=full_seg_p, zoning_system=normits
+            import_data=prod, segmentation=full_seg_p, zoning_system=model_zone_system
         )
         attr.index.names = ["direction_od", "p", "m", "tp"]
         attr = cbase.DVector(
-            import_data=attr, segmentation=full_seg_p, zoning_system=normits
+            import_data=attr, segmentation=full_seg_p, zoning_system=model_zone_system
         )
 
         # --- Run -------------------------------------------------------------------
@@ -921,7 +924,8 @@ def main(cfg: DistributeConf):
             costs,
             alternate_costs,
             cost_steepness,
-            normits_noham_sector,
+            model_zone_system,
+            zone_to_sector_lookup_df,
             z2s_cfg,
             adj_target_purpose,
             adj_target_cfg["furness"],

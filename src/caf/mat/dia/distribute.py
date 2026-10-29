@@ -333,7 +333,7 @@ def main(cfg: DistributeConf):  # pylint: disable=too-many-locals
 
     main_logger.info("Starting distribution process")
 
-    normits = cb.ZoningSystem.get_zoning(cfg.zone_system)
+    model_zone_system = cb.ZoningSystem.get_zoning(cfg.zone_system)
     segmentation_input = cb.SegmentationInput(
         naming_order=["m", "p", "tp", "direction_od", "ca"],
         enum_segments=["direction_od", "m", "p", "tp", "ca"],
@@ -390,7 +390,7 @@ def main(cfg: DistributeConf):  # pylint: disable=too-many-locals
         keep = np.ones(len(full), dtype=bool)
         for seg_name, subset in ca_seg.input.subsets.items():
             keep &= full.index.get_level_values(seg_name).isin(subset)
-        dvecs[direction] = cb.DVector(ca_seg, full[keep], normits)
+        dvecs[direction] = cb.DVector(ca_seg, full[keep], model_zone_system)
         del hb_fr, hb_to, nhb
 
     tlds = pd.read_csv(ca_cfg.tlds_path, index_col=[0, 1, 2, 3, 4, 5])["trips"]
@@ -407,7 +407,7 @@ def main(cfg: DistributeConf):  # pylint: disable=too-many-locals
     )
     cost_matrix = MatrixFiles(
         cost_seg,
-        normits,
+        model_zone_system,
         MatrixType.OD,
         Path(cost_cfg["folder_path"]),
         filename_template=cost_cfg["filename_template"],
