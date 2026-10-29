@@ -1718,6 +1718,45 @@ class TestMatrices:
     @pytest.mark.parametrize(
         "matrices_",
         [
+            "aggregate_memory_matrices",
+            "aggregate_matrices_files",
+            "aggregate_long_matrices",
+        ],
+    )
+    def test_lazy_default_method_queueing(
+        self, request: pytest.FixtureRequest, matrices_: str
+    ) -> None:
+        """Test lazy pipelines queue methods via __getattr__ without explicit stubs."""
+        result: AggregateMatrices = request.getfixturevalue(matrices_)
+
+        eager = result.input_.remove_intras().aggregate(
+            result.to_segmentation,
+            progress_bar=False,
+        )
+        lazy = (
+            result.input_
+            .lazy()
+            .remove_intras()
+            .aggregate(result.to_segmentation, progress_bar=False)
+            .collect()
+        )
+
+        assert isinstance(lazy, type(result.input_))
+        assert lazy.segmentation == eager.segmentation
+        assert lazy.zoning == eager.zoning
+
+        for slice_ in eager.segmentation.iter_slices():
+            pd.testing.assert_frame_equal(
+                eager.get_matrix(slice_).data,
+                lazy.get_matrix(slice_).data,
+                check_column_type=False,
+                check_index_type=False,
+                check_names=False,
+            )
+
+    @pytest.mark.parametrize(
+        "matrices_",
+        [
             "disaggregate_memory_matrices",
             "disaggregate_matrices_files",
             "disaggregate_long_matrices",

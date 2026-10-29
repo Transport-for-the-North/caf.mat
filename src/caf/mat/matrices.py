@@ -87,36 +87,16 @@ class _LazyMatricesPipeline:
         self._operations.append(_LazyOperation(name=name, args=args, kwargs=kwargs))
         return self
 
-    def translate_zoning(
-        self,
-        new_zoning: cbase.ZoningSystem,
-        translation: pd.DataFrame | ctk.translation.ZoneCorrespondence | None = None,
-    ) -> "_LazyMatricesPipeline":
-        """Queue `translate_zoning`."""
-        return self._append(
-            "translate_zoning",
-            new_zoning,
-            translation=translation,
-        )
-
-    def aggregate(
-        self,
-        segmentation_: "segmentation.Segmentation",  # type: ignore[name-defined]
-        output_name: str = "{name}-aggregated",
-        progress_bar: bool = True,
-    ) -> "_LazyMatricesPipeline":
-        """Queue `aggregate`."""
-        return self._append(
-            "aggregate",
-            segmentation_,
-            output_name=output_name,
-            progress_bar=progress_bar,
-        )
-
     def __getattr__(self, name: str):
         """Queue unknown method calls for deferred execution."""
         if name.startswith("_"):
             raise AttributeError(name)
+
+        method = getattr(type(self._source), name, None)
+        if method is None or not callable(method):
+            raise AttributeError(
+                f"{type(self._source).__name__!s} has no callable method {name!r}"
+            )
 
         def queue_operation(*args, **kwargs):
             return self._append(name, *args, **kwargs)
@@ -160,40 +140,94 @@ class _LazyMatricesPipeline:
             progress_bar = operation.args[2]
         return segmentation_, output_name, progress_bar  # type: ignore[return-value]
 
-    def _fused_translate_then_aggregate(
+    def _compile_transform(
+        self,
+        operation: _LazyOperation,
+        current_zoning: cbase.ZoningSystem,
+    ) -> tuple[Callable[[pd.DataFrame], pd.DataFrame], cbase.ZoningSystem] | None:
+        """Compile a lazy transform operation into a per-matrix callable."""
+        if operation.name == "translate_zoning":
+            new_zoning, translation = self._extract_translate_args(operation)
+
+            if translation is None:
+                translation = current_zoning.translate(new_zoning)
+            elif isinstance(translation, pd.DataFrame):
+                translation = ctk.translation.ZoneCorrespondence(
+                    translation,
+                    current_zoning.column_name,
+                    new_zoning.column_name,
+                    current_zoning.translation_column_name(new_zoning),
+                )
+
+            def transform(matrix: pd.DataFrame) -> pd.DataFrame:
+                return ctk.translation.pandas_matrix_zone_translation(matrix, translation)
+
+            return transform, new_zoning
+
+        if operation.name == "to_internal":
+            externals = current_zoning.external
+
+            def transform(matrix: pd.DataFrame) -> pd.DataFrame:
+                matrix = matrix.copy()
+                matrix.loc[externals] = 0
+                matrix.loc[:, externals] = 0
+                return matrix
+
+            return transform, current_zoning
+
+        if operation.name == "to_external":
+            internals = current_zoning.internal
+
+            def transform(matrix: pd.DataFrame) -> pd.DataFrame:
+                matrix = matrix.copy()
+                matrix.loc[internals, internals] = 0
+                return matrix
+
+            return transform, current_zoning
+
+        if operation.name == "remove_intras":
+            def transform(matrix: pd.DataFrame) -> pd.DataFrame:
+                matrix = matrix.copy()
+                np.fill_diagonal(matrix.values, 0)
+                return matrix
+
+            return transform, current_zoning
+
+        return None
+
+    def _fused_transforms_then_aggregate(
         self,
         matrices_: "MatricesBase",
-        translate_operation: _LazyOperation,
+        transforms: list[_LazyOperation],
         aggregate_operation: _LazyOperation,
     ) -> "MatricesBase":
-        """Execute `translate_zoning(...).aggregate(...)` in one pass."""
-        new_zoning, translation = self._extract_translate_args(translate_operation)
+        """Execute transform-chain then aggregate in one pass."""
+        compiled_transforms: list[Callable[[pd.DataFrame], pd.DataFrame]] = []
+        output_zoning = matrices_.zoning
+
+        for operation in transforms:
+            compiled = self._compile_transform(operation, output_zoning)
+            if compiled is None:
+                raise ValueError(f"cannot fuse lazy operation {operation.name}")
+            transform_fn, output_zoning = compiled
+            compiled_transforms.append(transform_fn)
+
         segmentation_, output_name, progress_bar = self._extract_aggregate_args(aggregate_operation)
 
         if not segmentation_.is_subset(matrices_.segmentation):
             raise ValueError("cannot aggregate to segmentation which isn't a subset")
 
-        if translation is None:
-            translation = matrices_.zoning.translate(new_zoning)
-        elif isinstance(translation, pd.DataFrame):
-            translation = ctk.translation.ZoneCorrespondence(
-                translation,
-                matrices_.zoning.column_name,
-                new_zoning.column_name,
-                matrices_.zoning.translation_column_name(new_zoning),
-            )
-
         output = matrices_.new(
             output_name.format(name=matrices_.name),
             segmentation_=segmentation_,
-            zoning=new_zoning,
+            zoning=output_zoning,
         )
 
         if progress_bar:
             iterator = tqdm.tqdm(
                 segmentation_.iter_slices(),
                 total=len(segmentation_),
-                desc=f"Translating and aggregating {matrices_.name}",
+                desc=f"Lazily aggregating {matrices_.name}",
             )
         else:
             iterator = segmentation_.iter_slices()
@@ -202,36 +236,39 @@ class _LazyMatricesPipeline:
             total = 0
             for from_slice in matrices_.segmentation.iter_slices(to_slice.data):
                 matrix = matrices_.get_matrix(from_slice)
-                translated_matrix = ctk.translation.pandas_matrix_zone_translation(
-                    matrix.data, translation
-                )
-                total += translated_matrix
+                transformed = matrix.data
+                for transform in compiled_transforms:
+                    transformed = transform(transformed)
+                total += transformed
 
             output.set_matrix(total, to_slice)
         return output
 
+    def _try_fused_collect(self, current: "MatricesBase") -> "MatricesBase | None":
+        """Try to execute a fused lazy plan; return None if not applicable."""
+        if len(self._operations) < 2:
+            return None
+
+        aggregate_operation = self._operations[-1]
+        if aggregate_operation.name != "aggregate":
+            return None
+
+        transforms = self._operations[:-1]
+        try:
+            return self._fused_transforms_then_aggregate(current, transforms, aggregate_operation)
+        except ValueError:
+            return None
+
     def collect(self) -> "MatricesBase":
         """Materialise the lazy pipeline to a concrete matrices object."""
         current: MatricesBase = self._source
-        idx = 0
-        while idx < len(self._operations):
-            operation = self._operations[idx]
-            if (
-                operation.name == "translate_zoning"
-                and idx + 1 < len(self._operations)
-                and self._operations[idx + 1].name == "aggregate"
-            ):
-                current = self._fused_translate_then_aggregate(
-                    current,
-                    operation,
-                    self._operations[idx + 1],
-                )
-                idx += 2
-                continue
+        fused = self._try_fused_collect(current)
+        if fused is not None:
+            return fused
 
+        for operation in self._operations:
             method = getattr(current, operation.name)
             current = method(*operation.args, **operation.kwargs)
-            idx += 1
         return current
 
     def execute(self) -> "MatricesBase":
