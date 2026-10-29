@@ -193,7 +193,7 @@ output_path: D:\rail_hwy_TE4.0_20261015_v2
 # run_adjust: if true, runs the furness adjustment after the GM step
 # ------------------------------------------------------------------
 run_options:
-  run_gm: False
+  run_gm: True
   run_adjust: True
 
 # ------------------------------------------------------------------
