@@ -3,7 +3,7 @@
 ##### IMPORTS #####
 
 # Built-Ins
-import datetime
+import datetime as dt
 import logging
 import pathlib
 import warnings
@@ -32,7 +32,6 @@ CONFIG_PATH = pathlib.Path(__file__).with_name("od2pa_comparison.yml")
 
 class MatrixComparison:
     """Compare two different matrices."""
-
     def __init__(self, old: pd.DataFrame, new: pd.DataFrame) -> None:
         self._old = old
         self._new = new
@@ -197,9 +196,7 @@ def main() -> None:
     parameters = _Parameters.load_yaml(CONFIG_PATH)
 
     details = ctk.ToolDetails("caf.mat.compare", cmat.__version__)
-    output_folder = (
-        parameters.output_folder / f"OD2PA_comparison-{datetime.date.today():%Y%m%d}"
-    )
+    output_folder = parameters.output_folder / f"OD2PA_comparison-{dt.date.today():%Y%m%d}"
     output_folder.mkdir(exist_ok=True)
 
     log_file = output_folder / "compare.log"
@@ -215,7 +212,10 @@ def main() -> None:
             )
 
             compare_matrices(
-                [(folders.old / i, folders.new / j) for i, j in folders.filenames.items()],
+                [
+                    (folders.old / i, folders.new / j)
+                    for i, j in folders.filenames.items()
+                ],
                 output_folder / name,
                 old_format=folders.old_format,
                 new_format=folders.new_format,

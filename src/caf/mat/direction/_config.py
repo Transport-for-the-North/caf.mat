@@ -4,7 +4,7 @@
 
 # Built-Ins
 import argparse
-import datetime
+import datetime as dt
 import logging
 import pathlib
 
@@ -27,7 +27,9 @@ LOG = logging.getLogger(__name__)
 class _OD2PAArguments(_mat.ArgumentHandler):
     """Define arguments for OD to PA sub-command."""
 
-    config: pydantic.FilePath = pydantic.Field(description="path to config file for od2pa")
+    config: pydantic.FilePath = pydantic.Field(
+        description="path to config file for od2pa"
+    )
 
     def run(self) -> None:
         """Run OD to PA conversion."""
@@ -39,7 +41,7 @@ class _OD2PAArguments(_mat.ArgumentHandler):
         """Define log file path for OD to PA conversion."""
         # False positive caused by pydantic.Field
         # pylint: disable=no-member
-        return self.config.parent / f"od2pa-{datetime.date.today():%Y%m%d}.log"
+        return self.config.parent / f"od2pa-{dt.date.today():%Y%m%d}.log"
 
 
 def add_direction_commands(parser: argparse.ArgumentParser) -> None:

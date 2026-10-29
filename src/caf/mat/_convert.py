@@ -12,13 +12,15 @@ See Also
 
 ##### IMPORTS #####
 
-import datetime
+import datetime as dt
 import logging
 import os
 import pathlib
 
+# Third Party
 import pydantic
 
+# Local Imports
 from caf.mat import _mat, cube, ufm
 
 ##### CONSTANTS #####
@@ -150,7 +152,9 @@ def _validate_paths(
         if saturn_path is None:
             raise ValueError("saturn path required for UFM conversions")
         if not saturn_path.is_dir():
-            raise NotADirectoryError(f"SATURN path should point to exes folder: {saturn_path}")
+            raise NotADirectoryError(
+                f"SATURN path should point to exes folder: {saturn_path}"
+            )
     if _mat.MatrixFileFormat.CUBE in formats:
         if voyager_path is None:
             raise ValueError("voyager path required for CUBE MAT conversions")
@@ -277,4 +281,4 @@ class ConvertArguments(_mat.ArgumentHandler):
             folder = self.output.parent
         else:
             folder = self.path.parent
-        return folder / f"caf.mat-convert-{datetime.date.today():%Y%m%d}.log"
+        return folder / f"caf.mat-convert-{dt.date.today():%Y%m%d}.log"
