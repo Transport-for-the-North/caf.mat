@@ -76,6 +76,14 @@ class _LazyOperation:
     kwargs: dict[str, object]
 
 
+@dataclasses.dataclass
+class _MatrixTransformSpec:
+    """Specification for a per-matrix transformation."""
+
+    transform: Callable[[pd.DataFrame], pd.DataFrame]
+    output_zoning: cbase.ZoningSystem
+
+
 class _LazyMatricesPipeline:
     """Lazily compose matrices operations and materialise at the end."""
 
@@ -104,23 +112,6 @@ class _LazyMatricesPipeline:
         return queue_operation
 
     @staticmethod
-    def _extract_translate_args(
-        operation: _LazyOperation,
-    ) -> tuple[cbase.ZoningSystem, pd.DataFrame | ctk.translation.ZoneCorrespondence | None]:
-        """Extract arguments from a queued translate operation."""
-        if "new_zoning" in operation.kwargs:
-            new_zoning = operation.kwargs["new_zoning"]
-        elif operation.args:
-            new_zoning = operation.args[0]
-        else:
-            raise ValueError("missing new_zoning for translate_zoning")
-
-        translation = operation.kwargs.get("translation")
-        if len(operation.args) > 1 and "translation" not in operation.kwargs:
-            translation = operation.args[1]
-        return new_zoning, translation  # type: ignore[return-value]
-
-    @staticmethod
     def _extract_aggregate_args(
         operation: _LazyOperation,
     ) -> tuple["segmentation.Segmentation", str, bool]:
@@ -143,57 +134,11 @@ class _LazyMatricesPipeline:
     def _compile_transform(
         self,
         operation: _LazyOperation,
+        matrices_: "MatricesBase",
         current_zoning: cbase.ZoningSystem,
-    ) -> tuple[Callable[[pd.DataFrame], pd.DataFrame], cbase.ZoningSystem] | None:
+    ) -> _MatrixTransformSpec | None:
         """Compile a lazy transform operation into a per-matrix callable."""
-        if operation.name == "translate_zoning":
-            new_zoning, translation = self._extract_translate_args(operation)
-
-            if translation is None:
-                translation = current_zoning.translate(new_zoning)
-            elif isinstance(translation, pd.DataFrame):
-                translation = ctk.translation.ZoneCorrespondence(
-                    translation,
-                    current_zoning.column_name,
-                    new_zoning.column_name,
-                    current_zoning.translation_column_name(new_zoning),
-                )
-
-            def transform(matrix: pd.DataFrame) -> pd.DataFrame:
-                return ctk.translation.pandas_matrix_zone_translation(matrix, translation)
-
-            return transform, new_zoning
-
-        if operation.name == "to_internal":
-            externals = current_zoning.external
-
-            def transform(matrix: pd.DataFrame) -> pd.DataFrame:
-                matrix = matrix.copy()
-                matrix.loc[externals] = 0
-                matrix.loc[:, externals] = 0
-                return matrix
-
-            return transform, current_zoning
-
-        if operation.name == "to_external":
-            internals = current_zoning.internal
-
-            def transform(matrix: pd.DataFrame) -> pd.DataFrame:
-                matrix = matrix.copy()
-                matrix.loc[internals, internals] = 0
-                return matrix
-
-            return transform, current_zoning
-
-        if operation.name == "remove_intras":
-            def transform(matrix: pd.DataFrame) -> pd.DataFrame:
-                matrix = matrix.copy()
-                np.fill_diagonal(matrix.values, 0)
-                return matrix
-
-            return transform, current_zoning
-
-        return None
+        return matrices_._build_lazy_transform(operation, current_zoning)
 
     def _fused_transforms_then_aggregate(
         self,
@@ -206,43 +151,30 @@ class _LazyMatricesPipeline:
         output_zoning = matrices_.zoning
 
         for operation in transforms:
-            compiled = self._compile_transform(operation, output_zoning)
+            compiled = self._compile_transform(operation, matrices_, output_zoning)
             if compiled is None:
                 raise ValueError(f"cannot fuse lazy operation {operation.name}")
-            transform_fn, output_zoning = compiled
-            compiled_transforms.append(transform_fn)
+            output_zoning = compiled.output_zoning
+            compiled_transforms.append(compiled.transform)
 
-        segmentation_, output_name, progress_bar = self._extract_aggregate_args(aggregate_operation)
-
-        if not segmentation_.is_subset(matrices_.segmentation):
-            raise ValueError("cannot aggregate to segmentation which isn't a subset")
-
-        output = matrices_.new(
-            output_name.format(name=matrices_.name),
-            segmentation_=segmentation_,
-            zoning=output_zoning,
+        segmentation_, output_name, progress_bar = self._extract_aggregate_args(
+            aggregate_operation
         )
 
-        if progress_bar:
-            iterator = tqdm.tqdm(
-                segmentation_.iter_slices(),
-                total=len(segmentation_),
-                desc=f"Lazily aggregating {matrices_.name}",
-            )
-        else:
-            iterator = segmentation_.iter_slices()
+        def apply_transforms(matrix: pd.DataFrame) -> pd.DataFrame:
+            transformed = matrix
+            for transform in compiled_transforms:
+                transformed = transform(transformed)
+            return transformed
 
-        for to_slice in iterator:
-            total = 0
-            for from_slice in matrices_.segmentation.iter_slices(to_slice.data):
-                matrix = matrices_.get_matrix(from_slice)
-                transformed = matrix.data
-                for transform in compiled_transforms:
-                    transformed = transform(transformed)
-                total += transformed
-
-            output.set_matrix(total, to_slice)
-        return output
+        return matrices_._aggregate_by_slice(
+            segmentation_,
+            output_name=output_name,
+            progress_bar=progress_bar,
+            output_zoning=output_zoning,
+            matrix_transform=apply_transforms,
+            progress_desc="Lazily aggregating",
+        )
 
     def _try_fused_collect(self, current: "MatricesBase") -> "MatricesBase | None":
         """Try to execute a fused lazy plan; return None if not applicable."""
@@ -255,7 +187,11 @@ class _LazyMatricesPipeline:
 
         transforms = self._operations[:-1]
         try:
-            return self._fused_transforms_then_aggregate(current, transforms, aggregate_operation)
+            return self._fused_transforms_then_aggregate(
+                current,
+                transforms,
+                aggregate_operation,
+            )
         except ValueError:
             return None
 
@@ -560,6 +496,174 @@ class MatricesBase(abc.ABC):
         """Create a lazy operation pipeline from this matrices object."""
         return _LazyMatricesPipeline(self)
 
+    @staticmethod
+    def _build_progress_iterator(
+        iterator: Iterator[cbase.segmentation.SegmentationSlice],
+        total: int,
+        progress_bar: bool,
+        desc: str,
+    ) -> Iterator[cbase.segmentation.SegmentationSlice]:
+        """Wrap an iterator with a progress bar when requested."""
+        if not progress_bar:
+            return iterator
+        return tqdm.tqdm(iterator, total=total, desc=desc)
+
+    def _map_slices(
+        self,
+        *,
+        output_name: str,
+        transform: Callable[[pd.DataFrame], pd.DataFrame],
+        output_zoning: cbase.ZoningSystem | None = None,
+        progress_bar: bool = False,
+        progress_desc: str = "Processing",
+    ) -> Self:
+        """Apply a transform to each matrix slice and return a new matrices object."""
+        if output_zoning is None:
+            output_zoning = self.zoning
+
+        output = self.new(name=output_name, zoning=output_zoning)
+        iterator = self._build_progress_iterator(
+            self.segmentation.iter_slices(),
+            len(self.segmentation),
+            progress_bar,
+            f"{progress_desc} {self.name}",
+        )
+        for slice_ in iterator:
+            matrix = self.get_matrix(slice_).data
+            output.set_matrix(transform(matrix), slice_)
+        return output
+
+    def _aggregate_by_slice(
+        self,
+        segmentation_: cbase.Segmentation,
+        *,
+        output_name: str = "{name}-aggregated",
+        progress_bar: bool = True,
+        output_zoning: cbase.ZoningSystem | None = None,
+        matrix_transform: Callable[[pd.DataFrame], pd.DataFrame] | None = None,
+        progress_desc: str = "Aggregating",
+    ) -> Self:
+        """Aggregate slices into a target segmentation."""
+        if not segmentation_.is_subset(self.segmentation):
+            raise ValueError("cannot aggregate to segmentation which isn't a subset")
+
+        if output_zoning is None:
+            output_zoning = self.zoning
+        if matrix_transform is None:
+            matrix_transform = lambda matrix: matrix
+
+        output = self.new(
+            output_name.format(name=self.name),
+            segmentation_=segmentation_,
+            zoning=output_zoning,
+        )
+        iterator = self._build_progress_iterator(
+            segmentation_.iter_slices(),
+            len(segmentation_),
+            progress_bar,
+            f"{progress_desc} {self.name}",
+        )
+
+        for to_slice in iterator:
+            total = 0
+            for from_slice in self.segmentation.iter_slices(to_slice.data):
+                matrix = self.get_matrix(from_slice).data
+                total += matrix_transform(matrix)
+            output.set_matrix(total, to_slice)
+        return output
+
+    def _build_lazy_transform(
+        self,
+        operation: _LazyOperation,
+        source_zoning: cbase.ZoningSystem,
+    ) -> _MatrixTransformSpec | None:
+        """Build a lazy transform specification for a queued operation."""
+        builder = getattr(self, f"_build_{operation.name}_transform", None)
+        if builder is None or not callable(builder):
+            return None
+        return builder(
+            *operation.args,
+            source_zoning=source_zoning,
+            **operation.kwargs,
+        )
+
+    def _build_translate_zoning_transform(
+        self,
+        new_zoning: cbase.ZoningSystem,
+        translation: pd.DataFrame | ctk.translation.ZoneCorrespondence | None = None,
+        *,
+        source_zoning: cbase.ZoningSystem | None = None,
+    ) -> _MatrixTransformSpec:
+        """Build translation transform and output zoning metadata."""
+        if source_zoning is None:
+            source_zoning = self.zoning
+
+        if translation is None:
+            translation = source_zoning.translate(new_zoning)
+        elif isinstance(translation, pd.DataFrame):
+            translation = ctk.translation.ZoneCorrespondence(
+                translation,
+                source_zoning.column_name,
+                new_zoning.column_name,
+                source_zoning.translation_column_name(new_zoning),
+            )
+
+        def transform(matrix: pd.DataFrame) -> pd.DataFrame:
+            return ctk.translation.pandas_matrix_zone_translation(matrix, translation)
+
+        return _MatrixTransformSpec(transform=transform, output_zoning=new_zoning)
+
+    def _build_to_external_transform(
+        self,
+        *,
+        source_zoning: cbase.ZoningSystem | None = None,
+    ) -> _MatrixTransformSpec:
+        """Build transform to remove internal-to-internal demand."""
+        if source_zoning is None:
+            source_zoning = self.zoning
+        internals = source_zoning.internal
+
+        def transform(matrix: pd.DataFrame) -> pd.DataFrame:
+            matrix = matrix.copy()
+            matrix.loc[internals, internals] = 0
+            return matrix
+
+        return _MatrixTransformSpec(transform=transform, output_zoning=source_zoning)
+
+    def _build_to_internal_transform(
+        self,
+        *,
+        source_zoning: cbase.ZoningSystem | None = None,
+    ) -> _MatrixTransformSpec:
+        """Build transform to remove external demand."""
+        if source_zoning is None:
+            source_zoning = self.zoning
+        externals = source_zoning.external
+
+        def transform(matrix: pd.DataFrame) -> pd.DataFrame:
+            matrix = matrix.copy()
+            matrix.loc[externals] = 0
+            matrix.loc[:, externals] = 0
+            return matrix
+
+        return _MatrixTransformSpec(transform=transform, output_zoning=source_zoning)
+
+    def _build_remove_intras_transform(
+        self,
+        *,
+        source_zoning: cbase.ZoningSystem | None = None,
+    ) -> _MatrixTransformSpec:
+        """Build transform to zero the matrix diagonal."""
+        if source_zoning is None:
+            source_zoning = self.zoning
+
+        def transform(matrix: pd.DataFrame) -> pd.DataFrame:
+            matrix = matrix.copy()
+            np.fill_diagonal(matrix.values, 0)
+            return matrix
+
+        return _MatrixTransformSpec(transform=transform, output_zoning=source_zoning)
+
     def aggregate(
         self,
         segmentation_: "segmentation.Segmentation",  # type: ignore[name-defined]
@@ -591,37 +695,18 @@ class MatricesBase(abc.ABC):
         ValueError
             If `segmentation_` isn't a subset of `self.segmentation`.
         """
-        if not segmentation_.is_subset(self.segmentation):
-            raise ValueError("cannot aggregate to segmentation which isn't a subset")
-
-        output = self.new(
-            output_name.format(name=self.name), segmentation_=segmentation_
-        )
-
         LOG.info(
             "Aggregating %s to segments %s, outputting as %s",
             self.name,
             ", ".join(segmentation_.names),
-            output.name,
+            output_name.format(name=self.name),
         )
 
-        if progress_bar:
-            iterator = tqdm.tqdm(
-                segmentation_.iter_slices(),
-                total=len(segmentation_),
-                desc=f"Aggregating {self.name}",
-            )
-        else:
-            iterator = segmentation_.iter_slices()
-
-        for to_slice in iterator:
-            total = 0
-            for from_slice in self.segmentation.iter_slices(to_slice.data):
-                total += self.get_matrix(from_slice).data
-
-            output.set_matrix(total, to_slice)
-
-        return output
+        return self._aggregate_by_slice(
+            segmentation_,
+            output_name=output_name,
+            progress_bar=progress_bar,
+        )
     
     def filter_segment_value(self, segment: str, values: list[int] | int, progress_bar: bool=True, keep_segment: bool = True):
         if keep_segment:
@@ -985,13 +1070,12 @@ class MatricesBase(abc.ABC):
         Self
             External matrices
         """
-        external = self.new(name=f"{self.name}_external")
-        internals = self.zoning.internal
-        for slice_ in self.segmentation.iter_slices():
-            matrix = self.get_matrix(slice_).data.copy()
-            matrix.loc[internals, internals] = 0
-            external.set_matrix(matrix, slice_)
-        return external
+        transform_spec = self._build_to_external_transform()
+        return self._map_slices(
+            output_name=f"{self.name}_external",
+            transform=transform_spec.transform,
+            output_zoning=transform_spec.output_zoning,
+        )
     
     def to_internal(self) -> Self:
         """
@@ -1002,14 +1086,12 @@ class MatricesBase(abc.ABC):
         Self
             Internal matrices
         """
-        internal = self.new(name=f"{self.name}_internal")
-        externals = self.zoning.external
-        for slice_ in self.segmentation.iter_slices():
-            matrix = self.get_matrix(slice_).data.copy()
-            matrix.loc[externals] = 0
-            matrix.loc[:, externals] = 0
-            internal.set_matrix(matrix, slice_)
-        return internal
+        transform_spec = self._build_to_internal_transform()
+        return self._map_slices(
+            output_name=f"{self.name}_internal",
+            transform=transform_spec.transform,
+            output_zoning=transform_spec.output_zoning,
+        )
 
     def remove_intras(self) -> Self:
         """
@@ -1020,12 +1102,12 @@ class MatricesBase(abc.ABC):
         Self
             Self but with the leading diagonal set to zero.
         """
-        inters = self.new(name=f"{self.name}_nointras")
-        for slice_ in self.segmentation.iter_slices():
-            matrix = self.get_matrix(slice_).data.copy()
-            np.fill_diagonal(matrix.values, 0)
-            inters.set_matrix(matrix, slice_)
-        return inters
+        transform_spec = self._build_remove_intras_transform()
+        return self._map_slices(
+            output_name=f"{self.name}_nointras",
+            transform=transform_spec.transform,
+            output_zoning=transform_spec.output_zoning,
+        )
 
     def intras(self) -> cbase.DVector:
         """
@@ -1070,24 +1152,12 @@ class MatricesBase(abc.ABC):
         Self
             The input matrices in the new zone system.
         """
-        if translation is None:
-            translation = self.zoning.translate(new_zoning)
-
-        elif isinstance(translation, pd.DataFrame):
-            translation = ctk.translation.ZoneCorrespondence(
-                translation,
-                self.zoning.column_name,
-                new_zoning.column_name,
-                self.zoning.translation_column_name(new_zoning),
-            )
-        translated = self.new(name=f"{self.name}_{new_zoning.name}", zoning=new_zoning)
-        for slice_ in self.segmentation.iter_slices():
-            matrix = self.get_matrix(slice_)
-            translated_matrix = ctk.translation.pandas_matrix_zone_translation(
-                matrix.data, translation
-            )
-            translated.set_matrix(translated_matrix, slice_)
-        return translated
+        transform_spec = self._build_translate_zoning_transform(new_zoning, translation)
+        return self._map_slices(
+            output_name=f"{self.name}_{new_zoning.name}",
+            transform=transform_spec.transform,
+            output_zoning=transform_spec.output_zoning,
+        )
 
     def to_dvector(self) -> dict[str, cbase.DVector]:
         """
