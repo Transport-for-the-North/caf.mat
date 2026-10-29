@@ -297,6 +297,50 @@ class TestHDFMatrices:
             check_names=False,
         )
 
+    def test_save_to_existing_source_path_fails(
+        self, tmp_path: pathlib.Path, tp_hdf_matrices: "MatricesResults"
+    ) -> None:
+        """Test save doesn't allow writing to the same path as the source file."""
+        saved_path = tp_hdf_matrices.test.save(tmp_path / "source")
+        loaded = matrices.HDFMatrices.load(saved_path)
+
+        with pytest.raises(ValueError, match="cannot save matrices to source file path"):
+            loaded.save(saved_path)
+
+    def test_set_matrix_aligns_axes_to_zone_order(
+        self, tmp_path: pathlib.Path, tp_hdf_matrices: "MatricesResults"
+    ) -> None:
+        """Test set_matrix accepts row/column order differences and aligns to OMX zones."""
+        path = tp_hdf_matrices.test.save(tmp_path / "axis-order")
+        loaded = matrices.HDFMatrices.load(path)
+        slice_ = next(tp_hdf_matrices.segmentation_.iter_slices())
+        matrix = tp_hdf_matrices.data[slice_]
+
+        misaligned = matrix.reindex(index=matrix.index[::-1], columns=matrix.columns)
+        loaded.set_matrix(misaligned, slice_)
+
+        got = loaded.get_matrix(slice_).data
+        pd.testing.assert_frame_equal(
+            matrix,
+            got,
+            check_index_type=False,
+            check_column_type=False,
+            check_names=False,
+        )
+
+    def test_to_hdf_rejects_incompatible_existing_metadata(
+        self,
+        tmp_path: pathlib.Path,
+        tp_matrices_files: "MatricesResults",
+        hb_matrices_files: "MatricesResults",
+    ) -> None:
+        """Test converting to an existing HDF path validates existing metadata compatibility."""
+        path = tmp_path / "shared-output.h5"
+        tp_matrices_files.test.to_hdf(path)
+
+        with pytest.raises(ValueError, match="metadata does not match|segmentation metadata"):
+            hb_matrices_files.test.to_hdf(path)
+
     def test_to_mat_uses_cube_converter(
         self,
         tmp_path: pathlib.Path,
@@ -1680,6 +1724,34 @@ class TestMatrices:
             pd.testing.assert_frame_equal(
                 result.expected[slice_],
                 answer.get_matrix(slice_).data,
+                check_column_type=False,
+                check_index_type=False,
+                check_names=False,
+            )
+
+    def test_disaggregate_replace_recalculate_file_backed(
+        self, disaggregate_replace_matrices_files: DisaggregateReplaceMatrices
+    ) -> None:
+        """Test recalculating file-backed disaggregation overwrites first writes per slice."""
+        result = disaggregate_replace_matrices_files
+
+        first = result.input_.disaggregate(
+            result.targets,
+            *result.segments,
+            ignore_if_exists=False,
+            progress_bar=False,
+        )
+        second = result.input_.disaggregate(
+            result.targets,
+            *result.segments,
+            ignore_if_exists=False,
+            progress_bar=False,
+        )
+
+        for slice_ in result.to_segmentation.iter_slices():
+            pd.testing.assert_frame_equal(
+                first.get_matrix(slice_).data,
+                second.get_matrix(slice_).data,
                 check_column_type=False,
                 check_index_type=False,
                 check_names=False,

@@ -435,6 +435,7 @@ class MatricesBase(abc.ABC):
         else:
             iterator = disaggregations.items()
 
+        written_slices: set[segmentation.SegmentationSlice] = set()
         for from_slice, to_slices in iterator:
             disagg_matrices: list[Matrix] = []
             for slice_ in to_slices:
@@ -455,6 +456,7 @@ class MatricesBase(abc.ABC):
                 self.get_matrix(from_slice),
                 disagg_matrices,
                 output,
+                written_slices,
             )
 
         return output
@@ -574,6 +576,7 @@ def _disaggregate_matrix(
     aggregate: Matrix,
     targets: list[Matrix],
     output: MatricesBase,
+    written_slices: set[segmentation.SegmentationSlice],
 ) -> None:
     """Disaggregate a single matrix and save outputs."""
     total = sum(i.data for i in targets).to_numpy()
@@ -590,18 +593,12 @@ def _disaggregate_matrix(
         factor = np.divide(data, total, out=np.full_like(total, 0), where=mask)
         disaggregated = aggregate.data * factor
 
-        try:
-            existing_matrix = output.get_matrix(matrix.slice)
-            existing = existing_matrix.data
-            if existing.isna().all().all():
-                existing = None
-        except (KeyError, FileNotFoundError):
-            existing = None
-
-        if existing is not None:
+        if matrix.slice in written_slices:
+            existing = output.get_matrix(matrix.slice).data
             disaggregated = disaggregated + existing
 
         output.set_matrix(disaggregated, matrix.slice)
+        written_slices.add(matrix.slice)
 
 
 class MemoryMatrices(MatricesBase):
@@ -996,8 +993,64 @@ class HDFMatrices(MatricesBase):
             ]
         )
 
+    @staticmethod
+    def _same_file(path1: pathlib.Path, path2: pathlib.Path) -> bool:
+        """Return True if both paths point to the same filesystem entry."""
+        if path1 == path2:
+            return True
+        if path1.exists() and path2.exists():
+            try:
+                return path1.samefile(path2)
+            except OSError:
+                return False
+        return False
+
+    def _validate_existing_metadata(self, path: pathlib.Path) -> None:
+        """Validate metadata in an existing file matches this instance."""
+        if not path.is_file():
+            return
+
+        try:
+            existing_metadata = pd.read_hdf(path, key=self._metadata_key, mode="r")
+        except (KeyError, FileNotFoundError, OSError):
+            existing_metadata = None
+
+        if existing_metadata is not None:
+            if len(existing_metadata) != 1:
+                raise ValueError(f"expected 1 metadata row in {path} not {len(existing_metadata)}")
+
+            row = existing_metadata.iloc[0]
+            if str(row["matrix_type"]) != self._type.name:
+                raise ValueError(
+                    f"{path} matrix type metadata ({row['matrix_type']}) does not match"
+                    f" matrices type ({self._type.name})"
+                )
+            if str(row["key_template"]) != self._raw_key_template:
+                raise ValueError(
+                    f"{path} key template metadata ({row['key_template']}) does not match"
+                    f" matrices key template ({self._raw_key_template})"
+                )
+
+        with h5py.File(path, "r") as file:
+            has_segmentation = "segmentation" in file
+            has_zoning = f"zoning_{self._zoning.name}" in file
+            has_zoning_meta = f"zoning_meta_{self._zoning.name}" in file
+
+        if has_segmentation:
+            segmentation_ = cbase.Segmentation.load(path, "hdf")
+            if segmentation_ != self._segmentation:
+                raise ValueError(f"{path} segmentation metadata does not match matrices segmentation")
+
+        if has_zoning and has_zoning_meta:
+            zoning = cbase.ZoningSystem.load(path, "hdf")
+            if not isinstance(zoning, cbase.ZoningSystem):
+                raise TypeError(f"expected one zoning system in {path} not {type(zoning)}")
+            if zoning != self._zoning:
+                raise ValueError(f"{path} zoning metadata does not match matrices zoning")
+
     def _write_metadata(self, path: pathlib.Path) -> None:
         """Write metadata, segmentation and zoning to file."""
+        self._validate_existing_metadata(path)
         self._metadata_frame().to_hdf(path, key=self._metadata_key, mode="a", format="fixed")
         zoning_key = f"zoning_{self._zoning.name}"
         zoning_meta_key = f"zoning_meta_{self._zoning.name}"
@@ -1036,6 +1089,7 @@ class HDFMatrices(MatricesBase):
                 shuffle=False,
             ),
         ) as file:
+            matrix = matrix.reindex(index=file.zones, columns=file.zones)
             try:
                 file.get_node("/data", key)
             except tables.NoSuchNodeError:
@@ -1103,6 +1157,8 @@ class HDFMatrices(MatricesBase):
     def save(self, path: pathlib.Path) -> pathlib.Path:
         """Save matrices, segmentation and zoning to a single HDF file."""
         path = self._normalise_path(path, add_default_suffix=True)
+        if self._same_file(path, self._path):
+            raise ValueError(f"cannot save matrices to source file path: {path}")
         path.parent.mkdir(parents=True, exist_ok=True)
 
         with omx.OMXFile(
