@@ -303,11 +303,7 @@ def read_4dcons(tor_cons: str,
                 tour_fldr: pathlib.Path, 
                 moira_fldr: pathlib.Path, 
                 out_fldr: pathlib.Path) -> dict:
-
-    tour_fldr = pathlib.Path(tour_fldr)
-    moira_fldr = pathlib.Path(moira_fldr)
-    out_fldr = pathlib.Path(out_fldr)
-    
+        
     out_fldr.mkdir(parents=True, exist_ok=True)
     
     # process sectoral constraint
@@ -634,9 +630,9 @@ def main(cfg: DistributeConf):
     if read_4dcons_cfg["flag"] is True:
         adjusted_output = read_4dcons(read_4dcons_cfg["adjustment_type"],
                                       read_4dcons_cfg["level"],
-                                      read_4dcons_cfg["input_files"],
-                                      read_4dcons_cfg["adj_files"],
-                                      read_4dcons_cfg["output_path"])
+                                      pathlib.Path(read_4dcons_cfg["input_files"]),
+                                      pathlib.Path(read_4dcons_cfg["adj_files"]),
+                                      pathlib.Path(read_4dcons_cfg["output_path"]))
 
     # To improve memory efficiency, each tp is processed separately.
     # This ensures the loaded DVectors aren't too large but multiprocessing will still work
