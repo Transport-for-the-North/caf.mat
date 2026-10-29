@@ -958,6 +958,30 @@ def fix_aggregate_long_matrices(
     )
 
 
+@pytest.fixture(name="aggregate_hdf_matrices")
+def fix_aggregate_hdf_matrices(
+    tmp_path: pathlib.Path,
+    disaggregate_dataset: DisaggregateDatasets,
+) -> AggregateMatrices:
+    """HDFMatrices for testing aggregate method."""
+    input_matrices = _produce_hdf_matrices(
+        tmp_path,
+        disaggregate_dataset.zone_system,
+        disaggregate_dataset.to_segmentation,
+        disaggregate_dataset.type_,
+        name="input matrices hdf",
+        data=disaggregate_dataset.expected,
+    )
+    return AggregateMatrices(
+        disaggregate_dataset.zone_system,
+        disaggregate_dataset.type_,
+        from_segmentation=disaggregate_dataset.to_segmentation,
+        to_segmentation=disaggregate_dataset.from_segmentation,
+        input_=input_matrices[1],
+        expected=disaggregate_dataset.input_,
+    )
+
+
 @dataclasses.dataclass
 class DisaggregateReplaceDatasets:
     """Store datasets for disaggregate and replace method tests."""
@@ -1801,6 +1825,107 @@ class TestMatrices:
         assert lazy.segmentation == eager.segmentation
         assert lazy.zoning == eager.zoning
 
+        for slice_ in eager.segmentation.iter_slices():
+            pd.testing.assert_frame_equal(
+                eager.get_matrix(slice_).data,
+                lazy.get_matrix(slice_).data,
+                check_column_type=False,
+                check_index_type=False,
+                check_names=False,
+            )
+
+    @pytest.mark.parametrize(
+        "matrices_, intermediate_name",
+        [
+            ("aggregate_matrices_files", "input matrices-aggregated"),
+            ("aggregate_hdf_matrices", "input matrices hdf-aggregated.h5"),
+        ],
+    )
+    def test_lazy_aggregate_convert_type_avoids_intermediate_storage(
+        self,
+        request: pytest.FixtureRequest,
+        matrices_: str,
+        intermediate_name: str,
+    ) -> None:
+        """Test lazy aggregate+convert_type avoids materialising file intermediates."""
+        result: AggregateMatrices = request.getfixturevalue(matrices_)
+
+        if isinstance(result.input_, matrices.MatrixFiles):
+            intermediate_path = result.input_.folder.with_name(intermediate_name)
+        elif isinstance(result.input_, matrices.HDFMatrices):
+            intermediate_path = result.input_.path.with_name(intermediate_name)
+        else:
+            raise TypeError("unexpected fixture input type")
+
+        assert not intermediate_path.exists()
+
+        lazy = (
+            result.input_
+            .lazy()
+            .aggregate(result.to_segmentation, progress_bar=False)
+            .convert_type(matrices.MemoryMatrices)
+            .collect()
+        )
+
+        assert isinstance(lazy, matrices.MemoryMatrices)
+        assert lazy.segmentation == result.to_segmentation
+
+        assert not intermediate_path.exists()
+        for slice_ in result.to_segmentation.iter_slices():
+            pd.testing.assert_frame_equal(
+                result.expected[slice_],
+                lazy.get_matrix(slice_).data,
+                check_column_type=False,
+                check_index_type=False,
+                check_names=False,
+            )
+
+    @pytest.mark.parametrize(
+        "matrices_",
+        [
+            "aggregate_memory_matrices",
+            "aggregate_matrices_files",
+            "aggregate_hdf_matrices",
+        ],
+    )
+    def test_lazy_transform_aggregate_convert_type_matches_eager(
+        self, request: pytest.FixtureRequest, matrices_: str
+    ) -> None:
+        """Test lazy transform->aggregate->convert_type matches eager execution."""
+        result: AggregateMatrices = request.getfixturevalue(matrices_)
+
+        new_zoning = cbase.ZoningSystem(
+            "translated",
+            pd.DataFrame({"zone_id": [10, 20]}),
+            zoning.ZoningSystemMetaData(name="translated"),
+        )
+        source_zone = result.input_.zoning
+        translation = pd.DataFrame(
+            {
+                source_zone.column_name: [1, 2, 3],
+                new_zoning.column_name: [10, 20, 20],
+                source_zone.translation_column_name(new_zoning): [1.0, 1.0, 1.0],
+            }
+        )
+
+        eager = (
+            result.input_
+            .translate_zoning(new_zoning, translation)
+            .aggregate(result.to_segmentation, progress_bar=False)
+            .convert_type(matrices.MemoryMatrices)
+        )
+        lazy = (
+            result.input_
+            .lazy()
+            .translate_zoning(new_zoning, translation=translation)
+            .aggregate(result.to_segmentation, progress_bar=False)
+            .convert_type(matrices.MemoryMatrices)
+            .collect()
+        )
+
+        assert isinstance(lazy, matrices.MemoryMatrices)
+        assert lazy.segmentation == eager.segmentation
+        assert lazy.zoning == eager.zoning
         for slice_ in eager.segmentation.iter_slices():
             pd.testing.assert_frame_equal(
                 eager.get_matrix(slice_).data,

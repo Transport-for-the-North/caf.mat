@@ -131,6 +131,21 @@ class _LazyMatricesPipeline:
             progress_bar = operation.args[2]
         return segmentation_, output_name, progress_bar  # type: ignore[return-value]
 
+    @staticmethod
+    def _extract_convert_type_args(operation: _LazyOperation) -> type["MatricesBase"]:
+        """Extract target type from a queued convert_type operation."""
+        if "new_type" in operation.kwargs:
+            new_type = operation.kwargs["new_type"]
+        elif operation.args:
+            new_type = operation.args[0]
+        else:
+            raise ValueError("missing new_type for convert_type")
+
+        if not isinstance(new_type, type) or not issubclass(new_type, MatricesBase):
+            raise TypeError(f"invalid new_type for convert_type: {new_type!r}")
+
+        return new_type
+
     def _compile_transform(
         self,
         operation: _LazyOperation,
@@ -145,6 +160,7 @@ class _LazyMatricesPipeline:
         matrices_: "MatricesBase",
         transforms: list[_LazyOperation],
         aggregate_operation: _LazyOperation,
+        output_type: type["MatricesBase"] | None = None,
     ) -> "MatricesBase":
         """Execute transform-chain then aggregate in one pass."""
         compiled_transforms: list[Callable[[pd.DataFrame], pd.DataFrame]] = []
@@ -172,27 +188,38 @@ class _LazyMatricesPipeline:
             output_name=output_name,
             progress_bar=progress_bar,
             output_zoning=output_zoning,
+            output_type=output_type,
             matrix_transform=apply_transforms,
             progress_desc="Lazily aggregating",
         )
 
     def _try_fused_collect(self, current: "MatricesBase") -> "MatricesBase | None":
-        """Try to execute a fused lazy plan; return None if not applicable."""
-        if len(self._operations) < 2:
+        """Try fused execution, including terminal convert_type output hints."""
+        if len(self._operations) < 1:
             return None
 
-        aggregate_operation = self._operations[-1]
+        operations = self._operations.copy()
+        output_type: type["MatricesBase"] | None = None
+        if operations[-1].name == "convert_type":
+            output_type = self._extract_convert_type_args(operations[-1])
+            operations = operations[:-1]
+
+        if len(operations) < 1:
+            return None
+
+        aggregate_operation = operations[-1]
         if aggregate_operation.name != "aggregate":
             return None
 
-        transforms = self._operations[:-1]
+        transforms = operations[:-1]
         try:
             return self._fused_transforms_then_aggregate(
                 current,
                 transforms,
                 aggregate_operation,
+                output_type=output_type,
             )
-        except ValueError:
+        except (TypeError, ValueError):
             return None
 
     def collect(self) -> "MatricesBase":
@@ -540,9 +567,10 @@ class MatricesBase(abc.ABC):
         output_name: str = "{name}-aggregated",
         progress_bar: bool = True,
         output_zoning: cbase.ZoningSystem | None = None,
+        output_type: type["MatricesBase"] | None = None,
         matrix_transform: Callable[[pd.DataFrame], pd.DataFrame] | None = None,
         progress_desc: str = "Aggregating",
-    ) -> Self:
+    ) -> "MatricesBase":
         """Aggregate slices into a target segmentation."""
         if not segmentation_.is_subset(self.segmentation):
             raise ValueError("cannot aggregate to segmentation which isn't a subset")
@@ -552,11 +580,21 @@ class MatricesBase(abc.ABC):
         if matrix_transform is None:
             matrix_transform = lambda matrix: matrix
 
-        output = self.new(
-            output_name.format(name=self.name),
-            segmentation_=segmentation_,
-            zoning=output_zoning,
-        )
+        output_name = output_name.format(name=self.name)
+        if output_type is None or output_type is self.__class__:
+            output = self.new(
+                output_name,
+                segmentation_=segmentation_,
+                zoning=output_zoning,
+            )
+        else:
+            output = self._new_for_output_type(
+                output_type,
+                output_name,
+                segmentation_=segmentation_,
+                zoning=output_zoning,
+                type_=self.type,
+            )
         iterator = self._build_progress_iterator(
             segmentation_.iter_slices(),
             len(segmentation_),
@@ -571,6 +609,35 @@ class MatricesBase(abc.ABC):
                 total += matrix_transform(matrix)
             output.set_matrix(total, to_slice)
         return output
+
+    def _new_for_output_type(
+        self,
+        output_type: type["MatricesBase"],
+        name: str,
+        *,
+        segmentation_: cbase.Segmentation,
+        zoning: cbase.ZoningSystem,
+        type_: MatrixType,
+    ) -> "MatricesBase":
+        """Create a new matrices object for a fused converted output backend."""
+        if issubclass(output_type, MemoryMatrices):
+            return output_type(
+                segmentation_,
+                zoning,
+                type_,
+                name=name,
+            )
+        if issubclass(output_type, LongMatrices):
+            return output_type(
+                segmentation_,
+                zoning,
+                type_,
+                name=name,
+            )
+        raise TypeError(
+            "fused lazy convert_type currently supports MemoryMatrices and LongMatrices "
+            f"outputs, not {output_type.__name__}"
+        )
 
     def _build_lazy_transform(
         self,
@@ -706,7 +773,7 @@ class MatricesBase(abc.ABC):
             segmentation_,
             output_name=output_name,
             progress_bar=progress_bar,
-        )
+        )  # type: ignore[return-value]
     
     def filter_segment_value(self, segment: str, values: list[int] | int, progress_bar: bool=True, keep_segment: bool = True):
         if keep_segment:
@@ -1852,7 +1919,11 @@ class HDFMatrices(MatricesBase):
                     data=self._zoning.metadata.to_yaml().encode("utf-8"),
                 )
 
-    def _set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:
+    def _set_matrix(
+        self,
+        matrix: pd.DataFrame,
+        slice_: segmentation.SegmentationSlice,
+    ) -> None:
         """Save the matrix to HDF, with a key based on the slice parameters."""
         self._ensure_omx_file()
 
