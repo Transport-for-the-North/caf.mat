@@ -116,7 +116,7 @@ class DistributeConf(BaseConfig):
     ca_disaggregation: CaDisaggregationConfig
 
 
-# pylint: disable=too-many-locals
+# pylint: disable=too-many-locals, too-many-arguments
 def seg_furness(
     current_slice,
     cost_distributions,
@@ -294,6 +294,7 @@ def seg_furness(
             adj_factors[i].to_csv(out_filename)
 
 def dfr_capval(dfr: pd.Series, chg_xmax: float = 1e+64, chg_xmin: float = None) -> pd.Series:
+    """Cap values of a series between a minimum and maximum."""
     chg_xmin = 1 / chg_xmax if chg_xmin is None else chg_xmin
     out = np.where(dfr > chg_xmax, chg_xmax, np.where(dfr < chg_xmin, chg_xmin, dfr))
     return pd.Series(out, index=dfr.index)
@@ -303,7 +304,32 @@ def read_4dcons(tor_cons: str,
                 tour_fldr: pathlib.Path, 
                 moira_fldr: pathlib.Path, 
                 out_fldr: pathlib.Path) -> dict:
-        
+    """Read tour model matrices and build sectoral constraint files.
+
+    Filters the tour model output to mode 6 and periods 1-4, rescales trips
+    to the Moira constraint (factors capped at 50, totals preserved per
+    mode/purpose/period/direction), then writes one constraint CSV per
+    purpose, direction and period.
+
+    Parameters
+    ----------
+    tor_cons : str
+        Prefix of the Moira trips file (``{tor_cons}_{level}_trips.csv``).
+    level : str
+        Zoning level used in the input file names.
+    tour_fldr : pathlib.Path
+        Folder containing ``matrix_output_{level}_4d.csv``.
+    moira_fldr : pathlib.Path
+        Folder containing the Moira trips file.
+    out_fldr : pathlib.Path
+        Output folder, created if missing.
+
+    Returns
+    -------
+    dict
+        Nested dictionary ``{purpose: {direction: {period: path}}}`` of the
+        written CSV files. NHB purposes are offset by 10 for 11-18.
+    """
     out_fldr.mkdir(parents=True, exist_ok=True)
     
     # process sectoral constraint
@@ -628,7 +654,7 @@ def main(cfg: DistributeConf):
     # Check if read_4dcons is needed and run it if so
     read_4dcons_cfg = cfg.read_4dcons_function
     if read_4dcons_cfg["flag"] is True:
-        adjusted_output = read_4dcons(read_4dcons_cfg["adjustment_type"],
+        adjusted_output = read_4dcons(read_4dcons_cfg["adjustment_type"], # pylint: disable=unused-variable
                                       read_4dcons_cfg["level"],
                                       pathlib.Path(read_4dcons_cfg["input_files"]),
                                       pathlib.Path(read_4dcons_cfg["adj_files"]),

@@ -1,3 +1,7 @@
+"""
+CA/NCA process to produce matrices at a more detailed segmentation
+"""
+
 from caf.distribute import furness
 import pandas as pd
 import caf.base as cb
@@ -21,13 +25,13 @@ def smart_downcast(arr):
         arr_max = np.abs(arr).max()
         
         # Only downcast if max value is reasonable for float32 and error is very small
-        if arr_max < 1e6 and arr_max > 1e-6 and max_error / arr_max < 1e-10:
+        if 1e-6 < arr_max < 1e6 and max_error / arr_max < 1e-10:
             return arr.astype(np.float32)
     
     elif arr.dtype == np.int64:
         if arr.max() < 2**31 - 1 and arr.min() > -2**31:
             return arr.astype(np.int32)
-        elif arr.max() < 2**16 - 1 and arr.min() > -2**16:
+        if arr.max() < 2**16 - 1 and arr.min() > -2**16:
             return arr.astype(np.int16)
     
     return arr  # Return original if no downcast possible
@@ -45,7 +49,8 @@ def _ensure_ca_segment(dvec: cb.DVector) -> cb.DVector:
         f"found {segment_names}."
     )
 
-def multi_loop(triple_inputs, mat, hdf_file, tld_ref, segmentation, zoning):
+def multi_loop(triple_inputs, mat, hdf_file, tld_ref, segmentation, zoning): #pylint: disable=too-many-locals
+    """Perform multi-loop distribution for a given segment."""
     # Create separate log file for each process/iteration
     log_dir = hdf_file.parent.parent / "logs"
     log_dir.mkdir(exist_ok=True)
@@ -80,14 +85,14 @@ def multi_loop(triple_inputs, mat, hdf_file, tld_ref, segmentation, zoning):
     furness_logger.addHandler(file_handler)
     furness_logger.propagate = False
     
-    logger.info(f"Starting processing for segment: {segment_name}")
+    logger.info("Starting processing for segment: %s", segment_name)
 
     furnessed, rmse, checkers = furness.segmentation_furness(triple_inputs,
                                                 mat,
                                                 (5430,5430),
                                                 tol=1e-5,
                                                 )
-    logger.info(f"Finished furness with RMSE: {rmse}")
+    logger.info("Finished furness with RMSE: %s", rmse)
     checkers.reset_index(level='target_prop', inplace=True)
     checkers = checkers[checkers['target_prop'] > 0]
     tld_ref = tld_ref[tld_ref > 0]
@@ -100,14 +105,14 @@ def multi_loop(triple_inputs, mat, hdf_file, tld_ref, segmentation, zoning):
     furnessed.to_hdf(hdf_file, key='data')
     checkers.to_hdf(hdf_file, key='checks')
     
-    logger.info(f"Completed processing and saved to {hdf_file}")
+    logger.info("Completed processing and saved to %s", hdf_file)
     
     # Clean up handlers
     logger.removeHandler(file_handler)
     furness_logger.removeHandler(file_handler)
     file_handler.close()
 
-def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.DataFrame, costs: pd.DataFrame, home_dir: Path, zones):
+def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.DataFrame, costs: pd.DataFrame, home_dir: Path, zones): #pylint: disable=too-many-locals
     """
     Produce new matrices at a more detailed segmentation than an existing distribution.
     Parameters
@@ -131,7 +136,7 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
         _description_
     """
     # Set up logging for this distribution run
-    LOG = logging.getLogger("main")
+    LOG = logging.getLogger("main") # pylint: disable=invalid-name
     LOG.setLevel(logging.INFO)  # Only log warnings and errors
 
     output_dir = home_dir / "outputs"
@@ -186,10 +191,10 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
         if rmse > 1e-6:
             mat_row = mat.sum(axis=1)
             mat_col = mat.sum(axis=0)
-            for slice_ in triple_inputs.keys():
-                triple_inputs[slice_].row_targets = np.divide(triple_inputs[slice_].row_targets, row_tot, where=row_tot != 0,out=np.ones_like(row_tot, dtype=float)) * mat_row
-                triple_inputs[slice_].col_targets = np.divide(triple_inputs[slice_].col_targets, col_tot, where=col_tot != 0,out=np.ones_like(col_tot, dtype=float)) * mat_col
-            LOG.warning(f"for {seg_slice.generate_name()}, rmse of tripends to target mat = {rmse}")
+            for seg_input in triple_inputs.values():
+                seg_input.row_targets = np.divide(seg_input.row_targets, row_tot, where=row_tot != 0,out=np.ones_like(row_tot, dtype=float)) * mat_row
+                seg_input.col_targets = np.divide(seg_input.col_targets, col_tot, where=col_tot != 0,out=np.ones_like(col_tot, dtype=float)) * mat_col
+            LOG.warning("for %s, rmse of tripends to target mat = %s", seg_slice.generate_name(), rmse)
         hdf_file = output_dir / f"matrices_{seg_slice.generate_name()}.hdf"
         # seed = mat.copy()
         # seed.columns.name = 'd'
@@ -218,7 +223,7 @@ def dist(attr: cb.DVector, prod: cb.DVector, agg_mat: MatricesBase, tlds: pd.Dat
     del agg_mat, prod, attr
     multiprocess(multi_loop, arg_list=inputs)
 
-def main(cfg: DistributeConf):
+def main(cfg: DistributeConf): #pylint: disable=too-many-locals
     """
     Run the CA/NCA disaggregation stage, reading the gravity model/adjustment stage's
     output matrices directly via DistributionMatrixReader. Needs a run flag, whether it is required
@@ -268,7 +273,7 @@ def main(cfg: DistributeConf):
 
     # Combine hb_fr/hb_to/nhb DVectors per direction into a single CA-segmented DVector
     dvecs = {}
-    for direction in 'orig','dest':
+    for direction in ['orig','dest']:
         
         if direction == "orig":
             direction_sub = "prod"
@@ -276,7 +281,7 @@ def main(cfg: DistributeConf):
             direction_sub = "attr"
         
         hb_fr = _ensure_ca_segment(
-            cb.DVector.load(dvec_dir / direction / cfg.trip_ends[f"hb_{direction_sub}_fr"].name)
+            cb.DVector.load(dvec_dir / direction / cfg.trip_ends[f"hb_{direction_sub}_fr"].name) #pylint: disable=possibly-used-before-assignment
         )
         hb_to = _ensure_ca_segment(
             cb.DVector.load(dvec_dir / direction / cfg.trip_ends[f"hb_{direction_sub}_to"].name)
@@ -322,18 +327,20 @@ def main(cfg: DistributeConf):
     )
 
     for tp in _use_as_list(tp_subset):
-        main_logger.info(f"Processing time period: {tp}")
+        main_logger.info("Processing time period: %s", tp)
         prod = dvecs['orig'].filter_segment_value('tp', tp, keep_filtered=True)
         attr = dvecs['dest'].filter_segment_value('tp', tp, keep_filtered=True)
         agg_mat = DistributionMatrixReader(cfg, mode_subset=m_subset, tp_subset=tp)
         cost_slice = {"m": m_subset[0], "tp": tp}
         costs = cost_matrix.get_matrix(cost_slice).data
 
-        main_logger.info(f"Loaded data for tp {tp}: {len(tlds)} TLD records, {len(zones)} zones")
+        main_logger.info(
+            "Loaded data for tp %s: %s TLD records, %s zones", tp, len(tlds), len(zones)
+        )
 
         dist(attr, prod, agg_mat, tlds, costs.values, home_dir, zones)
 
-        main_logger.info(f"Completed processing for time period {tp}")
+        main_logger.info("Completed processing for time period %s", tp)
 
     main_logger.info("All distribution processes completed")
     main_logger.removeHandler(main_handler)
