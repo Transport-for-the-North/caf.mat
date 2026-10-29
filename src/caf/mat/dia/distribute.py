@@ -232,7 +232,7 @@ def main(cfg: DistributeConf):
     tp_subset = cfg.timeperiod_subset
     p_subset = cfg.purpose_subset
     direction_od_subset = cfg.direction_subset
-    zones_path = cfg.tld_lookup_path
+    zones_path = cfg.tld_lookup["path"]
     dvec_dir = cfg.trip_ends["prod_nhb"].parent.parent
     home_dir = cfg.output_path / "canca"
     home_dir.mkdir(parents=True, exist_ok=True)
@@ -294,7 +294,11 @@ def main(cfg: DistributeConf):
         full.index.names = ['direction_od'] + source_names
         full = full.groupby(level=full.index.names).sum()
         full.index = full.index.reorder_levels(ca_seg.naming_order)
-        dvecs[direction] = cb.DVector(ca_seg, full.xs(m_subset[0], level='m', drop_level=False), normits)
+        # Rows outside the configured subsets would not match ca_seg's expected index
+        keep = np.ones(len(full), dtype=bool)
+        for seg_name, subset in ca_seg.input.subsets.items():
+            keep &= full.index.get_level_values(seg_name).isin(subset)
+        dvecs[direction] = cb.DVector(ca_seg, full[keep], normits)
         del hb_fr, hb_to, nhb
 
     tlds = pd.read_csv(ca_cfg.tlds_path, index_col=[0,1,2,3,4,5])['trips']
