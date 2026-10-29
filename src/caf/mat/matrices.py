@@ -1852,9 +1852,8 @@ class HDFMatrices(MatricesBase):
                     data=self._zoning.metadata.to_yaml().encode("utf-8"),
                 )
 
-    def set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:
+    def _set_matrix(self, matrix: pd.DataFrame, slice_: segmentation.SegmentationSlice) -> None:
         """Save the matrix to HDF, with a key based on the slice parameters."""
-        self.validate_slice(slice_)
         self._ensure_omx_file()
 
         key = self._get_key(slice_)
@@ -1879,9 +1878,8 @@ class HDFMatrices(MatricesBase):
         self._write_metadata(self._path)
         LOG.debug("Written %s matrix to %s", key, self._path)
 
-    def get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
+    def _get_matrix(self, slice_: segmentation.SegmentationSlice) -> Matrix:
         """Load the matrix from HDF."""
-        self.validate_slice(slice_)
         key = self._get_key(slice_)
         with omx.OMXFile(self._path, mode="r") as file:
             if key not in file.matrix_levels:
