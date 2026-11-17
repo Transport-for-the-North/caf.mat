@@ -1008,28 +1008,9 @@ class HDFMatrices(MatricesBase):
         if not path.is_file():
             return
 
-        try:
-            existing_metadata = pd.read_hdf(path, key=self._metadata_key, mode="r")
-        except (KeyError, FileNotFoundError, OSError):
-            existing_metadata = None
-
+        existing_metadata = self._read_existing_metadata(path)
         if existing_metadata is not None:
-            if len(existing_metadata) != 1:
-                raise ValueError(
-                    f"expected 1 metadata row in {path} not {len(existing_metadata)}"
-                )
-
-            row = existing_metadata.iloc[0]
-            if str(row["matrix_type"]) != self._type.name:
-                raise ValueError(
-                    f"{path} matrix type metadata ({row['matrix_type']}) does not match"
-                    f" matrices type ({self._type.name})"
-                )
-            if str(row["key_template"]) != self._raw_key_template:
-                raise ValueError(
-                    f"{path} key template metadata ({row['key_template']}) does not match"
-                    f" matrices key template ({self._raw_key_template})"
-                )
+            self._validate_metadata_frame(path, existing_metadata)
 
         with h5py.File(path, "r") as file:
             has_segmentation = "segmentation" in file
@@ -1049,6 +1030,28 @@ class HDFMatrices(MatricesBase):
                 raise TypeError(f"expected one zoning system in {path} not {type(zoning)}")
             if zoning != self._zoning:
                 raise ValueError(f"{path} zoning metadata does not match matrices zoning")
+
+    def _read_existing_metadata(self, path: pathlib.Path) -> pd.DataFrame | None:
+        try:
+            return pd.read_hdf(path, key=self._metadata_key, mode="r")
+        except (KeyError, FileNotFoundError, OSError):
+            return None
+
+    def _validate_metadata_frame(self, path: pathlib.Path, metadata: pd.DataFrame) -> None:
+        if len(metadata) != 1:
+            raise ValueError(f"expected 1 metadata row in {path} not {len(metadata)}")
+
+        row = metadata.iloc[0]
+        if str(row["matrix_type"]) != self._type.name:
+            raise ValueError(
+                f"{path} matrix type metadata ({row['matrix_type']}) does not match"
+                f" matrices type ({self._type.name})"
+            )
+        if str(row["key_template"]) != self._raw_key_template:
+            raise ValueError(
+                f"{path} key template metadata ({row['key_template']}) does not match"
+                f" matrices key template ({self._raw_key_template})"
+            )
 
     def _write_metadata(self, path: pathlib.Path) -> None:
         """Write metadata, segmentation and zoning to file."""
@@ -1161,7 +1164,7 @@ class HDFMatrices(MatricesBase):
             complib=self._complib,
         )
 
-    def exists(self) -> bool:  # noqa: D102
+    def exists(self) -> bool:
         """Return True if file exists and contains all matrices for the segmentation."""
         if not self._path.is_file():
             return False

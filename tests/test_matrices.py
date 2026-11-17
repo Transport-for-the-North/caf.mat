@@ -334,7 +334,7 @@ class TestHDFMatrices:
         tp_matrices_files: "MatricesResults",
         hb_matrices_files: "MatricesResults",
     ) -> None:
-        """Test converting to an existing HDF path validates existing metadata compatibility."""
+        """Test converting to an existing HDF path validates metadata compatibility."""
         path = tmp_path / "shared-output.h5"
         tp_matrices_files.test.to_hdf(path)
 
