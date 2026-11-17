@@ -408,35 +408,30 @@ class MatricesBase(abc.ABC):
         output = self.new(
             output_name.format(name=self.name), segmentation_=targets.segmentation
         )
-
-        disaggregation_segments = ", ".join(
-            filter(
-                lambda x: x not in self.segmentation.seg_dict,
-                targets.segmentation.seg_dict,
-            )
-        )
+        segment_names = self._added_disaggregation_segments(targets)
         if ignore_if_exists and output.exists():
             LOG.debug(
                 "Dissagregation of %s to additional segments (%s) already exists: %s",
                 self.name,
-                disaggregation_segments,
+                segment_names,
                 output.name,
             )
             return output
 
         LOG.info(
-            "Disaggregating %s to additional segments: %s", self.name, disaggregation_segments
+            "Disaggregating %s to additional segments: %s", self.name, segment_names
         )
 
-        if progress_bar:
-            iterator = tqdm.tqdm(
-                disaggregations.items(), desc=f"Disaggregating {self.name}", dynamic_ncols=True
-            )
-        else:
-            iterator = disaggregations.items()
-
         written_slices: set[segmentation.SegmentationSlice] = set()
-        for from_slice, to_slices in iterator:
+        for from_slice, to_slices in (
+            tqdm.tqdm(
+                disaggregations.items(),
+                desc=f"Disaggregating {self.name}",
+                dynamic_ncols=True,
+            )
+            if progress_bar
+            else disaggregations.items()
+        ):
             disagg_matrices: list[Matrix] = []
             for slice_ in to_slices:
                 disagg_matrices.append(targets.get_matrix(slice_))
@@ -460,6 +455,13 @@ class MatricesBase(abc.ABC):
             )
 
         return output
+
+    def _added_disaggregation_segments(self, targets: "MatricesBase") -> str:
+        return ", ".join(
+            name
+            for name in targets.segmentation.seg_dict
+            if name not in self.segmentation.seg_dict
+        )
 
     def _validate_disaggregations(
         self,
