@@ -182,10 +182,9 @@ class PhiFactors:
             )
         )
         index = segmentation_.ind()
-        validation = segmentation.Segmentation.validate_segmentation(
+        segmentation_ = segmentation.Segmentation.validate_segmentation(
             data, segmentation_, cut_read=True
-        )
-        segmentation_ = validation[0]
+        )[0]
 
         data = data.reindex(index=index, fill_value=0)
 
