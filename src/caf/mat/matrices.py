@@ -1053,7 +1053,27 @@ class HDFMatrices(MatricesBase):
     def _write_metadata(self, path: pathlib.Path) -> None:
         """Write metadata, segmentation and zoning to file."""
         self._validate_existing_metadata(path)
-        self._metadata_frame().to_hdf(path, key=self._metadata_key, mode="a", format="fixed")
+
+        metadata_missing = True
+        try:
+            existing_metadata = pd.read_hdf(path, key=self._metadata_key, mode="r")
+        except (FileNotFoundError, KeyError, OSError):
+            existing_metadata = None
+
+        if existing_metadata is not None and len(existing_metadata) == 1:
+            row = existing_metadata.iloc[0]
+            metadata_missing = (
+                str(row["matrix_type"]) != self._type.name
+                or str(row["key_template"]) != self._raw_key_template
+            )
+
+        if metadata_missing:
+            self._metadata_frame().to_hdf(
+                path,
+                key=self._metadata_key,
+                mode="a",
+                format="fixed",
+            )
         zoning_key = f"zoning_{self._zoning.name}"
         zoning_meta_key = f"zoning_meta_{self._zoning.name}"
         with h5py.File(path, "a") as file:
@@ -1142,6 +1162,7 @@ class HDFMatrices(MatricesBase):
         )
 
     def exists(self) -> bool:  # noqa: D102
+        """Return True if file exists and contains all matrices for the segmentation."""
         if not self._path.is_file():
             return False
 
