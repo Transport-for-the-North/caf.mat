@@ -418,9 +418,7 @@ class MatricesBase(abc.ABC):
             )
             return output
 
-        LOG.info(
-            "Disaggregating %s to additional segments: %s", self.name, segment_names
-        )
+        LOG.info("Disaggregating %s to additional segments: %s", self.name, segment_names)
 
         written_slices: set[segmentation.SegmentationSlice] = set()
         for from_slice, to_slices in (
