@@ -338,7 +338,10 @@ class TestHDFMatrices:
         path = tmp_path / "shared-output.h5"
         tp_matrices_files.test.to_hdf(path)
 
-        with pytest.raises(ValueError, match="metadata does not match|segmentation metadata"):
+        with pytest.raises(
+            ValueError,
+            match=r"metadata does not match|segmentation metadata",
+        ):
             hb_matrices_files.test.to_hdf(path)
 
     def test_to_mat_uses_cube_converter(
@@ -447,7 +450,7 @@ def _produce_matrices_files(
     if data is None:
         data = random_matrices_data(zone_system, segmentation_, seed=157)
     folder = path / name
-    folder.mkdir()
+    folder.mkdir(exist_ok=True)
 
     for slice_, df in data.items():
         df.to_csv(

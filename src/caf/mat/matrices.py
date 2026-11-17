@@ -996,14 +996,12 @@ class HDFMatrices(MatricesBase):
     @staticmethod
     def _same_file(path1: pathlib.Path, path2: pathlib.Path) -> bool:
         """Return True if both paths point to the same filesystem entry."""
-        if path1 == path2:
+        if path1.resolve() == path2.resolve():
             return True
-        if path1.exists() and path2.exists():
-            try:
-                return path1.samefile(path2)
-            except OSError:
-                return False
-        return False
+        try:
+            return path1.samefile(path2)
+        except OSError:
+            return False
 
     def _validate_existing_metadata(self, path: pathlib.Path) -> None:
         """Validate metadata in an existing file matches this instance."""
@@ -1017,7 +1015,9 @@ class HDFMatrices(MatricesBase):
 
         if existing_metadata is not None:
             if len(existing_metadata) != 1:
-                raise ValueError(f"expected 1 metadata row in {path} not {len(existing_metadata)}")
+                raise ValueError(
+                    f"expected 1 metadata row in {path} not {len(existing_metadata)}"
+                )
 
             row = existing_metadata.iloc[0]
             if str(row["matrix_type"]) != self._type.name:
@@ -1039,7 +1039,9 @@ class HDFMatrices(MatricesBase):
         if has_segmentation:
             segmentation_ = cbase.Segmentation.load(path, "hdf")
             if segmentation_ != self._segmentation:
-                raise ValueError(f"{path} segmentation metadata does not match matrices segmentation")
+                raise ValueError(
+                    f"{path} segmentation metadata does not match matrices segmentation"
+                )
 
         if has_zoning and has_zoning_meta:
             zoning = cbase.ZoningSystem.load(path, "hdf")
@@ -1122,7 +1124,7 @@ class HDFMatrices(MatricesBase):
         zoning: cbase.ZoningSystem | None = None,
         type_: MatrixType | None = None,
     ) -> Self:
-        if pathlib.Path(name).suffix:
+        if pathlib.Path(name).suffix != "":
             path = self._path.with_name(name)
         else:
             suffix = self._path.suffix or ".h5"
